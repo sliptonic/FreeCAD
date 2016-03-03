@@ -42,33 +42,6 @@ except AttributeError:
     def translate(context, text, disambig=None):
         return QtGui.QApplication.translate(context, text, disambig)
 
-# def frange(start, stop, step, finish):
-#     x = []
-#     curdepth = start
-#     if step == 0:
-#         return x
-#     # do the base cuts until finishing round
-#     while curdepth >= stop + step + finish:
-#         curdepth = curdepth - step
-#         if curdepth <= stop + finish:
-#             curdepth = stop + finish
-#         x.append(curdepth)
-
-#     # we might have to do a last pass or else finish round might be too far away
-#     if curdepth - stop > finish:
-#         x.append(stop + finish)
-
-#     # do the the finishing round
-#     if curdepth >= stop:
-#         curdepth = stop
-#         x.append(curdepth)
-
-#      # Why this?
-# #    if start >= stop:
-# #        start = stop
-# #        x.append (start)
-
-#     return x
 
 class ObjectPocket:
     
@@ -167,11 +140,15 @@ class ObjectPocket:
         cut_mode = obj.CutMode
 
         PathAreaUtils.output('mem')
-        PocketString = "a," + str(self.radius) + "," + str(extraoffset) + "," + str(stepover) + ",depthparams, " + str(from_center) + "," + str(keep_tool_down) + "," + str(use_zig_zag) + "," + str(zig_angle) + "," + str(zig_unidirectional) + "," + str(start_point) + "," + str(cut_mode)
-        print PocketString
+
+        print "a," + str(self.radius) + "," + str(extraoffset) + "," + str(stepover) + ",depthparams, " + str(from_center) + "," + str(keep_tool_down) + "," + str(use_zig_zag) + "," + str(zig_angle) + "," + str(zig_unidirectional) + "," + str(start_point) + "," + str(cut_mode)
+
         PathAreaUtils.pocket(a,self.radius,extraoffset, stepover,depthparams,from_center,keep_tool_down,use_zig_zag,zig_angle,zig_unidirectional,start_point,cut_mode)
 
         return PathAreaUtils.retrieve_gcode()
+
+
+
 
     def buildpathocc(self, obj, shape):
         import Part, DraftGeomUtils
@@ -511,29 +488,6 @@ class ObjectPocket:
                 self.radius = 0.25
                       
             output = ""
-            output += "G0 Z" + str(obj.ClearanceHeight)
-            output += "(still in PathPocket)"
-            # absolute coords, millimeters, cancel offsets
-            #output = "G90\nG21\nG40\n"            
-
-
-        # if obj.Base:
-        #     tool = PathUtils.getLastTool(obj)
-
-        #     if tool:
-        #         radius = tool.Diameter/2
-        #         if radius < 0:# safe guard
-        #             radius -= radius
-        #     else:
-        #         # temporary value, to be taken from the properties later on
-        #         radius = 1
-        #     if "Face" in obj.Base[1][0]:
-        #         shape = getattr(obj.Base[0].Shape,obj.Base[1][0])
-        #     else:
-        #         edges = [getattr(obj.Base[0].Shape,sub) for sub in obj.Base[1]]
-        #         shape = Part.Wire(edges)
-        #         print len(edges)
-
             if obj.Algorithm == "OCC Native":
                 if shape == None:
                     shape = wire
@@ -548,23 +502,28 @@ class ObjectPocket:
                 a = area.Area()
                 if shape == None:
                     c = PathScripts.PathKurveUtils.makeAreaCurve(wire.Edges, 'CW')
-                    print "c: " + str(c)
                     a.append(c)
                 else:
                     for w in shape.Wires:
                         c = PathScripts.PathKurveUtils.makeAreaCurve(w.Edges, 'CW')
-                        if w.isSame(shape.OuterWire):
-                            print "outerwire"
-                            if  c.IsClockwise():
-                                c.Reverse()
-                                print "reverse outterwire"
-                        else:
-                            print "inner wire"
-                            if not c.IsClockwise():
-                                c.Reverse()
-                                print "reverse inner"
+                        # if w.isSame(shape.OuterWire):
+                        #     print "outerwire"
+                        #     if  c.IsClockwise():
+                        #         c.Reverse()
+                        #         print "reverse outterwire"
+                        # else:
+                        #     print "inner wire"
+                        #     if not c.IsClockwise():
+                        #         c.Reverse()
+                        #         print "reverse inner"
                         a.append(c)
+
+                ########
+                ##This puts out some interesting information from libarea
                 print a.text()
+                ########
+                
+                
                 a.Reorder()
                 output += self.buildpathlibarea(obj, a)
             if obj.UseEntry:
@@ -575,9 +534,6 @@ class ObjectPocket:
                 obj.setEditorMode('HelixSize',2) #make this hidden
                 obj.setEditorMode('RampAngle',2) #make this hidden
                 obj.setEditorMode('RampSize',2) #make this hidden
-
-
-
 
             if obj.Active:
                 path = Path.Path(output)
@@ -679,6 +635,7 @@ class CommandPathPocket:
         FreeCADGui.doCommand('obj.StepDown = 1.0')
         FreeCADGui.doCommand('obj.StartDepth= ' + str(bb.ZMax))
         FreeCADGui.doCommand('obj.FinalDepth=' + str(zbottom))
+        FreeCADGui.doCommand('obj.ZigZagAngle=45')
         FreeCADGui.doCommand('obj.UseEntry=True')
         FreeCADGui.doCommand('obj.RampAngle = 3.0')
         FreeCADGui.doCommand('obj.RampSize = 0.75')

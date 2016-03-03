@@ -11,8 +11,7 @@ tool_radius_for_pocket = None
 def cut_curve(curve, need_rapid, p, rapid_safety_space, current_start_depth, final_depth):
     prev_p = p
     first = True
-    comment("cut_curve")
-    comment("cut_curve:14 rss:" + str(rapid_safety_space) + " current start depth :" + str(current_start_depth) + " final depth :" + str(final_depth) + " need rapid: " + str(need_rapid))
+    #comment("cut_curve:14 rss:" + str(rapid_safety_space) + " current start depth :" + str(current_start_depth) + " final depth :" + str(final_depth) + " need rapid: " + str(need_rapid))
     for vertex in curve.getVertices():
         if need_rapid and first:
             # rapid across
@@ -83,7 +82,6 @@ def feed_possible(p0, p1):
 def cut_curvelist1(curve_list, rapid_safety_space, current_start_depth, depth, clearance_height, keep_tool_down_if_poss):
     p = area.Point(0, 0)
     first = True
-    comment("cut_curvlist1")
     for curve in curve_list:
         need_rapid = True
         if first == False:
@@ -430,7 +428,7 @@ def pocket(a,tool_radius, extra_offset, stepover, depthparams, from_center, keep
             current_start_depth = depth
 
     else:
-        print "PathAreaUtils:431  I guess it IS used.  Who knew?"
+        print "PathAreaUtils:438  I guess it IS used.  Who knew?"
         # for depth in depths:
         #     cut_curvelist2(curve_list, depthparams.rapid_safety_space, current_start_depth, depth, depthparams.clearance_height, keep_tool_down_if_poss, start_point)
         #     current_start_depth = depth
