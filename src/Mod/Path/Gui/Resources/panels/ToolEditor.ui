@@ -71,7 +71,7 @@
       <item row="3" column="1">
        <widget class="Gui::InputField" name="toolLengthOffset">
         <property name="text">
-         <string>0.00</string>
+         <string>0 mm</string>
         </property>
         <property name="unit" stdset="0">
          <string>mm</string>
@@ -87,68 +87,112 @@
       <string>Tool Parameter</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
-      <property name="fieldGrowthPolicy">
-       <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
-      </property>
-      <item row="1" column="0">
+      <item row="0" column="0">
        <widget class="QLabel" name="label_4">
         <property name="text">
          <string>Diameter</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="0" column="1">
+       <widget class="Gui::InputField" name="toolDiameter">
+        <property name="text">
+         <string>0 mm</string>
+        </property>
+        <property name="unit" stdset="0">
+         <string>mm</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
        <widget class="QLabel" name="label_6">
         <property name="text">
          <string>Flat Radius</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
+      <item row="1" column="1">
+       <widget class="Gui::InputField" name="toolFlatRadius">
+        <property name="text">
+         <string>0 mm</string>
+        </property>
+        <property name="unit" stdset="0">
+         <string>mm</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
        <widget class="QLabel" name="label_7">
         <property name="text">
          <string>Corner Radius</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="0">
+      <item row="2" column="1">
+       <widget class="Gui::InputField" name="toolCornerRadius">
+        <property name="text">
+         <string>0 mm</string>
+        </property>
+        <property name="unit" stdset="0">
+         <string>mm</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
        <widget class="QLabel" name="label_9">
         <property name="text">
          <string>Point/Tip Angle</string>
         </property>
        </widget>
       </item>
-      <item row="6" column="0">
+      <item row="3" column="1">
+       <widget class="Gui::InputField" name="toolCuttingEdgeAngle">
+        <property name="text">
+         <string>0 °</string>
+        </property>
+        <property name="unit" stdset="0">
+         <string>°</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
        <widget class="QLabel" name="label_8">
         <property name="text">
          <string>Cutting Edge Height</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="Gui::InputField" name="toolDiameter">
-        <property name="text">
-         <string>0.00</string>
-        </property>
-        <property name="unit" stdset="0">
-         <string>mm</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="Gui::InputField" name="toolFlatRadius">
-        <property name="text">
-         <string>0.00</string>
-        </property>
-        <property name="unit" stdset="0">
-         <string>mm</string>
-        </property>
-       </widget>
-      </item>
       <item row="4" column="1">
-       <widget class="Gui::InputField" name="toolCornerRadius">
+       <widget class="Gui::InputField" name="toolCuttingEdgeHeight">
         <property name="text">
-         <string>0.00</string>
+         <string>0 mm</string>
+        </property>
+        <property name="unit" stdset="0">
+         <string>mm</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_10">
+        <property name="text">
+         <string>Flute Count</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="label_11">
+        <property name="text">
+         <string>Feed/Tooth</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="Gui::InputField" name="toolCuttingEdgeHeight_3">
+        <property name="text">
+         <string>0 mm</string>
+        </property>
+        <property name="minimum">
+         <double>0.000000000000000</double>
         </property>
         <property name="unit" stdset="0">
          <string>mm</string>
@@ -156,22 +200,12 @@
        </widget>
       </item>
       <item row="5" column="1">
-       <widget class="Gui::InputField" name="toolCuttingEdgeAngle">
-        <property name="text">
-         <string>180°</string>
+       <widget class="Gui::UIntSpinBox" name="toolFluteCount">
+        <property name="minimum">
+         <number>1</number>
         </property>
-        <property name="unit" stdset="0">
-         <string>°</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="1">
-       <widget class="Gui::InputField" name="toolCuttingEdgeHeight">
-        <property name="text">
-         <string>0.00</string>
-        </property>
-        <property name="unit" stdset="0">
-         <string>mm</string>
+        <property name="maximum">
+         <number>100</number>
         </property>
        </widget>
       </item>
@@ -228,7 +262,7 @@
          <item row="1" column="1">
           <widget class="Gui::InputField" name="value_D">
            <property name="text">
-            <string>0.00</string>
+            <string>0 mm</string>
            </property>
            <property name="unit" stdset="0">
             <string>mm</string>
@@ -238,7 +272,7 @@
          <item row="2" column="1">
           <widget class="Gui::InputField" name="value_d">
            <property name="text">
-            <string>0.00</string>
+            <string>0 mm</string>
            </property>
            <property name="unit" stdset="0">
             <string>mm</string>
@@ -248,7 +282,7 @@
          <item row="3" column="1">
           <widget class="Gui::InputField" name="value_H">
            <property name="text">
-            <string>0.00</string>
+            <string>0 mm</string>
            </property>
            <property name="unit" stdset="0">
             <string>mm</string>
@@ -258,7 +292,7 @@
          <item row="4" column="1">
           <widget class="Gui::InputField" name="value_a">
            <property name="text">
-            <string>180°</string>
+            <string>0 °</string>
            </property>
            <property name="unit" stdset="0">
             <string>°</string>
@@ -271,7 +305,7 @@
             <bool>false</bool>
            </property>
            <property name="text">
-            <string>0.00</string>
+            <string>0 mm</string>
            </property>
            <property name="unit" stdset="0">
             <string>mm</string>
@@ -310,6 +344,11 @@
    <class>Gui::InputField</class>
    <extends>QLineEdit</extends>
    <header>Gui/InputField.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Gui::UIntSpinBox</class>
+   <extends>QSpinBox</extends>
+   <header>Gui/SpinBox.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

@@ -51,6 +51,8 @@ class ToolEditorDefault:
         self.form.toolCornerRadius.setText(FreeCAD.Units.Quantity(self.editor.tool.CornerRadius, FreeCAD.Units.Length).UserString)
         self.form.toolCuttingEdgeHeight.setText(FreeCAD.Units.Quantity(self.editor.tool.CuttingEdgeHeight, FreeCAD.Units.Length).UserString)
         self.form.toolCuttingEdgeAngle.setText(FreeCAD.Units.Quantity(self.editor.tool.CuttingEdgeAngle, FreeCAD.Units.Angle).UserString)
+        self.form.toolFluteCount.setText(self.editor.tool.toolFluteCount)
+        self.form.toolFPT.setText(FreeCAD.Units.Quantity(self.editor.tool.toolFPT, FreeCAD.Units.Length).UserString)
 
     def updateTool(self):
         self.editor.tool.Diameter = FreeCAD.Units.parseQuantity(self.form.toolDiameter.text())
@@ -58,6 +60,8 @@ class ToolEditorDefault:
         self.editor.tool.CornerRadius = FreeCAD.Units.parseQuantity(self.form.toolCornerRadius.text())
         self.editor.tool.CuttingEdgeAngle = FreeCAD.Units.Quantity(self.form.toolCuttingEdgeAngle.text())
         self.editor.tool.CuttingEdgeHeight = FreeCAD.Units.parseQuantity(self.form.toolCuttingEdgeHeight.text())
+        self.editor.tool.FluteCount = self.form.toolFluteCount.text()
+        self.editor.tool.FeedPerTooth = FreeCAD.Units.parseQuantity(self.form.toolFPT.text())
 
 class ToolEditorImage(object):
     '''Base implementation for all customized Tool parameter editors.
