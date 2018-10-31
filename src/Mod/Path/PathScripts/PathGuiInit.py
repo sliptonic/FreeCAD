@@ -58,6 +58,7 @@ def Startup():
         from PathScripts import PathHop
         from PathScripts import PathInspect
         from PathScripts import PathMillFaceGui
+        from PathScripts import PathNEWOPGui
         from PathScripts import PathPocketGui
         from PathScripts import PathPocketShapeGui
         from PathScripts import PathPost

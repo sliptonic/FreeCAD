@@ -85,7 +85,7 @@ class PathWorkbench (Workbench):
         toolcmdlist = ["Path_Inspect", "Path_Simulator", "Path_SelectLoop",
                        "Path_OpActiveToggle"]
         prepcmdlist = ["Path_Fixture", "Path_Comment", "Path_Stop",
-                       "Path_Custom", "Path_Probe"]
+                       "Path_Custom", "Path_NEWOP", "Path_Probe"]
         twodopcmdlist = ["Path_Profile", "Path_Pocket_Shape", "Path_Drilling",
                          "Path_MillFace", "Path_Helix", "Path_Adaptive"]
         threedopcmdlist = ["Path_Pocket_3D"]

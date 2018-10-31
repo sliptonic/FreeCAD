@@ -376,6 +376,9 @@ def turnselect():
     if not PathPreferences.suppressSelectionModeWarning():
         FreeCAD.Console.PrintWarning("Turning Select Mode\n")
 
+def newopselect():
+    FreeCADGui.Selection.addSelectionGate(NEWOPGate())
+    FreeCAD.Console.PrintWarning("New Operation Select Mode\n")
 
 def select(op):
     opsel = {}
