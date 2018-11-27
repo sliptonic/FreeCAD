@@ -81,6 +81,18 @@ HighCarbonToolSteel CastAlloy, Ceramics, Diamond, Sialon or Undefined</UserDocu>
             </Documentation>
             <Parameter Name="CuttingEdgeHeight" Type="Float"/>
         </Attribute>
+        <Attribute Name="ChipLoad" ReadOnly="false">
+            <Documentation>
+                <UserDocu>The feed per tooth or chipload for this tool in mm</UserDocu>
+            </Documentation>
+            <Parameter Name="ChipLoad" Type="Float"/>
+        </Attribute>
+        <Attribute Name="FluteCount" ReadOnly="false">
+            <Documentation>
+                <UserDocu>the number of cutting edges (flutes)</UserDocu>
+            </Documentation>
+            <Parameter Name="FluteCount" Type="Int"/>
+        </Attribute>
         <Methode Name="copy">
             <Documentation>
                 <UserDocu>returns a copy of this tool</UserDocu>

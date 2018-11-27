@@ -50,10 +50,12 @@ Tool::Tool(const char* name,
            double flatradius,
            double cornerradius,
            double cuttingedgeangle,
-           double cuttingedgeheight)
+           double cuttingedgeheight,
+           double chipload,
+           int flutecount)
 :Name(name),Type(type),Material(MATUNDEFINED),Diameter(diameter),LengthOffset(lengthoffset),
 FlatRadius(flatradius),CornerRadius(cornerradius),CuttingEdgeAngle(cuttingedgeangle),
-CuttingEdgeHeight(cuttingedgeheight)
+CuttingEdgeHeight(cuttingedgeheight),FluteCount(flutecount)
 {
 }
 
@@ -67,6 +69,8 @@ Tool::Tool()
     CornerRadius = 0;
     CuttingEdgeAngle = 180;
     CuttingEdgeHeight = 0;
+    FluteCount = 2;
+    ChipLoad = 0;
 }
 
 Tool::~Tool()
@@ -92,6 +96,8 @@ void Tool::Save (Writer &writer) const
                     << "height=\"" << CuttingEdgeHeight << "\" "
                     << "type=\"" << TypeName(Type) << "\" "
                     << "mat=\"" << MaterialName(Material) << "\" "
+                    << "flutecount=\"" << FluteCount << "\" "
+                    << "chipload=\"" << ChipLoad << "\" "
                     << "/>" << std::endl;
 }
 
@@ -105,6 +111,8 @@ void Tool::Restore(XMLReader &reader)
     CornerRadius      = reader.hasAttribute("corner")   ? (double) reader.getAttributeAsFloat("corner")   : 0.0;
     CuttingEdgeAngle  = reader.hasAttribute("angle")    ? (double) reader.getAttributeAsFloat("angle")    : 180.0;
     CuttingEdgeHeight = reader.hasAttribute("height")   ? (double) reader.getAttributeAsFloat("height")   : 0.0;
+    FluteCount        = reader.hasAttribute("flutecount") ? (int) reader.getAttributeAsInteger("flutecount")   : 0;
+    ChipLoad          = reader.hasAttribute("chipload")   ? (double) reader.getAttributeAsFloat("chipload")   : 0.0;
     std::string type  = reader.hasAttribute("type")     ? reader.getAttribute("type") : "";
     std::string mat   = reader.hasAttribute("mat")      ? reader.getAttribute("mat")  : "";
 
