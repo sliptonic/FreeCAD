@@ -67,9 +67,11 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
     PyObject *cor = 0;
     PyObject *ang = 0;
     PyObject *hei = 0;
+    PyObject *flu = 0;
+    PyObject *chi = 0;
     int version = 1;
 
-    static char *kwlist[] = {"name", "tooltype", "material", "diameter", "lengthOffset", "flatRadius", "cornerRadius", "cuttingEdgeAngle", "cuttingEdgeHeight" , "version", NULL};
+    static char *kwlist[] = {"name", "tooltype", "material", "diameter", "lengthOffset", "flatRadius", "cornerRadius", "cuttingEdgeAngle", "cuttingEdgeHeight" , "fluteCount", "chipload", "version", NULL};
 
     PyObject *dict = 0;
     if (!kwd && (PyObject_TypeCheck(args, &PyDict_Type) || PyArg_ParseTuple(args, "O!", &PyDict_Type, &dict))) {
@@ -106,6 +108,8 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
     getToolPtr()->CornerRadius      = cor ? PyFloat_AsDouble(cor) : 0.0;
     getToolPtr()->CuttingEdgeAngle  = ang ? PyFloat_AsDouble(ang) : 180.0;
     getToolPtr()->CuttingEdgeHeight = hei ? PyFloat_AsDouble(hei) : 0.0;
+    getToolPtr()->FluteCount        = flu ? PyInt_AsLong(flu) : 2;
+    getToolPtr()->ChipLoad          = chi ? PyFloat_AsDouble(chi) : 0.0;
 
     return 0;
 }
@@ -203,8 +207,29 @@ Py::Float ToolPy::getCuttingEdgeHeight(void) const
 
 void  ToolPy::setCuttingEdgeHeight(Py::Float arg)
 {
-    getToolPtr()->CuttingEdgeHeight = arg.operator double();
+    getToolPtr()->CuttingEdgeHeight = arg.operator int();
 }
+
+Py::Int ToolPy::getFluteCount(void) const
+{
+    return Py::Int(getToolPtr()->FluteCount);
+}
+
+void  ToolPy::setFluteCount(Py::Int arg)
+{
+    getToolPtr()->FluteCount = arg.operator int();
+}
+
+void  ToolPy::setChipLoad(Py::Float arg)
+{
+    getToolPtr()->ChipLoad = arg.operator double();
+}
+
+Py::Float ToolPy::getChipLoad(void) const
+{
+    return Py::Float(getToolPtr()->ChipLoad);
+}
+
 
 // custom attributes get/set
 
@@ -274,6 +299,8 @@ PyObject* ToolPy::templateAttrs(PyObject * args)
         PyDict_SetItemString(dict, "cornerRadius", PyFloat_FromDouble(getToolPtr()->CornerRadius));
         PyDict_SetItemString(dict, "cuttingEdgeAngle", PyFloat_FromDouble(getToolPtr()->CuttingEdgeAngle));
         PyDict_SetItemString(dict, "cuttingEdgeHeight", PyFloat_FromDouble(getToolPtr()->CuttingEdgeHeight));
+        PyDict_SetItemString(dict, "fluteCount", PyInt_FromLong(getToolPtr()->FluteCount));
+        PyDict_SetItemString(dict, "chipLoad", PyFloat_FromDouble(getToolPtr()->ChipLoad));
         return dict;
     }
     throw Py::TypeError("This method accepts no argument");
