@@ -51,8 +51,8 @@ Tool::Tool(const char* name,
            double cornerradius,
            double cuttingedgeangle,
            double cuttingedgeheight,
-           double chipload,
-           int flutecount)
+           int flutecount,
+           double chipload)
 :Name(name),Type(type),Material(MATUNDEFINED),Diameter(diameter),LengthOffset(lengthoffset),
 FlatRadius(flatradius),CornerRadius(cornerradius),CuttingEdgeAngle(cuttingedgeangle),
 CuttingEdgeHeight(cuttingedgeheight),FluteCount(flutecount)

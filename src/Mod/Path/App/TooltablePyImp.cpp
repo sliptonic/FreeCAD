@@ -207,7 +207,7 @@ Py::Float ToolPy::getCuttingEdgeHeight(void) const
 
 void  ToolPy::setCuttingEdgeHeight(Py::Float arg)
 {
-    getToolPtr()->CuttingEdgeHeight = arg.operator int();
+    getToolPtr()->CuttingEdgeHeight = arg.operator double();
 }
 
 Py::Int ToolPy::getFluteCount(void) const
@@ -217,7 +217,7 @@ Py::Int ToolPy::getFluteCount(void) const
 
 void  ToolPy::setFluteCount(Py::Int arg)
 {
-    getToolPtr()->FluteCount = arg.operator int();
+    getToolPtr()->FluteCount = static_cast<int>(arg);
 }
 
 void  ToolPy::setChipLoad(Py::Float arg)
