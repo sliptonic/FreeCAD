@@ -39,7 +39,7 @@ import xml.sax
 from PySide import QtCore, QtGui
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-#PathLog.trackModule(PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 def translate(context, text, disambig=None):
     return QtCore.QCoreApplication.translate(context, text, disambig)
@@ -72,6 +72,8 @@ class FreeCADTooltableHandler(xml.sax.ContentHandler):
             self.tool.CornerRadius = float(attributes["corner"])
             self.tool.CuttingEdgeAngle = float(attributes["angle"])
             self.tool.CuttingEdgeHeight = float(attributes["height"])
+            self.tool.ChipLoad = float(attributes["chipload"])
+            self.tool.FluteCount = int(attributes["flutecount"])
 
     # Call when an elements ends
     def endElement(self, tag):
@@ -166,6 +168,7 @@ class ToolLibraryManager():
             attrs = {}
             for key, val in PathUtil.keyValueIter(stringattrs['Tools']):
                 attrs[int(key)] = val
+            print (attrs)
             return Path.Tooltable(attrs)
         else:
             PathLog.error(translate('PathToolLibraryManager', "Unsupported Path tooltable template version %s") % stringattrs.get('Version'))
@@ -248,8 +251,13 @@ class ToolLibraryManager():
                 itmCornerRadius =  QtGui.QStandardItem(unitconv(t.CornerRadius))
                 itemCuttingEdgeAngle =  QtGui.QStandardItem(str(t.CuttingEdgeAngle))
                 itemCuttingEdgeHeight =  QtGui.QStandardItem(unitconv(t.CuttingEdgeHeight))
+                itemChipLoad = QtGui.QStandardItem(unitconv(t.ChipLoad))
+                itemFluteCount = QtGui.QStandardItem(int(t.FluteCount))
 
-                row = [itemcheck, itemNumber, itemName, itemToolType, itemMaterial, itemDiameter, itemLengthOffset, itemFlatRadius, itmCornerRadius, itemCuttingEdgeAngle, itemCuttingEdgeHeight]
+                row = [itemcheck, itemNumber, itemName, itemToolType,
+                        itemMaterial, itemDiameter, itemLengthOffset,
+                        itemFlatRadius, itmCornerRadius, itemCuttingEdgeAngle,
+                        itemCuttingEdgeHeight, itemChipLoad, itemFluteCount]
                 model.appendRow(row)
 
         return model
@@ -309,7 +317,8 @@ class ToolLibraryManager():
                     fp,fname = openFileWithExtension(filename[0], '.tbl')
                     for key in tt.Tools:
                         t = tt.Tools[key]
-                        fp.write("T{} P{} Y{} Z{} A{} B{} C{} U{} V{} W{} D{} I{} J{} Q{} ;{}\n".format(key,key,0,t.LengthOffset,0,0,0,0,0,0,t.Diameter,0,0,0,t.Name))
+                        fp.write("T{} P{} Y{} Z{} A{} B{} C{} U{} V{} W{} D{} I{} J{} Q{} ;{}\n".format(
+                            key,key,0,t.LengthOffset,0,0,0,0,0,0,t.Diameter,0,0,0,t.Name))
                 else:
                     fp,fname = openFileWithExtension(filename[0], '.json')
                     json.dump(self.templateAttrs(tt), fp, sort_keys=True, indent=2)

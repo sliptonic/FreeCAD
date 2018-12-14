@@ -179,26 +179,6 @@
         </property>
        </widget>
       </item>
-      <item row="7" column="0">
-       <widget class="QLabel" name="label_11">
-        <property name="text">
-         <string>Feed/Tooth</string>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="1">
-       <widget class="Gui::InputField" name="toolFPT">
-        <property name="text">
-         <string>0 mm</string>
-        </property>
-        <property name="minimum">
-         <double>0.000000000000000</double>
-        </property>
-        <property name="unit" stdset="0">
-         <string>mm</string>
-        </property>
-       </widget>
-      </item>
       <item row="5" column="1">
        <widget class="Gui::UIntSpinBox" name="toolFluteCount">
         <property name="minimum">
@@ -206,6 +186,29 @@
         </property>
         <property name="maximum">
          <number>100</number>
+        </property>
+        <property name="value">
+         <number>2</number>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="Gui::InputField" name="toolFPT">
+        <property name="text">
+         <string>0 mm</string>
+        </property>
+        <property name="minimum" stdset="0">
+         <double>0.000000000000000</double>
+        </property>
+        <property name="unit" stdset="0">
+         <string>mm</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="label_11">
+        <property name="text">
+         <string>Chip Load</string>
         </property>
        </widget>
       </item>

@@ -94,8 +94,8 @@ namespace Path
         double CornerRadius;
         double CuttingEdgeAngle;
         double CuttingEdgeHeight;
-        double ChipLoad;
         int FluteCount;
+        double ChipLoad;
 
         static const std::vector<std::string> ToolTypes(void);
         static const std::vector<std::string> ToolMaterials(void);

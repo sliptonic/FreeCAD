@@ -32,7 +32,7 @@ import math
 from PySide import QtCore, QtGui
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-#PathLog.trackModule(PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 class ToolEditorDefault:
     '''Generic Tool parameter editor for all Tools that don't have a customized edit function.
@@ -80,7 +80,7 @@ class ToolEditorImage(object):
                 'd' : (form.label_d, form.value_d),
                 'H' : (form.label_H, form.value_H),
                 'a' : (form.label_a, form.value_a),
-                'S' : (form.label_S, form.value_S)
+                'S' : (form.label_S, form.value_S),
                 }
 
     def setupUI(self):
@@ -130,6 +130,8 @@ class ToolEditorImage(object):
             self.editor.tool.CuttingEdgeHeight = self.quantityCuttingEdgeHeight(False)
 
         self.editor.tool.CornerRadius = toolDefault.CornerRadius
+        self.editor.tool.FluteCount = toolDefault.FluteCount
+        self.editor.tool.ChipLoad = toolDefault.ChipLoad
 
     def quantityDiameter(self, propertyToDisplay):
         if propertyToDisplay:
@@ -150,6 +152,17 @@ class ToolEditorImage(object):
         if propertyToDisplay:
             return FreeCAD.Units.Quantity(self.editor.tool.CuttingEdgeHeight, FreeCAD.Units.Length)
         return FreeCAD.Units.parseQuantity(self.form.value_H.text())
+
+    def quantityChipLoad(self, propertyToDisplay):
+        if propertyToDisplay:
+            return FreeCAD.Units.Quantity(self.editor.tool.ChipLoad, FreeCAD.Units.Length)
+        return FreeCAD.Units.parseQuantity(self.form.value_H.text())
+
+    def quantityFluteCount(self, propertyToDisplay):
+        if propertyToDisplay:
+            return FreeCAD.Units.Quantity(self.editor.tool.Flutecount, FreeCAD.Units.Length)
+        return FreeCAD.Units.parseQuantity(self.form.value_H.text())
+
 
 class ToolEditorEndmill(ToolEditorImage):
     '''Tool parameter editor for endmills.'''
