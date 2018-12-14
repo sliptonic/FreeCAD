@@ -74,6 +74,10 @@ class FreeCADTooltableHandler(xml.sax.ContentHandler):
             self.tool.CuttingEdgeAngle = float(attrs["angle"])
             self.tool.CuttingEdgeHeight = float(attrs["height"])
 
+
+            self.tool.ChipLoad = float(attrs["chipload"])
+            self.tool.FluteCount = int(attrs["flutecount"])
+
     # Call when an elements ends
     def endElement(self, name):
         if name == "Toolslot":
@@ -168,6 +172,7 @@ class ToolLibraryManager():
             attrs = {}
             for key, val in PathUtil.keyValueIter(stringattrs['Tools']):
                 attrs[int(key)] = val
+            print (attrs)
             return Path.Tooltable(attrs)
         else:
             PathLog.error(translate('PathToolLibraryManager', "Unsupported Path tooltable template version %s") % stringattrs.get('Version'))
@@ -250,8 +255,13 @@ class ToolLibraryManager():
                 itmCornerRadius =  QtGui.QStandardItem(unitconv(t.CornerRadius))
                 itemCuttingEdgeAngle =  QtGui.QStandardItem(str(t.CuttingEdgeAngle))
                 itemCuttingEdgeHeight =  QtGui.QStandardItem(unitconv(t.CuttingEdgeHeight))
+                itemChipLoad = QtGui.QStandardItem(unitconv(t.ChipLoad))
+                itemFluteCount = QtGui.QStandardItem(int(t.FluteCount))
 
-                row = [itemcheck, itemNumber, itemName, itemToolType, itemMaterial, itemDiameter, itemLengthOffset, itemFlatRadius, itmCornerRadius, itemCuttingEdgeAngle, itemCuttingEdgeHeight]
+                row = [itemcheck, itemNumber, itemName, itemToolType,
+                        itemMaterial, itemDiameter, itemLengthOffset,
+                        itemFlatRadius, itmCornerRadius, itemCuttingEdgeAngle,
+                        itemCuttingEdgeHeight, itemChipLoad, itemFluteCount]
                 model.appendRow(row)
 
         return model
