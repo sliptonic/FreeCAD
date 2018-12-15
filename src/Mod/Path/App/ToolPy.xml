@@ -93,6 +93,19 @@ HighCarbonToolSteel CastAlloy, Ceramics, Diamond, Sialon or Undefined</UserDocu>
             </Documentation>
             <Parameter Name="FluteCount" Type="Int"/>
         </Attribute>
+
+        <Attribute Name="ToolNumber" ReadOnly="false">
+            <Documentation>
+                <UserDocu>Tool ID number for tool change ID</UserDocu>
+            </Documentation>
+            <Parameter Name="ToolNumber" Type="Int"/>
+        </Attribute>
+        <Attribute Name="PocketNumber" ReadOnly="false">
+            <Documentation>
+                <UserDocu>ID of tool storage location</UserDocu>
+            </Documentation>
+            <Parameter Name="PocketNumber" Type="Int"/>
+        </Attribute>
         <Methode Name="copy">
             <Documentation>
                 <UserDocu>returns a copy of this tool</UserDocu>

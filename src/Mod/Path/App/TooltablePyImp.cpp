@@ -69,9 +69,11 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
     PyObject *hei = 0;
     PyObject *flu = 0;
     PyObject *chi = 0;
+    PyObject *too = 0;
+    PyObject *poc = 0;
     int version = 1;
 
-    static char *kwlist[] = {"name", "tooltype", "material", "diameter", "lengthOffset", "flatRadius", "cornerRadius", "cuttingEdgeAngle", "cuttingEdgeHeight" , "fluteCount", "chipload", "version", NULL};
+    static char *kwlist[] = {"name", "tooltype", "material", "diameter", "lengthOffset", "flatRadius", "cornerRadius", "cuttingEdgeAngle", "cuttingEdgeHeight" , "fluteCount", "chipload", "toolnumber", "pocketnumber", "version", NULL};
 
     PyObject *dict = 0;
     if (!kwd && (PyObject_TypeCheck(args, &PyDict_Type) || PyArg_ParseTuple(args, "O!", &PyDict_Type, &dict))) {
@@ -110,6 +112,8 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
     getToolPtr()->CuttingEdgeHeight = hei ? PyFloat_AsDouble(hei) : 0.0;
     getToolPtr()->FluteCount        = flu ? PyInt_AsLong(flu) : 2;
     getToolPtr()->ChipLoad          = chi ? PyFloat_AsDouble(chi) : 0.0;
+    getToolPtr()->ToolNumber        = too ? PyInt_AsLong(too) : 0;
+    getToolPtr()->PocketNumber      = poc ? PyInt_AsLong(poc) : 0;
 
     return 0;
 }
@@ -210,6 +214,10 @@ void  ToolPy::setCuttingEdgeHeight(Py::Float arg)
     getToolPtr()->CuttingEdgeHeight = arg.operator double();
 }
 
+
+
+
+
 Py::Int ToolPy::getFluteCount(void) const
 {
     return Py::Int(getToolPtr()->FluteCount);
@@ -220,15 +228,47 @@ void  ToolPy::setFluteCount(Py::Int arg)
     getToolPtr()->FluteCount = static_cast<int>(arg);
 }
 
-void  ToolPy::setChipLoad(Py::Float arg)
-{
-    getToolPtr()->ChipLoad = arg.operator double();
-}
+
+
 
 Py::Float ToolPy::getChipLoad(void) const
 {
     return Py::Float(getToolPtr()->ChipLoad);
 }
+
+void  ToolPy::setChipLoad(Py::Float arg)
+{
+    getToolPtr()->ChipLoad = arg.operator double();
+}
+
+
+
+
+Py::Int ToolPy::getToolNumber(void) const
+{
+    return Py::Int(getToolPtr()->ToolNumber);
+}
+
+void  ToolPy::setToolNumber(Py::Int arg)
+{
+    getToolPtr()->ToolNumber = static_cast<int>(arg);
+}
+
+
+
+
+Py::Int ToolPy::getPocketNumber(void) const
+{
+    return Py::Int(getToolPtr()->PocketNumber);
+}
+
+void  ToolPy::setPocketNumber(Py::Int arg)
+{
+    getToolPtr()->PocketNumber = static_cast<int>(arg);
+}
+
+
+
 
 
 // custom attributes get/set
@@ -301,6 +341,8 @@ PyObject* ToolPy::templateAttrs(PyObject * args)
         PyDict_SetItemString(dict, "cuttingEdgeHeight", PyFloat_FromDouble(getToolPtr()->CuttingEdgeHeight));
         PyDict_SetItemString(dict, "fluteCount", PyInt_FromLong(getToolPtr()->FluteCount));
         PyDict_SetItemString(dict, "chipLoad", PyFloat_FromDouble(getToolPtr()->ChipLoad));
+        PyDict_SetItemString(dict, "toolnumber", PyInt_FromLong(getToolPtr()->ToolNumber));
+        PyDict_SetItemString(dict, "pocketnumber", PyInt_FromLong(getToolPtr()->PocketNumber));
         return dict;
     }
     throw Py::TypeError("This method accepts no argument");

@@ -51,7 +51,7 @@ class ToolEditorDefault:
         self.form.toolCornerRadius.setText(FreeCAD.Units.Quantity(self.editor.tool.CornerRadius, FreeCAD.Units.Length).UserString)
         self.form.toolCuttingEdgeHeight.setText(FreeCAD.Units.Quantity(self.editor.tool.CuttingEdgeHeight, FreeCAD.Units.Length).UserString)
         self.form.toolCuttingEdgeAngle.setText(FreeCAD.Units.Quantity(self.editor.tool.CuttingEdgeAngle, FreeCAD.Units.Angle).UserString)
-        self.form.toolFluteCount.setText(self.editor.tool.toolFluteCount)
+        #self.form.toolFluteCount.setText(self.editor.tool.FluteCount)
         self.form.toolFPT.setText(FreeCAD.Units.Quantity(self.editor.tool.toolFPT, FreeCAD.Units.Length).UserString)
 
     def updateTool(self):
@@ -60,7 +60,7 @@ class ToolEditorDefault:
         self.editor.tool.CornerRadius = FreeCAD.Units.parseQuantity(self.form.toolCornerRadius.text())
         self.editor.tool.CuttingEdgeAngle = FreeCAD.Units.Quantity(self.form.toolCuttingEdgeAngle.text())
         self.editor.tool.CuttingEdgeHeight = FreeCAD.Units.parseQuantity(self.form.toolCuttingEdgeHeight.text())
-        self.editor.tool.FluteCount = self.form.toolFluteCount.text()
+        #self.editor.tool.FluteCount = self.form.toolFluteCount.text()
         self.editor.tool.FeedPerTooth = FreeCAD.Units.parseQuantity(self.form.toolFPT.text())
 
 class ToolEditorImage(object):
@@ -153,15 +153,15 @@ class ToolEditorImage(object):
             return FreeCAD.Units.Quantity(self.editor.tool.CuttingEdgeHeight, FreeCAD.Units.Length)
         return FreeCAD.Units.parseQuantity(self.form.value_H.text())
 
-    def quantityChipLoad(self, propertyToDisplay):
-        if propertyToDisplay:
-            return FreeCAD.Units.Quantity(self.editor.tool.ChipLoad, FreeCAD.Units.Length)
-        return FreeCAD.Units.parseQuantity(self.form.value_H.text())
+    # def quantityChipLoad(self, propertyToDisplay):
+    #     if propertyToDisplay:
+    #         return FreeCAD.Units.Quantity(self.editor.tool.ChipLoad, FreeCAD.Units.Length)
+    #     return FreeCAD.Units.parseQuantity(self.form.value_H.text())
 
-    def quantityFluteCount(self, propertyToDisplay):
-        if propertyToDisplay:
-            return FreeCAD.Units.Quantity(self.editor.tool.Flutecount, FreeCAD.Units.Length)
-        return FreeCAD.Units.parseQuantity(self.form.value_H.text())
+    # def quantityFluteCount(self, propertyToDisplay):
+    #     if propertyToDisplay:
+    #         return FreeCAD.Units.Quantity(self.editor.tool.Flutecount, FreeCAD.Units.Length)
+    #     return FreeCAD.Units.parseQuantity(self.form.value_H.text())
 
 
 class ToolEditorEndmill(ToolEditorImage):

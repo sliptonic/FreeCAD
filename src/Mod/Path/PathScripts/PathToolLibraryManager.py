@@ -49,6 +49,7 @@ class FreeCADTooltableHandler(xml.sax.ContentHandler):
     # http://www.tutorialspoint.com/python/python_xml_processing.htm
 
     def __init__(self):
+        PathLog.track()
         self.tooltable = None
         self.tool = None
         self.number = None
@@ -154,6 +155,7 @@ class ToolLibraryManager():
     PreferenceMainLibraryJSON = "ToolLibrary-Main"
 
     def __init__(self):
+        PathLog.track()
         self.prefs = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Path")
         return
 
@@ -164,6 +166,7 @@ class ToolLibraryManager():
         return attrs
 
     def tooltableFromAttrs(self, stringattrs):
+        PathLog.track()
         if stringattrs.get('Version') and 1 == int(stringattrs['Version']):
             attrs = {}
             for key, val in PathUtil.keyValueIter(stringattrs['Tools']):
@@ -176,12 +179,14 @@ class ToolLibraryManager():
 
     def saveMainLibrary(self, tooltable):
         '''Persists the permanent library to FreeCAD user preferences'''
+        PathLog.track()
         tmpstring = json.dumps(self.templateAttrs(tooltable))
         self.prefs.SetString(self.PreferenceMainLibraryJSON, tmpstring)
         return True
 
     def getLists(self):
         '''Builds the list of all Tool Table lists'''
+        PathLog.track()
         tablelist = []
         toollist = "<Main>"
         tablelist.append(toollist)
@@ -194,6 +199,7 @@ class ToolLibraryManager():
         return tablelist
 
     def _findList(self, listname):
+        PathLog.track()
         tt = None
         if listname == "<Main>":
             tmpstring = self.prefs.GetString(self.PreferenceMainLibraryJSON, "")
@@ -218,11 +224,13 @@ class ToolLibraryManager():
         return tt
 
     def getTool(self, listname, toolnum):
+        PathLog.track()
         tt = self._findList(listname)
         return tt.getTool(toolnum)
 
     def getTools(self, tablename):
         '''returns the tool data for a given table'''
+        PathLog.track()
         tooldata = []
         tt = self._findList(tablename)
         headers = ["","Tool Num.","Name","Tool Type","Material","Diameter","Length Offset","Flat Radius","Corner Radius","Cutting Edge Angle","Cutting Edge Height"]
@@ -331,6 +339,7 @@ class ToolLibraryManager():
 
     def addnew(self, listname, tool, position = None):
         "adds a new tool at the end of the table"
+        PathLog.track()
         print(listname, tool, position)
         tt = self._findList(listname)
         if not tt:
@@ -348,6 +357,7 @@ class ToolLibraryManager():
 
     def updateTool(self, listname, toolnum, tool):
         '''updates tool data'''
+        PathLog.track()
         tt = self._findList(listname)
         tt.deleteTool(toolnum)
         tt.setTool(toolnum, tool)
@@ -357,6 +367,7 @@ class ToolLibraryManager():
 
     def moveup(self, number, listname):
         "moves a tool to a lower number, if possible"
+        PathLog.track()
         if number < 2:
             return False
         target = number - 1
@@ -375,6 +386,7 @@ class ToolLibraryManager():
 
     def movedown(self, number, listname):
         "moves a tool to a higher number, if possible"
+        PathLog.track()
         tt = self._findList(listname)
         target = number + 1
         t1 = tt.getTool(number).copy()
@@ -390,6 +402,7 @@ class ToolLibraryManager():
 
     def delete(self, number, listname):
         '''deletes a tool from the current list'''
+        PathLog.track()
         tt = self._findList(listname)
         tt.deleteTool(number)
         if listname == "<Main>":
@@ -400,6 +413,7 @@ class ToolLibraryManager():
 class EditorPanel():
 
     def __init__(self, job, cb):
+        PathLog.track()
         self.form = FreeCADGui.PySideUic.loadUi(":/panels/ToolLibraryEditor.ui")
         self.TLM = ToolLibraryManager()
 
@@ -447,6 +461,7 @@ class EditorPanel():
             return matslist[material]
 
     def addTool(self):
+        PathLog.track()
         tool = Path.Tool()
         editor = self.toolEditor(tool)
 
@@ -464,6 +479,7 @@ class EditorPanel():
         pass
 
     def loadTable(self):
+        PathLog.track()
         #tooldata = self.TLM.getTools(curr.data())
         tooldata = self.TLM.getTools("<Main>")
         self.form.ToolsList.setModel(tooldata)

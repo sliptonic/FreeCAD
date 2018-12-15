@@ -76,7 +76,9 @@ namespace Path
              double cuttingedgeangle=0,
              double cuttingedgeheight=0,
              int flutecount=2,
-             double chipload=0);
+             double chipload=0,
+             int toolnumber=0,
+             int pocketnumber=0);
         ~Tool();
 
         // from base class
@@ -96,6 +98,8 @@ namespace Path
         double CuttingEdgeHeight;
         int FluteCount;
         double ChipLoad;
+        int ToolNumber;
+        int PocketNumber;
 
         static const std::vector<std::string> ToolTypes(void);
         static const std::vector<std::string> ToolMaterials(void);
