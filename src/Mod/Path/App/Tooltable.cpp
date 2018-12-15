@@ -57,7 +57,8 @@ Tool::Tool(const char* name,
            int pocketnumber)
 :Name(name),Type(type),Material(MATUNDEFINED),Diameter(diameter),LengthOffset(lengthoffset),
 FlatRadius(flatradius),CornerRadius(cornerradius),CuttingEdgeAngle(cuttingedgeangle),
-CuttingEdgeHeight(cuttingedgeheight),FluteCount(flutecount),ChipLoad(chipload),ToolNumber(toolnumber),PocketNumber(pocketnumber)
+CuttingEdgeHeight(cuttingedgeheight),FluteCount(flutecount),ChipLoad(chipload),
+ToolNumber(toolnumber),PocketNumber(pocketnumber)
 {
 }
 

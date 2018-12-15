@@ -23,7 +23,11 @@ optional attributes:
   flatRadius
   cornerRadius
   cuttingEdgeAngle
-  cuttingEdgeHeight</UserDocu>
+  cuttingEdgeHeight
+  fluteCount
+  chipLoad
+  toolNumber
+  pocketNumber</UserDocu>
         </Documentation>
         <Attribute Name="Name" ReadOnly="false">
             <Documentation>
@@ -93,7 +97,6 @@ HighCarbonToolSteel CastAlloy, Ceramics, Diamond, Sialon or Undefined</UserDocu>
             </Documentation>
             <Parameter Name="FluteCount" Type="Int"/>
         </Attribute>
-
         <Attribute Name="ToolNumber" ReadOnly="false">
             <Documentation>
                 <UserDocu>Tool ID number for tool change ID</UserDocu>

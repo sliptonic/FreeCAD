@@ -32,9 +32,11 @@ import PathScripts.PathLog as PathLog
 import PathScripts.PathToolEdit as PathToolEdit
 import PathScripts.PathUtil as PathUtil
 import PathScripts.PathUtils as PathUtils
+import PathScripts.PathPreferences as PathPreferences
 import json
 import os
 import xml.sax
+import glob
 
 from PySide import QtCore, QtGui
 
@@ -141,18 +143,19 @@ class HeeksTooltableHandler(xml.sax.ContentHandler):
 
 class ToolLibraryManager():
     '''
-    The Tool Library is a list of individual tool tables.  Each
-    Tool Table can contain n tools.  The tool library will be persisted to user
-    preferences and all or part of the library can be exported to other formats
+    A Tool Library is a list of individual tools. The user can have any number of tool libraries.
+    The Tool Library Manager will allow creation of new tool libraries, as well as add/delete/modif of tools in
+    a library.
     '''
 
-    TooltableTypeJSON     = translate("TooltableEditor", "Tooltable JSON (*.json)")
-    TooltableTypeXML      = translate("TooltableEditor", "Tooltable XML (*.xml)")
-    TooltableTypeHeekscad = translate("TooltableEditor", "HeeksCAD tooltable (*.tooltable)")
-    TooltableTypeLinuxCNC = translate("TooltableEditor", "LinuxCNC tooltable (*.tbl)")
+    # TooltableTypeJSON     = translate("TooltableEditor", "Tooltable JSON (*.json)")
+    # TooltableTypeXML      = translate("TooltableEditor", "Tooltable XML (*.xml)")
+    # TooltableTypeHeekscad = translate("TooltableEditor", "HeeksCAD tooltable (*.tooltable)")
+    # TooltableTypeLinuxCNC = translate("TooltableEditor", "LinuxCNC tooltable (*.tbl)")
 
-    PreferenceMainLibraryXML = "ToolLibrary"
-    PreferenceMainLibraryJSON = "ToolLibrary-Main"
+    # PreferenceMainLibraryXML = "ToolLibrary"
+    # PreferenceMainLibraryJSON = "ToolLibrary-Main"
+
 
     def __init__(self):
         PathLog.track()
@@ -171,85 +174,99 @@ class ToolLibraryManager():
             attrs = {}
             for key, val in PathUtil.keyValueIter(stringattrs['Tools']):
                 attrs[int(key)] = val
-            print (attrs)
             return Path.Tooltable(attrs)
         else:
             PathLog.error(translate('PathToolLibraryManager', "Unsupported Path tooltable template version %s") % stringattrs.get('Version'))
         return None
 
-    def saveMainLibrary(self, tooltable):
-        '''Persists the permanent library to FreeCAD user preferences'''
-        PathLog.track()
-        tmpstring = json.dumps(self.templateAttrs(tooltable))
-        self.prefs.SetString(self.PreferenceMainLibraryJSON, tmpstring)
-        return True
+    # def saveMainLibrary(self, tooltable):
+    #     '''Persists the permanent library to FreeCAD user preferences'''
+    #     PathLog.track()
+    #     tmpstring = json.dumps(self.templateAttrs(tooltable))
+    #     self.prefs.SetString(self.PreferenceMainLibraryJSON, tmpstring)
+    #     return True
 
-    def getLists(self):
-        '''Builds the list of all Tool Table lists'''
-        PathLog.track()
-        tablelist = []
-        toollist = "<Main>"
-        tablelist.append(toollist)
+    # def getLists(self):
+    #     '''Builds the list of all Tool Table lists'''
+    #     PathLog.track()
+    #     tablelist = []
+    #     toollist = "<Main>"
+    #     tablelist.append(toollist)
 
-        # Get ToolTables from any open CNC jobs
-        for o in FreeCAD.ActiveDocument.Objects:
-            if hasattr(o, "Proxy"):
-                if isinstance(o.Proxy, PathScripts.PathJob.ObjectJob):
-                    tablelist.append(o.Label)
-        return tablelist
+    #     # Get ToolTables from any open CNC jobs
+    #     for o in FreeCAD.ActiveDocument.Objects:
+    #         if hasattr(o, "Proxy"):
+    #             if isinstance(o.Proxy, PathScripts.PathJob.ObjectJob):
+    #                 tablelist.append(o.Label)
+    #     return tablelist
 
-    def _findList(self, listname):
-        PathLog.track()
-        tt = None
-        if listname == "<Main>":
-            tmpstring = self.prefs.GetString(self.PreferenceMainLibraryJSON, "")
-            if not tmpstring:
-                tmpstring = self.prefs.GetString(self.PreferenceMainLibraryXML, "")
-            if tmpstring:
-                if tmpstring[0] == '{':
-                    tt = self.tooltableFromAttrs(json.loads(tmpstring))
-                elif tmpstring[0] == '<':
-                    # legacy XML table
-                    Handler = FreeCADTooltableHandler()
-                    xml.sax.parseString(tmpstring, Handler)
-                    tt = Handler.tooltable
-                    # store new format
-                    self.saveMainLibrary(tt)
-            else:
-                tt = Path.Tooltable()
-        else:
-            for o in FreeCAD.ActiveDocument.Objects:
-                if o.Label == listname:
-                    tt = o.Tooltable
-        return tt
+    # def _findList(self, listname):
+    #     PathLog.track()
+    #     tt = None
+    #     if listname == "<Main>":
+    #         tmpstring = self.prefs.GetString(self.PreferenceMainLibraryJSON, "")
+    #         if not tmpstring:
+    #             tmpstring = self.prefs.GetString(self.PreferenceMainLibraryXML, "")
+    #         if tmpstring:
+    #             if tmpstring[0] == '{':
+    #                 tt = self.tooltableFromAttrs(json.loads(tmpstring))
+    #             elif tmpstring[0] == '<':
+    #                 # legacy XML table
+    #                 Handler = FreeCADTooltableHandler()
+    #                 xml.sax.parseString(tmpstring, Handler)
+    #                 tt = Handler.tooltable
+    #                 # store new format
+    #                 self.saveMainLibrary(tt)
+    #         else:
+    #             tt = Path.Tooltable()
+    #     else:
+    #         for o in FreeCAD.ActiveDocument.Objects:
+    #             if o.Label == listname:
+    #                 tt = o.Tooltable
+    #     return tt
 
-    def getTool(self, listname, toolnum):
-        PathLog.track()
-        tt = self._findList(listname)
-        return tt.getTool(toolnum)
+    # def getTool(self, listname, toolnum):
+    #     PathLog.track()
+    #     tt = self._findList(listname)
+    #     return tt.getTool(toolnum)
 
-    def getTools(self, tablename):
-        '''returns the tool data for a given table'''
+    def getTool(self, toolattrs):
         PathLog.track()
-        tooldata = []
-        tt = self._findList(tablename)
-        headers = ["","Tool Num.","Name","Tool Type","Material","Diameter","Length Offset","Flat Radius","Corner Radius","Cutting Edge Angle","Cutting Edge Height"]
-        model = QtGui.QStandardItemModel()
-        model.setHorizontalHeaderLabels(headers)
+        #tt = self._findList(listname)
+        print (toolattrs)
+        return Path.Tool(json.dumps(toolattrs))
+
+    def getTools(self):
+        PathLog.track()
 
         def unitconv(ivalue):
             val = FreeCAD.Units.Quantity(ivalue, FreeCAD.Units.Length)
             displayed_val = val.UserString      #just the displayed value-not the internal one
             return displayed_val
 
-        if tt:
-            if len(tt.Tools) == 0:
-                tooldata.append([])
-            for number, t in PathUtil.keyValueIter(tt.Tools):
+        libraryFiles = []
+
+        for path in PathPreferences.searchPaths():
+            libraryFiles.extend(self.libraryFilesIn(path))
+
+        #tt = self._findList(tablename)
+
+        headers = ["Name","Tool Num.","Tool Type"]
+        model = QtGui.QStandardItemModel()
+        model.setHorizontalHeaderLabels(headers)
+        
+        for lib in libraryFiles:
+
+            with open(PathUtil.toUnicode(lib), "rb") as fp:
+                ht = self.tooltableFromAttrs(json.load(fp))
+
+            libitem = QtGui.QStandardItem(os.path.splitext(os.path.basename(lib))[0][6:])
+            #for t in ht.Tools:
+            for number, t in PathUtil.keyValueIter(ht.Tools):
 
                 itemcheck = QtGui.QStandardItem()
                 itemcheck.setCheckable(True)
-                itemNumber =  QtGui.QStandardItem(str(number))
+                #itemNumber =  QtGui.QStandardItem(str(number))
                 itemName =  QtGui.QStandardItem(t.Name)
                 itemToolType =  QtGui.QStandardItem(t.ToolType)
                 itemMaterial =  QtGui.QStandardItem(t.Material)
@@ -261,153 +278,214 @@ class ToolLibraryManager():
                 itemCuttingEdgeHeight =  QtGui.QStandardItem(unitconv(t.CuttingEdgeHeight))
                 itemChipLoad = QtGui.QStandardItem(unitconv(t.ChipLoad))
                 itemFluteCount = QtGui.QStandardItem(int(t.FluteCount))
+                itemToolNumber = QtGui.QStandardItem(int(t.ToolNumber))
+                itemPocketNumber = QtGui.QStandardItem(int(t.PocketNumber))
+                itemattrs = QtGui.QStandardItem(json.dumps(t.templateAttrs()))
 
-                row = [itemcheck, itemNumber, itemName, itemToolType,
+                toolrow = [itemcheck, itemName, itemToolType,
                         itemMaterial, itemDiameter, itemLengthOffset,
                         itemFlatRadius, itmCornerRadius, itemCuttingEdgeAngle,
-                        itemCuttingEdgeHeight, itemChipLoad, itemFluteCount]
-                model.appendRow(row)
+                        itemCuttingEdgeHeight, itemChipLoad, itemFluteCount, 
+                        itemToolNumber, itemPocketNumber, itemattrs]
+                libitem.appendRow(toolrow)
+
+            model.appendRow(libitem)
 
         return model
 
-    # methods for importing and exporting
-    def read(self, filename, listname):
-        "imports a tooltable from a file"
-
-        try:
-            fileExtension = os.path.splitext(filename[0])[1].lower()
-            xmlHandler = None
-            if fileExtension == '.tooltable':
-                xmlHandler = HeeksTooltableHandler()
-            if fileExtension == '.xml':
-                xmlHandler = FreeCADTooltableHandler()
-
-            if xmlHandler:
-                parser = xml.sax.make_parser()
-                parser.setFeature(xml.sax.handler.feature_namespaces, 0)
-                parser.setContentHandler(xmlHandler)
-                parser.parse(PathUtil.toUnicode(filename[0]))
-                if not xmlHandler.tooltable:
-                    return None
-
-                ht = xmlHandler.tooltable
-            else:
-                with open(PathUtil.toUnicode(filename[0]), "rb") as fp:
-                    ht = self.tooltableFromAttrs(json.load(fp))
-
-            tt = self._findList(listname)
-            for t in ht.Tools:
-                newt = ht.getTool(t).copy()
-                tt.addTools(newt)
-            if listname == "<Main>":
-                self.saveMainLibrary(tt)
-            return True
-        except Exception as e:
-            print("could not parse file", e)
 
 
-    def write(self, filename, listname):
-        "exports the tooltable to a file"
-        tt = self._findList(listname)
-        if tt:
-            try:
-                def openFileWithExtension(name, ext):
-                    fext = os.path.splitext(name)[1].lower()
-                    if fext != ext:
-                        name = "{}{}".format(name, ext)
-                    return (open(PathUtil.toUnicode(name), 'wb'), name)
 
-                if filename[1] == self.TooltableTypeXML:
-                    fp,fname = openFileWithExtension(filename[0], '.xml')
-                    fp.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-                    fp.write(tt.Content)
-                elif filename[1] == self.TooltableTypeLinuxCNC:
-                    fp,fname = openFileWithExtension(filename[0], '.tbl')
-                    for key in tt.Tools:
-                        t = tt.Tools[key]
-                        fp.write("T{} P{} Y{} Z{} A{} B{} C{} U{} V{} W{} D{} I{} J{} Q{} ;{}\n".format(
-                            key,key,0,t.LengthOffset,0,0,0,0,0,0,t.Diameter,0,0,0,t.Name))
-                else:
-                    fp,fname = openFileWithExtension(filename[0], '.json')
-                    json.dump(self.templateAttrs(tt), fp, sort_keys=True, indent=2)
 
-                fp.close()
-                print("Written ", PathUtil.toUnicode(fname))
+    # def getTools(self, tablename):
+    #     '''returns the tool data for a given table'''
+    #     PathLog.track()
+    #     tooldata = []
+    #     tt = self._findList(tablename)
+    #     headers = ["Name","Tool Num.","Tool Type"]
+    #     model = QtGui.QStandardItemModel()
+    #     model.setHorizontalHeaderLabels(headers)
 
-            except Exception as e:
-                print("Could not write file:", e)
+    #     def unitconv(ivalue):
+    #         val = FreeCAD.Units.Quantity(ivalue, FreeCAD.Units.Length)
+    #         displayed_val = val.UserString      #just the displayed value-not the internal one
+    #         return displayed_val
 
-    def addnew(self, listname, tool, position = None):
-        "adds a new tool at the end of the table"
-        PathLog.track()
-        print(listname, tool, position)
-        tt = self._findList(listname)
-        if not tt:
-            tt = Path.Tooltable()
-        if position is None:
-            tt.addTools(tool)
-            newID = tt.Tools.keys()[-1]
-        else:
-            tt.setTool(position, tool)
-            newID = position
+    #     if tt:
+    #         if len(tt.Tools) == 0:
+    #             tooldata.append([])
+    #         for number, t in PathUtil.keyValueIter(tt.Tools):
 
-        if listname == "<Main>":
-            return self.saveMainLibrary(tt)
-        return newID
+    #             itemcheck = QtGui.QStandardItem()
+    #             itemcheck.setCheckable(True)
+    #             itemNumber =  QtGui.QStandardItem(str(number))
+    #             itemName =  QtGui.QStandardItem(t.Name)
+    #             itemToolType =  QtGui.QStandardItem(t.ToolType)
+    #             itemMaterial =  QtGui.QStandardItem(t.Material)
+    #             itemDiameter =  QtGui.QStandardItem(unitconv(t.Diameter))
+    #             itemLengthOffset =  QtGui.QStandardItem(unitconv(t.LengthOffset))
+    #             itemFlatRadius =  QtGui.QStandardItem(unitconv(t.FlatRadius))
+    #             itmCornerRadius =  QtGui.QStandardItem(unitconv(t.CornerRadius))
+    #             itemCuttingEdgeAngle =  QtGui.QStandardItem(str(t.CuttingEdgeAngle))
+    #             itemCuttingEdgeHeight =  QtGui.QStandardItem(unitconv(t.CuttingEdgeHeight))
+    #             itemChipLoad = QtGui.QStandardItem(unitconv(t.ChipLoad))
+    #             itemFluteCount = QtGui.QStandardItem(int(t.FluteCount))
 
-    def updateTool(self, listname, toolnum, tool):
-        '''updates tool data'''
-        PathLog.track()
-        tt = self._findList(listname)
-        tt.deleteTool(toolnum)
-        tt.setTool(toolnum, tool)
-        if listname == "<Main>":
-            return self.saveMainLibrary(tt)
-        return True
+    #             row = [itemcheck, itemNumber, itemName, itemToolType,
+    #                     itemMaterial, itemDiameter, itemLengthOffset,
+    #                     itemFlatRadius, itmCornerRadius, itemCuttingEdgeAngle,
+    #                     itemCuttingEdgeHeight, itemChipLoad, itemFluteCount]
+    #             model.appendRow(row)
 
-    def moveup(self, number, listname):
-        "moves a tool to a lower number, if possible"
-        PathLog.track()
-        if number < 2:
-            return False
-        target = number - 1
-        tt = self._findList(listname)
+    #     return model
 
-        t1 = tt.getTool(number).copy()
-        tt.deleteTool(number)
-        if target in tt.Tools.keys():
-            t2 = tt.getTool(target).copy()
-            tt.deleteTool(target)
-            tt.setTool(number, t2)
-        tt.setTool(target, t1)
-        if listname == "<Main>":
-            self.saveMainLibrary(tt)
-        return True
+    # # methods for importing and exporting
+    # def read(self, filename, listname):
+    #     "imports a tooltable from a file"
 
-    def movedown(self, number, listname):
-        "moves a tool to a higher number, if possible"
-        PathLog.track()
-        tt = self._findList(listname)
-        target = number + 1
-        t1 = tt.getTool(number).copy()
-        tt.deleteTool(number)
-        if target in tt.Tools.keys():
-            t2 = tt.getTool(target).copy()
-            tt.deleteTool(target)
-            tt.setTool(number, t2)
-        tt.setTool(target, t1)
-        if listname == "<Main>":
-            self.saveMainLibrary(tt)
-        return True
+    #     try:
+    #         fileExtension = os.path.splitext(filename[0])[1].lower()
+    #         xmlHandler = None
+    #         if fileExtension == '.tooltable':
+    #             xmlHandler = HeeksTooltableHandler()
+    #         if fileExtension == '.xml':
+    #             xmlHandler = FreeCADTooltableHandler()
 
-    def delete(self, number, listname):
-        '''deletes a tool from the current list'''
-        PathLog.track()
-        tt = self._findList(listname)
-        tt.deleteTool(number)
-        if listname == "<Main>":
-            self.saveMainLibrary(tt)
-        return True
+    #         if xmlHandler:
+    #             parser = xml.sax.make_parser()
+    #             parser.setFeature(xml.sax.handler.feature_namespaces, 0)
+    #             parser.setContentHandler(xmlHandler)
+    #             parser.parse(PathUtil.toUnicode(filename[0]))
+    #             if not xmlHandler.tooltable:
+    #                 return None
+
+    #             ht = xmlHandler.tooltable
+    #         else:
+    #             with open(PathUtil.toUnicode(filename[0]), "rb") as fp:
+    #                 ht = self.tooltableFromAttrs(json.load(fp))
+
+    #         tt = self._findList(listname)
+    #         for t in ht.Tools:
+    #             newt = ht.getTool(t).copy()
+    #             tt.addTools(newt)
+    #         if listname == "<Main>":
+    #             self.saveMainLibrary(tt)
+    #         return True
+    #     except Exception as e:
+    #         print("could not parse file", e)
+
+
+    # def write(self, filename, listname):
+    #     "exports the tooltable to a file"
+    #     tt = self._findList(listname)
+    #     if tt:
+    #         try:
+    #             def openFileWithExtension(name, ext):
+    #                 fext = os.path.splitext(name)[1].lower()
+    #                 if fext != ext:
+    #                     name = "{}{}".format(name, ext)
+    #                 return (open(PathUtil.toUnicode(name), 'wb'), name)
+
+    #             if filename[1] == self.TooltableTypeXML:
+    #                 fp,fname = openFileWithExtension(filename[0], '.xml')
+    #                 fp.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+    #                 fp.write(tt.Content)
+    #             elif filename[1] == self.TooltableTypeLinuxCNC:
+    #                 fp,fname = openFileWithExtension(filename[0], '.tbl')
+    #                 for key in tt.Tools:
+    #                     t = tt.Tools[key]
+    #                     fp.write("T{} P{} Y{} Z{} A{} B{} C{} U{} V{} W{} D{} I{} J{} Q{} ;{}\n".format(
+    #                         key,key,0,t.LengthOffset,0,0,0,0,0,0,t.Diameter,0,0,0,t.Name))
+    #             else:
+    #                 fp,fname = openFileWithExtension(filename[0], '.json')
+    #                 json.dump(self.templateAttrs(tt), fp, sort_keys=True, indent=2)
+
+    #             fp.close()
+    #             print("Written ", PathUtil.toUnicode(fname))
+
+    #         except Exception as e:
+    #             print("Could not write file:", e)
+
+    # def addnew(self, listname, tool, position = None):
+    #     "adds a new tool at the end of the table"
+    #     PathLog.track()
+    #     print(listname, tool, position)
+    #     tt = self._findList(listname)
+    #     if not tt:
+    #         tt = Path.Tooltable()
+    #     if position is None:
+    #         tt.addTools(tool)
+    #         newID = tt.Tools.keys()[-1]
+    #     else:
+    #         tt.setTool(position, tool)
+    #         newID = position
+
+    #     if listname == "<Main>":
+    #         return self.saveMainLibrary(tt)
+    #     return newID
+
+    # def updateTool(self, listname, toolnum, tool):
+    #     '''updates tool data'''
+    #     PathLog.track()
+    #     tt = self._findList(listname)
+    #     tt.deleteTool(toolnum)
+    #     tt.setTool(toolnum, tool)
+    #     if listname == "<Main>":
+    #         return self.saveMainLibrary(tt)
+    #     return True
+
+    # def moveup(self, number, listname):
+    #     "moves a tool to a lower number, if possible"
+    #     PathLog.track()
+    #     if number < 2:
+    #         return False
+    #     target = number - 1
+    #     tt = self._findList(listname)
+
+    #     t1 = tt.getTool(number).copy()
+    #     tt.deleteTool(number)
+    #     if target in tt.Tools.keys():
+    #         t2 = tt.getTool(target).copy()
+    #         tt.deleteTool(target)
+    #         tt.setTool(number, t2)
+    #     tt.setTool(target, t1)
+    #     if listname == "<Main>":
+    #         self.saveMainLibrary(tt)
+    #     return True
+
+    # def movedown(self, number, listname):
+    #     "moves a tool to a higher number, if possible"
+    #     PathLog.track()
+    #     tt = self._findList(listname)
+    #     target = number + 1
+    #     t1 = tt.getTool(number).copy()
+    #     tt.deleteTool(number)
+    #     if target in tt.Tools.keys():
+    #         t2 = tt.getTool(target).copy()
+    #         tt.deleteTool(target)
+    #         tt.setTool(number, t2)
+    #     tt.setTool(target, t1)
+    #     if listname == "<Main>":
+    #         self.saveMainLibrary(tt)
+    #     return True
+
+    # def delete(self, number, listname):
+    #     '''deletes a tool from the current list'''
+    #     PathLog.track()
+    #     tt = self._findList(listname)
+    #     tt.deleteTool(number)
+    #     if listname == "<Main>":
+    #         self.saveMainLibrary(tt)
+    #     return True
+
+
+
+
+    def libraryFilesIn(self, path):
+        '''libraryFilesIn(path) ... answer all file in the given directory which fit the tool library naming convention.
+        Tool libarary files are name tools_*.json'''
+        PathLog.track(path)
+        return glob.glob(path + '/tools_*.json')
 
 
 class EditorPanel():
@@ -418,7 +496,7 @@ class EditorPanel():
         self.TLM = ToolLibraryManager()
 
         self.loadTable()
-        self.form.ToolsList.resizeColumnsToContents()
+        #self.form.ToolsList.resizeColumnsToContents()
         self.job = job
         self.cb = cb
 
@@ -481,7 +559,7 @@ class EditorPanel():
     def loadTable(self):
         PathLog.track()
         #tooldata = self.TLM.getTools(curr.data())
-        tooldata = self.TLM.getTools("<Main>")
+        tooldata = self.TLM.getTools()
         self.form.ToolsList.setModel(tooldata)
 
     def moveUp(self):
@@ -519,11 +597,13 @@ class EditorPanel():
     def editTool(self, currItem):
 
         row = currItem.row()
-        value = currItem.sibling(row, 1).data()
+        value = currItem.sibling(row, 14).data()
+        #print(value)
         #listname = self.form.listView.selectedIndexes()[0].data()
-        listname = "<Main>"
-        toolnum = int(value)
-        tool = self.TLM.getTool(listname, toolnum)
+        #listname = "<Main>"
+        #toolnum = int(value)
+        #tool = self.TLM.getTool(listname, toolnum)
+        tool = self.TLM.getTool(value)
         editor = self.toolEditor(tool)
 
         r = editor.Parent.exec_()
@@ -618,8 +698,8 @@ class EditorPanel():
         self.form.ButtonNewTool.clicked.connect(self.addTool)
         self.form.ButtonImport.clicked.connect(self.importFile)
         self.form.ButtonExport.clicked.connect(self.exportFile)
-        self.form.ButtonDown.clicked.connect(self.moveDown)
-        self.form.ButtonUp.clicked.connect(self.moveUp)
+        # self.form.ButtonDown.clicked.connect(self.moveDown)
+        # self.form.ButtonUp.clicked.connect(self.moveUp)
         self.form.ButtonDelete.clicked.connect(self.delete)
         self.form.ToolsList.doubleClicked.connect(self.editTool)
         self.form.ToolsList.clicked.connect(self.checkCopy)
