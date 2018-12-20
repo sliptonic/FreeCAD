@@ -66,10 +66,10 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
     PyObject *cor = 0;
     PyObject *ang = 0;
     PyObject *hei = 0;
-    PyObject *flu = 0;
+    int flu = 2;
     PyObject *chi = 0;
-    PyObject *too = 0;
-    PyObject *poc = 0;
+    int too = 0;
+    int poc = 0;
     int version = 1;
 
     static char *kwlist[] = {"name", "tooltype", "material", "diameter", "lengthOffset", "flatRadius", "cornerRadius", "cuttingEdgeAngle", "cuttingEdgeHeight" , "fluteCount", "chipLoad", "toolNumber", "pocketNumber", "version", NULL};
@@ -112,10 +112,10 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
     getToolPtr()->CornerRadius      = cor ? PyFloat_AsDouble(cor) : 0.0;
     getToolPtr()->CuttingEdgeAngle  = ang ? PyFloat_AsDouble(ang) : 180.0;
     getToolPtr()->CuttingEdgeHeight = hei ? PyFloat_AsDouble(hei) : 0.0;
-    getToolPtr()->FluteCount        = flu ? PyInt_AsLong(flu) : 2;
+    getToolPtr()->FluteCount        = flu;
     getToolPtr()->ChipLoad          = chi ? PyFloat_AsDouble(chi) : 0.0;
-    getToolPtr()->ToolNumber        = too ? PyInt_AsLong(too) : 0;
-    getToolPtr()->PocketNumber      = poc ? PyInt_AsLong(poc) : 0;
+    getToolPtr()->ToolNumber        = too;
+    getToolPtr()->PocketNumber      = poc;
 
     return 0;
 }
