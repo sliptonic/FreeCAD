@@ -261,9 +261,24 @@ class CommandPathPost:
 
         PathLog.debug("about to postprocess job: {}".format(job.Name))
 
-        wcslist = job.Fixtures
-        orderby = job.OrderOutputBy
-        split = job.SplitOutput
+        # Build up an ordered list of operations and tool changes.
+        # Then post-the ordered list
+        if hasattr(job, "Fixtures"):
+            wcslist = job.Fixtures
+        else:
+            wcslist = ['G54']
+        if 'Disable' in wcslist: # If none is selected, ignore everything else
+            wcslist = [None]
+
+        if hasattr(job, "OrderOutputBy"):
+            orderby = job.OrderOutputBy
+        else:
+            orderby = "Operation"
+
+        if hasattr(job, "SplitOutput"):
+            split = job.SplitOutput
+        else:
+            split = False
 
         postlist = []
 
@@ -273,21 +288,23 @@ class CommandPathPost:
             # fixture before moving to the next.
 
             currTool = None
-            for index, f in enumerate(wcslist):
+            sublist = []
+            
+            PathLog.debug(wcslist)
+            for f in wcslist:
                 # create an object to serve as the fixture path
-                fobj = _TempObject()
-                c1 = Path.Command(f)
-                fobj.Path = Path.Path([c1])
-                if index != 0:
+                if f is not None:
+                    fobj = _TempObject()
+                    c1 = Path.Command(f)
                     c2 = Path.Command("G0 Z" + str(job.Stock.Shape.BoundBox.ZMax + job.SetupSheet.ClearanceHeightOffset.Value))
-                    fobj.Path.addCommands(c2)
-                fobj.InList.append(job)
-                sublist = [fobj]
+                    fobj.Path = Path.Path([c1, c2])
+                    fobj.InList.append(job)
+                    sublist.append(fobj)
 
                 # Now generate the gcode
                 for obj in job.Operations.Group:
                     tc = PathUtil.toolControllerForOp(obj)
-                    if tc is not None and PathUtil.opProperty(obj, 'Active'):
+                    if tc is not None:
                         if tc.ToolNumber != currTool:
                             sublist.append(tc)
                             PathLog.debug("Appending TC: {}".format(tc.Name))
@@ -305,12 +322,13 @@ class CommandPathPost:
             fixturelist = []
             for f in wcslist:
                 # create an object to serve as the fixture path
-                fobj = _TempObject()
-                c1 = Path.Command(f)
-                c2 = Path.Command("G0 Z" + str(job.Stock.Shape.BoundBox.ZMax + job.SetupSheet.ClearanceHeightOffset.Value))
-                fobj.Path = Path.Path([c1, c2])
-                fobj.InList.append(job)
-                fixturelist.append(fobj)
+                if f is not  None:
+                    fobj = _TempObject()
+                    c1 = Path.Command(f)
+                    c2 = Path.Command("G0 Z" + str(job.Stock.Shape.BoundBox.ZMax + job.SetupSheet.ClearanceHeightOffset.Value))
+                    fobj.Path = Path.Path([c1, c2])
+                    fobj.InList.append(job)
+                    fixturelist.append(fobj)
 
             # Now generate the gcode
             curlist = []  # list of ops for tool, will repeat for each fixture
