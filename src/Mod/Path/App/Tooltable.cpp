@@ -50,10 +50,15 @@ Tool::Tool(const char* name,
            double flatradius,
            double cornerradius,
            double cuttingedgeangle,
-           double cuttingedgeheight)
+           double cuttingedgeheight,
+           int flutecount,
+           double chipload,
+           int toolnumber,
+           int pocketnumber)
 :Name(name),Type(type),Material(MATUNDEFINED),Diameter(diameter),LengthOffset(lengthoffset),
 FlatRadius(flatradius),CornerRadius(cornerradius),CuttingEdgeAngle(cuttingedgeangle),
-CuttingEdgeHeight(cuttingedgeheight)
+CuttingEdgeHeight(cuttingedgeheight),FluteCount(flutecount),ChipLoad(chipload),
+ToolNumber(toolnumber),PocketNumber(pocketnumber)
 {
 }
 
@@ -67,6 +72,10 @@ Tool::Tool()
     CornerRadius = 0;
     CuttingEdgeAngle = 180;
     CuttingEdgeHeight = 0;
+    FluteCount = 2;
+    ChipLoad = 0;
+    ToolNumber = 0;
+    PocketNumber = 0;
 }
 
 Tool::~Tool()
@@ -92,6 +101,10 @@ void Tool::Save (Writer &writer) const
                     << "height=\"" << CuttingEdgeHeight << "\" "
                     << "type=\"" << TypeName(Type) << "\" "
                     << "mat=\"" << MaterialName(Material) << "\" "
+                    << "flutecount=\"" << FluteCount << "\" "
+                    << "chipload=\"" << ChipLoad << "\" "
+                    << "toolnumber=\"" << ToolNumber << "\" "
+                    << "pocketnumber=\"" << PocketNumber << "\" "
                     << "/>" << std::endl;
 }
 
@@ -105,6 +118,10 @@ void Tool::Restore(XMLReader &reader)
     CornerRadius      = reader.hasAttribute("corner")   ? (double) reader.getAttributeAsFloat("corner")   : 0.0;
     CuttingEdgeAngle  = reader.hasAttribute("angle")    ? (double) reader.getAttributeAsFloat("angle")    : 180.0;
     CuttingEdgeHeight = reader.hasAttribute("height")   ? (double) reader.getAttributeAsFloat("height")   : 0.0;
+    FluteCount        = reader.hasAttribute("flutecount") ? (int) reader.getAttributeAsInteger("flutecount")   : 0;
+    ChipLoad          = reader.hasAttribute("chipload")   ? (double) reader.getAttributeAsFloat("chipload")   : 0.0;
+    ToolNumber        = reader.hasAttribute("toolnumber") ? (int) reader.getAttributeAsInteger("toolnumber")   : 0;
+    PocketNumber      = reader.hasAttribute("pocketnumber") ? (int) reader.getAttributeAsInteger("pocketnumber")   : 0;
     std::string type  = reader.hasAttribute("type")     ? reader.getAttribute("type") : "";
     std::string mat   = reader.hasAttribute("mat")      ? reader.getAttribute("mat")  : "";
 

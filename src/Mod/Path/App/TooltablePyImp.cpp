@@ -38,7 +38,6 @@ using namespace Path;
 // ToolPy
 
 
-
 // returns a string which represents the object e.g. when printed in python
 std::string ToolPy::representation(void) const
 {
@@ -67,9 +66,14 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
     PyObject *cor = 0;
     PyObject *ang = 0;
     PyObject *hei = 0;
+    int flu = 2;
+    PyObject *chi = 0;
+    int too = 0;
+    int poc = 0;
     int version = 1;
 
-    static char *kwlist[] = {"name", "tooltype", "material", "diameter", "lengthOffset", "flatRadius", "cornerRadius", "cuttingEdgeAngle", "cuttingEdgeHeight" , "version", NULL};
+    static char *kwlist[] = {"name", "tooltype", "material", "diameter", "lengthOffset", "flatRadius", "cornerRadius", "cuttingEdgeAngle", "cuttingEdgeHeight" , "fluteCount", "chipLoad", "toolNumber", "pocketNumber", "version", NULL};
+
 
     PyObject *dict = 0;
     if (!kwd && (PyObject_TypeCheck(args, &PyDict_Type) || PyArg_ParseTuple(args, "O!", &PyDict_Type, &dict))) {
@@ -77,12 +81,14 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
         if (PyObject_TypeCheck(args, &PyDict_Type)) {
           dict = args;
         }
-        if (!PyArg_ParseTupleAndKeywords(arg, dict, "|sssOOOOOOi", kwlist, &name, &type, &mat, &dia, &len, &fla, &cor, &ang, &hei, &version)) {
+        if (!PyArg_ParseTupleAndKeywords(arg, dict, "|sssOOOOOOiOiii", kwlist, &name, &type, &mat, &dia, &len, &fla, &cor, &ang, &hei, &flu, &chi, &too, &poc, &version)) {
+
             return -1;
         }
     } else {
         PyErr_Clear();
-        if (!PyArg_ParseTupleAndKeywords(args, kwd, "|sssOOOOOO", kwlist, &name, &type, &mat, &dia, &len, &fla, &cor, &ang, &hei)) {
+        if (!PyArg_ParseTupleAndKeywords(args, kwd, "|sssOOOOOOiOii", kwlist, &name, &type, &mat, &dia, &len, &fla, &cor, &ang, &hei, &flu, &chi, &too, &poc)) {
+
             return -1;
         }
     }
@@ -106,6 +112,10 @@ int ToolPy::PyInit(PyObject* args, PyObject* kwd)
     getToolPtr()->CornerRadius      = cor ? PyFloat_AsDouble(cor) : 0.0;
     getToolPtr()->CuttingEdgeAngle  = ang ? PyFloat_AsDouble(ang) : 180.0;
     getToolPtr()->CuttingEdgeHeight = hei ? PyFloat_AsDouble(hei) : 0.0;
+    getToolPtr()->FluteCount        = flu;
+    getToolPtr()->ChipLoad          = chi ? PyFloat_AsDouble(chi) : 0.0;
+    getToolPtr()->ToolNumber        = too;
+    getToolPtr()->PocketNumber      = poc;
 
     return 0;
 }
@@ -206,6 +216,47 @@ void  ToolPy::setCuttingEdgeHeight(Py::Float arg)
     getToolPtr()->CuttingEdgeHeight = arg.operator double();
 }
 
+Py::Int ToolPy::getFluteCount(void) const
+{
+    return Py::Int(getToolPtr()->FluteCount);
+}
+
+void  ToolPy::setFluteCount(Py::Int arg)
+{
+    getToolPtr()->FluteCount = static_cast<int>(arg);
+}
+
+Py::Float ToolPy::getChipLoad(void) const
+{
+    return Py::Float(getToolPtr()->ChipLoad);
+}
+
+void  ToolPy::setChipLoad(Py::Float arg)
+{
+    getToolPtr()->ChipLoad = arg.operator double();
+}
+
+Py::Int ToolPy::getToolNumber(void) const
+{
+    return Py::Int(getToolPtr()->ToolNumber);
+}
+
+void  ToolPy::setToolNumber(Py::Int arg)
+{
+    getToolPtr()->ToolNumber = static_cast<int>(arg);
+}
+
+Py::Int ToolPy::getPocketNumber(void) const
+{
+    return Py::Int(getToolPtr()->PocketNumber);
+}
+
+void  ToolPy::setPocketNumber(Py::Int arg)
+{
+    getToolPtr()->PocketNumber = static_cast<int>(arg);
+}
+
+
 // custom attributes get/set
 
 PyObject *ToolPy::getCustomAttributes(const char* /*attr*/) const
@@ -274,6 +325,10 @@ PyObject* ToolPy::templateAttrs(PyObject * args)
         PyDict_SetItemString(dict, "cornerRadius", PyFloat_FromDouble(getToolPtr()->CornerRadius));
         PyDict_SetItemString(dict, "cuttingEdgeAngle", PyFloat_FromDouble(getToolPtr()->CuttingEdgeAngle));
         PyDict_SetItemString(dict, "cuttingEdgeHeight", PyFloat_FromDouble(getToolPtr()->CuttingEdgeHeight));
+        PyDict_SetItemString(dict, "fluteCount", PYINT_FROMLONG(getToolPtr()->FluteCount));
+        PyDict_SetItemString(dict, "chipLoad", PyFloat_FromDouble(getToolPtr()->ChipLoad));
+        PyDict_SetItemString(dict, "toolNumber", PYINT_FROMLONG(getToolPtr()->ToolNumber));
+        PyDict_SetItemString(dict, "pocketNumber", PYINT_FROMLONG(getToolPtr()->PocketNumber));
         return dict;
     }
     throw Py::TypeError("This method accepts no argument");
