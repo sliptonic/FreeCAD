@@ -28,8 +28,11 @@ import Part
 import PathScripts
 import PathScripts.PathGui as PathGui
 import PathScripts.PathLog as PathLog
+import PathScripts.PathToolController as PathToolController
 import PathScripts.PathToolEdit as PathToolEdit
 import PathScripts.PathUtil as PathUtil
+import math
+from FreeCAD import Units
 
 from PySide import QtCore, QtGui
 
@@ -133,7 +136,7 @@ class CommandPathToolController(object):
         if FreeCAD.ActiveDocument is not None:
             for o in FreeCAD.ActiveDocument.Objects:
                 if o.Name[:3] == "Job":
-                    return True
+                        return True
         return False
 
     def Activated(self):
@@ -195,6 +198,22 @@ class ToolControllerEditor(object):
         self.updateUi()
         self.form.blockSignals(False)
 
+    def feedspeed(self):
+        calculator = FeedSpeed(self.obj)
+        result = calculator.form.exec_()
+
+        if result:
+            # use the values from the form
+            self.obj.VertFeed = calculator.vertfeed
+            self.obj.HorizFeed = calculator.horizfeed
+            self.form.spindleSpeed.setValue(calculator.spindlespeed)
+            self.horizFeed.updateSpinBox()
+            self.vertFeed.updateSpinBox()
+            self.refresh()
+        else:
+            pass
+            # do nothing
+
     def setupUi(self):
         self.editor.setupUI()
 
@@ -203,6 +222,101 @@ class ToolControllerEditor(object):
         self.form.vertFeed.editingFinished.connect(self.refresh)
         self.form.horizRapid.editingFinished.connect(self.refresh)
         self.form.vertRapid.editingFinished.connect(self.refresh)
+        self.form.btnFeedSpeed.clicked.connect(self.feedspeed)
+
+
+class FeedSpeed:
+    flutecount = 0  # number of cutting edges
+    tooldiameter = 0  # tool diameter from active tool
+    srps = 0  # spindle rotation in RPS
+    chipload = 0  # chip load / feed per tooth
+    fpr = 0  # feed per rotation
+    ssm = 0  # surface speed
+    hfr = 0  # horizontal feed rate
+    vfr = 0  # vertical feed rate
+    rdoc = 0
+
+    def __init__(self, obj):
+        self.form = FreeCADGui.PySideUic.loadUi(":/panels/DlgFeedSpeed.ui")
+        self.flutecount = int(obj.Tool.FluteCount)
+        self.tooldiameter = obj.Tool.Diameter
+        self.srps = obj.SpindleSpeed / 60  # Unit calculations are always in seconds.
+        self.chipload = obj.Tool.ChipLoad
+        self.rdoc = self.tooldiameter / 2
+
+        self.setupUi()
+        self.calculate()
+
+    @property
+    def spindlespeed(self):
+        return self.srps * 60
+
+    @property
+    def vertfeed(self):
+        return self.vfr
+
+    @property
+    def horizfeed(self):
+        return self.hfr
+
+    def calculate(self):
+        self.fpr = self.flutecount * self.chipload
+        self.ssm = (self.tooldiameter * math.pi) * self.srps
+
+        self.form.RDOC.setEnabled(self.form.chkRCTEnable.isChecked())
+        if self.form.chkRCTEnable.isChecked():
+            usechipload = (self.chipload * self.tooldiameter) / (2 * (math.sqrt((self.tooldiameter * self.rdoc) - self.rdoc**2)))
+        else:
+            usechipload = self.chipload
+
+        # Tool engagement angle:  a = COS-1( 1 - WOC / Dia/2 )
+
+        self.hfr = self.srps * self.flutecount * usechipload
+        self.vfr = self.hfr / 2
+        self.updateUI()
+
+    def updateUI(self):
+        if self.form.radioMetric.isChecked():
+            Schema = 6
+        else:
+            Schema = 3
+
+        self.form.toolDiameter.setText(Units.schemaTranslate(Units.Quantity(self.tooldiameter, Units.Length), Schema)[0])
+        self.form.RDOC.setText(Units.schemaTranslate(Units.Quantity(self.rdoc, Units.Length), Schema)[0])
+        self.form.feedPerTooth.setText(Units.schemaTranslate(Units.Quantity(self.chipload, Units.Length), Schema)[0])
+        self.form.fluteCount.setText(str(self.flutecount))
+        self.form.spindleRPM.setText(str(self.srps * 60))
+        self.form.vertFeed.setText(Units.schemaTranslate(Units.Quantity(self.vfr, Units.Velocity), Schema)[0])
+        self.form.horizFeed.setText(Units.schemaTranslate(Units.Quantity(self.hfr, Units.Velocity), Schema)[0])
+
+        surfspeed = str(Units.Quantity(self.ssm, Units.Velocity).getValueAs('ft/min')) + 'ft/min'
+        self.form.surfaceSpeed.setText(surfspeed)
+        self.form.update()
+
+    def updateSpindleRPM(self):
+        self.srps = FreeCAD.Units.Quantity(self.form.spindleRPM.text()).Value / 60
+        self.calculate()
+
+    def updateRDOC(self):
+        self.rdoc = FreeCAD.Units.Quantity(self.form.RDOC.text()).Value
+        self.calculate()
+
+    def updateChipLoad(self):
+        self.chipload = FreeCAD.Units.Quantity(self.form.feedPerTooth.text()).Value
+        self.calculate()
+
+    def accept(self):
+        pass
+
+    def reject(self):
+        pass
+
+    def setupUi(self):
+        self.form.radioMetric.toggled.connect(self.calculate)
+        self.form.chkRCTEnable.toggled.connect(self.calculate)
+        self.form.spindleRPM.editingFinished.connect(self.updateSpindleRPM)
+        self.form.RDOC.editingFinished.connect(self.updateRDOC)
+        self.form.feedPerTooth.editingFinished.connect(self.updateChipLoad)
 
 
 class TaskPanel:
@@ -278,8 +392,11 @@ class DlgToolControllerEdit:
             rc = True
         return rc
 
+
 if FreeCAD.GuiUp:
     # register the FreeCAD command
     FreeCADGui.addCommand('Path_ToolController', CommandPathToolController())
+    # and set view provider for creation from template
+    PathToolController.ViewProviderClass = ViewProvider
 
 FreeCAD.Console.PrintLog("Loading PathToolControllerGui... done\n")

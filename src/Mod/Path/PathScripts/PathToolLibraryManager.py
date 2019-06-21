@@ -407,7 +407,7 @@ class EditorPanel():
         self.TLM = ToolLibraryManager()
 
         self.loadTable()
-        self.form.ToolsList.resizeColumnsToContents()
+        # self.form.ToolsList.resizeColumnsToContents()
         self.job = job
         self.cb = cb
 

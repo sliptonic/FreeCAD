@@ -256,8 +256,13 @@ class ToolEditor:
         self.form.toolType.setCurrentIndex(self.getType(self.tool.ToolType))
         self.form.toolMaterial.setCurrentIndex(self.getMaterial(self.tool.Material))
         self.form.toolLengthOffset.setText(FreeCAD.Units.Quantity(self.tool.LengthOffset, FreeCAD.Units.Length).UserString)
+        self.form.toolFluteCount.setValue(self.tool.FluteCount)
+        self.form.toolFPT.setText(FreeCAD.Units.Quantity(self.tool.ChipLoad, FreeCAD.Units.Length).UserString)
 
         self.editor.updateUI()
+
+    def updateToolName(self):
+        self.tool.Name = str(self.form.toolName.text())
 
     def updateToolType(self):
         PathLog.track()
@@ -283,6 +288,10 @@ class ToolEditor:
         self.tool.Name = str(self.form.toolName.text())
         self.tool.Material = self.getMaterial(self.form.toolMaterial.currentIndex())
         self.tool.LengthOffset = FreeCAD.Units.parseQuantity(self.form.toolLengthOffset.text())
+
+        self.tool.FluteCount = self.form.toolFluteCount.value()
+        self.tool.ChipLoad = FreeCAD.Units.parseQuantity(self.form.toolFPT.text())
+
         self.editor.updateTool()
 
     def refresh(self):
@@ -298,3 +307,7 @@ class ToolEditor:
 
         self.form.toolName.editingFinished.connect(self.refresh)
         self.form.toolType.currentIndexChanged.connect(self.updateToolType)
+
+        self.form.toolFluteCount.valueChanged.connect(self.refresh)
+        self.form.toolFPT.editingFinished.connect(self.refresh)
+
