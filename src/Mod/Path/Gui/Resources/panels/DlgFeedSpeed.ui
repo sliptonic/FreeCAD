@@ -141,7 +141,7 @@ p, li { white-space: pre-wrap; }
       <item row="2" column="1">
        <widget class="Gui::InputField" name="feedPerTooth">
         <property name="toolTip">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Chip Load or 'Feed Per Tooth' is an important number to calculate feed rate. This number is usually a range and depends on many factors including tool geometry and material to be cut. Chip Load data is usually available from the tool manufacturer.&lt;/p&gt;&lt;p&gt;The initial value comes from the configured tool but can be changed here. Changes will be used in the feed rate calculation but will not change the configured tool.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Chip Load or 'Feed Per Tooth' is an important number when calculating feed rate. This number depends on many factors including tool geometry and material to be cut. &lt;/p&gt;&lt;p&gt;Chip Load data is usually available from the tool manufacturer.&lt;/p&gt;&lt;p&gt;The initial value comes from the configured tool but can be changed here. Changes will be used in the feed rate calculation but will not change the configured tool.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
         <property name="text">
          <string>0 mm</string>
@@ -330,6 +330,9 @@ p, li { white-space: pre-wrap; }
       </item>
       <item row="0" column="0">
        <widget class="QCheckBox" name="chkRCTEnable">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enable the Radial Chip Thinning (RCT) adjustment to the chipload.&lt;/p&gt;&lt;p&gt;When the Width of Cut (WOC or 'stepover') is less than 50% of the tool radius, the actual chip size is diminished.  For very shallow step step-over values, this effect becomes significant and can cause additional heat, rubbing, reduced tool life, and inefficient cutting.&lt;/p&gt;&lt;p&gt;By enabling Radial Chip Thinning (RCT), the chipload value will be adjusted based on the radial depth of cut and a feed rates will be recalculated.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
         <property name="text">
          <string>Enable</string>
         </property>
@@ -338,7 +341,7 @@ p, li { white-space: pre-wrap; }
       <item row="1" column="1">
        <widget class="Gui::InputField" name="RDOC">
         <property name="toolTip">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Radial depth of cut or 'step over'&lt;/p&gt;&lt;p&gt;Shallow step-over values will result in a less than optimal chip per tooth. This results in additional heat, rubbing, reduced tool life, and inefficient cutting.&lt;/p&gt;&lt;p&gt;By enabling Radial Chip Thinning (RCT), the chipload value will be adjusted and a feed rates will be recalculated.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Radial depth of cut or 'step over'&lt;/p&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
         <property name="text">
          <string>0 mm</string>
@@ -363,6 +366,9 @@ p, li { white-space: pre-wrap; }
       </item>
       <item row="0" column="1">
        <widget class="Gui::InputField" name="horizFeed">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Horizontal Feed Rate is the actual rate at which the cutting tool will travel relative to the work piece radially.  &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
         <property name="text">
          <string>0 mm/min</string>
         </property>
@@ -376,6 +382,9 @@ p, li { white-space: pre-wrap; }
       </item>
       <item row="1" column="1">
        <widget class="Gui::InputField" name="vertFeed">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Vertical Feed Rate is the actual rate at which the cutting tool will travel relative to the work piece axially.  &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
         <property name="text">
          <string>0 mm/min</string>
         </property>

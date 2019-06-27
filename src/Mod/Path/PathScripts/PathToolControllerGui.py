@@ -28,7 +28,6 @@ import Part
 import PathScripts
 import PathScripts.PathGui as PathGui
 import PathScripts.PathLog as PathLog
-import PathScripts.PathToolController as PathToolController
 import PathScripts.PathToolEdit as PathToolEdit
 import PathScripts.PathUtil as PathUtil
 import math
@@ -396,7 +395,5 @@ class DlgToolControllerEdit:
 if FreeCAD.GuiUp:
     # register the FreeCAD command
     FreeCADGui.addCommand('Path_ToolController', CommandPathToolController())
-    # and set view provider for creation from template
-    PathToolController.ViewProviderClass = ViewProvider
 
 FreeCAD.Console.PrintLog("Loading PathToolControllerGui... done\n")
