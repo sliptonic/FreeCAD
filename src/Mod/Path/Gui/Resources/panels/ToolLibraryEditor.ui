@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Tool Library</string>
+   <string>Tool Manager</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>

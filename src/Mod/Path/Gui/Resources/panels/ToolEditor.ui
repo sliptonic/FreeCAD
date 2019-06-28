@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>408</width>
-    <height>792</height>
+    <width>401</width>
+    <height>736</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -96,7 +96,7 @@
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
         </property>
-        <property name="minimum" stdset="0">
+        <property name="minimum">
          <double>0.000000000000000</double>
         </property>
         <property name="unit" stdset="0">
@@ -372,21 +372,21 @@
       <item>
        <widget class="QLabel" name="image">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+         <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
         </property>
         <property name="minimumSize">
          <size>
-          <width>105</width>
-          <height>148</height>
+          <width>50</width>
+          <height>175</height>
          </size>
         </property>
         <property name="maximumSize">
          <size>
-          <width>210</width>
-          <height>297</height>
+          <width>200</width>
+          <height>300</height>
          </size>
         </property>
         <property name="text">
