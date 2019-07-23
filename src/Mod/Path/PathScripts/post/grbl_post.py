@@ -342,7 +342,7 @@ def parse(pathobj):
       # store the latest command
       lastcommand = command
 
-      # Memorise la position courante pour calcul des mouvements relatis et du plan de retrait
+      # Memorize the current position for calculation of relative movements and withdrawal plan
       if command in MOTION_COMMANDS:
         if 'X' in c.Parameters:
           CURRENT_X = Units.Quantity(c.Parameters['X'], FreeCAD.Units.Length)
@@ -360,7 +360,7 @@ def parse(pathobj):
       if TRANSLATE_DRILL_CYCLES:
         if command in ('G81', 'G82', 'G83'):
           out += drill_translate(outstring, command, c.Parameters)
-          # Efface la ligne que l'on vient de translater
+          # Erase the line that we just translated
           del(outstring[:])
           outstring = []
 
@@ -411,15 +411,15 @@ def drill_translate(outstring, cmd, params):
     outstring[-1] = outstring[-1] + ")"
     trBuff += linenumber() + format_outstring(outstring) + "\n"
 
-  # Conversion du cycle
-  # Pour l'instant, on gere uniquement les cycles dans le plan XY (G17)
-  # les autres plans ZX (G18) et YZ (G19) ne sont pas traites : Calculs sur Z uniquement.
-  if MOTION_MODE == 'G90':  # Deplacements en coordonnees absolues
+  # Cycle conversion
+  # For the moment, we only manage the cycles in the XY plane (G17)
+  # the other planes ZX (G18) and YZ (G19) are not processed: Calculations on Z only.
+  if MOTION_MODE == 'G90':  # Displacements in absolute coordinates
     drill_X = Units.Quantity(params['X'], FreeCAD.Units.Length)
     drill_Y = Units.Quantity(params['Y'], FreeCAD.Units.Length)
     drill_Z = Units.Quantity(params['Z'], FreeCAD.Units.Length)
     RETRACT_Z = Units.Quantity(params['R'], FreeCAD.Units.Length)
-  else:  # G91 Deplacements relatifs
+  else:  # G91 Relative Displacements
     drill_X = CURRENT_X + Units.Quantity(params['X'], FreeCAD.Units.Length)
     drill_Y = CURRENT_Y + Units.Quantity(params['Y'], FreeCAD.Units.Length)
     drill_Z = CURRENT_Z + Units.Quantity(params['Z'], FreeCAD.Units.Length)
@@ -428,7 +428,7 @@ def drill_translate(outstring, cmd, params):
   if DRILL_RETRACT_MODE == 'G98' and CURRENT_Z >= RETRACT_Z:
     RETRACT_Z = CURRENT_Z
 
-  # Recupere les valeurs des autres parametres
+  # Recover the values of other parameters
   drill_Speed = Units.Quantity(params['F'], FreeCAD.Units.Velocity)
   if cmd == 'G83':
     drill_Step = Units.Quantity(params['Q'], FreeCAD.Units.Length)
@@ -436,7 +436,7 @@ def drill_translate(outstring, cmd, params):
     drill_DwellTime = params['P']
 
   if MOTION_MODE == 'G91':
-    trBuff += linenumber() + "G90" + "\n"  # Force des deplacements en coordonnees absolues pendant les cycles
+    trBuff += linenumber() + "G90" + "\n"  # Force displacements in absolute coordinates during the cycles
 
   # Mouvement(s) preliminaire(s))
   if CURRENT_Z < RETRACT_Z:
@@ -445,7 +445,7 @@ def drill_translate(outstring, cmd, params):
   if CURRENT_Z > RETRACT_Z:
     trBuff += linenumber() + 'G0 Z' + format(float(CURRENT_Z.getValueAs(UNIT_FORMAT)), strFormat) + "\n"
 
-  # Mouvement de percage
+  # Drilling movement
   if cmd in ('G81', 'G82'):
     trBuff += linenumber() + 'G1 Z' + format(float(drill_Z.getValueAs(UNIT_FORMAT)), strFormat) + ' F' + format(float(drill_Speed.getValueAs(UNIT_SPEED_FORMAT)), '.2f') + "\n"
     # Temporisation eventuelle
@@ -466,7 +466,7 @@ def drill_translate(outstring, cmd, params):
         break
 
   if MOTION_MODE == 'G91':
-    trBuff += linenumber() + 'G91'  # Restore le mode de deplacement relatif
+    trBuff += linenumber() + 'G91'  # Restore the relative movement mode
 
   return trBuff
 
