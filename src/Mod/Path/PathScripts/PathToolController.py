@@ -52,6 +52,7 @@ class ToolControllerTemplate:
     SpindleDir   = 'dir'
     SpindleSpeed = 'speed'
     ToolNumber   = 'nr'
+    Pocket       = 'pocket'
     Tool         = 'tool'
     Version      = 'version'
     VertFeed     = 'vfeed'
@@ -65,6 +66,7 @@ class ToolController:
 
         obj.addProperty("App::PropertyIntegerConstraint", "ToolNumber", "Tool", QtCore.QT_TRANSLATE_NOOP("PathToolController", "The active tool"))
         obj.ToolNumber = (0, 0, 10000, 1)
+        obj.addProperty("App::PropertyString", "Pocket", "Tool", QtCore.QT_TRANSLATE_NOOP("PathToolController", "Optional Pocket Designation"))
         obj.addProperty("App::PropertyFloat", "SpindleSpeed", "Tool", QtCore.QT_TRANSLATE_NOOP("PathToolController", "The speed of the cutting spindle in RPM"))
         obj.addProperty("App::PropertyEnumeration", "SpindleDir", "Tool", QtCore.QT_TRANSLATE_NOOP("PathToolController", "Direction of spindle rotation"))
         obj.SpindleDir = ['Forward', 'Reverse']
@@ -113,6 +115,8 @@ class ToolController:
                     obj.SpindleDir = template.get(ToolControllerTemplate.SpindleDir)
                 if template.get(ToolControllerTemplate.ToolNumber):
                     obj.ToolNumber = int(template.get(ToolControllerTemplate.ToolNumber))
+                if template.get(ToolControllerTemplate.Pocket):
+                    obj.Pocket = template.get(ToolControllerTemplate.Pocket)
                 if template.get(ToolControllerTemplate.Tool):
                     toolVersion = template.get(ToolControllerTemplate.Tool).get(ToolControllerTemplate.Version)
                     if toolVersion == 1:
@@ -139,6 +143,7 @@ class ToolController:
         attrs[ToolControllerTemplate.Name]         = obj.Name
         attrs[ToolControllerTemplate.Label]        = obj.Label
         attrs[ToolControllerTemplate.ToolNumber]   = obj.ToolNumber
+        attrs[ToolControllerTemplate.Pocket]       = obj.Pocket
         attrs[ToolControllerTemplate.VertFeed]     = ("%s" % (obj.VertFeed))
         attrs[ToolControllerTemplate.HorizFeed]    = ("%s" % (obj.HorizFeed))
         attrs[ToolControllerTemplate.VertRapid]    = ("%s" % (obj.VertRapid))
@@ -162,7 +167,7 @@ class ToolController:
 
         commands = ""
         commands += "(" + obj.Label + ")"+'\n'
-        commands += 'M6 T'+str(obj.ToolNumber)+'\n'
+        commands += 'M6 T{} {}\n'.format(str(obj.ToolNumber), obj.Pocket)
 
         # If a toolbit is used, check to see if spindlepower is allowed.
         # This is to prevent accidentally spinning the spindle with an
