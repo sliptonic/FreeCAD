@@ -25,6 +25,11 @@ import FreeCADGui
 import PathGui as PGui # ensure Path/Gui/Resources are loaded
 import PathScripts.PathCustom as PathCustom
 import PathScripts.PathOpGui as PathOpGui
+import PathScripts.PathLog as PathLog
+
+import PathScripts.PathGetPoint as PathGetPoint
+#import pivy.coin as coin
+#import draftutils.gui_utils as gui_utils
 
 from PySide import QtCore
 
@@ -34,23 +39,28 @@ __url__ = "http://www.freecadweb.org"
 __doc__ = "Custom operation page controller and command implementation."
 
 
+if True:
+    PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+    PathLog.trackModule(PathLog.thisModule())
+else:
+    PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+
+
 # Qt translation handling
 def translate(context, text, disambig=None):
     return QtCore.QCoreApplication.translate(context, text, disambig)
 
 
-# class TaskPanelBaseGeometryPage(PathOpGui.TaskPanelBaseGeometryPage):
-#     '''Page controller for the base geometry.'''
-
-#     def getForm(self):
-#         return None
-
-
 class TaskPanelOpPage(PathOpGui.TaskPanelPage):
     '''Page controller class for the Custom operation.'''
 
+    def __del__(self):
+        PathLog.track()
+        self.view.removeEventCallback("SoMouseButtonEvent",self.findPoint)
+
     def getForm(self):
         '''getForm() ... returns UI'''
+        self.getPoint = PathGetPoint.TaskPanel(self)
         return FreeCADGui.PySideUic.loadUi(":/panels/PageOpCustomEdit.ui")
 
     def getFields(self, obj):
@@ -70,10 +80,27 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         signals.append(self.form.toolController.currentIndexChanged)
         signals.append(self.form.coolantController.currentIndexChanged)
         self.form.txtGCode.textChanged.connect(self.setGCode)
+        self.form.btnG0Add.clicked.connect(lambda: self.insertPoint('G0'))
+        self.form.btnG1Add.clicked.connect(lambda: self.insertPoint('G1'))
+        self.view = FreeCADGui.activeDocument().activeView()
+        self.view.addEventCallback("SoMouseButtonEvent",self.findPoint)
         return signals
 
     def setGCode(self):
+        PathLog.track()
         self.obj.Gcode = self.form.txtGCode.toPlainText().splitlines()
+
+    def insertPoint(self, command):
+        self.form.txtGCode.insertPlainText("{} X{:.3f} Y{:.3f} Z{:.3f}\n".format(command, self.pnt.x, self.pnt.y, self.pnt.z))
+
+    def findPoint(self, info):
+        down = (info["State"] == "DOWN")
+        pos = info["Position"]
+        if (down):
+            self.form.btnG0Add.setEnabled(True)
+            self.form.btnG1Add.setEnabled(True)
+            self.pnt = self.view.getPoint(pos)
+            self.form.txtPoint.setText('X:{:.3f} Y:{:.3f} Z:{:.3f}'.format(self.pnt.x, self.pnt.y, self.pnt.z))
 
 
 Command = PathOpGui.SetupOperation('Custom', PathCustom.Create, TaskPanelOpPage,
