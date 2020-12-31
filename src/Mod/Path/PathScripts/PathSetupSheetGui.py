@@ -104,10 +104,6 @@ class Delegate(QtGui.QStyledItemDelegate):
     PropertyRole = QtCore.Qt.UserRole + 1
     EditorRole   = QtCore.Qt.UserRole + 2
 
-
-    #def paint(self, painter, option, index):
-    #    #PathLog.track(index.column(), type(option))
-
     def createEditor(self, parent, option, index):
         # pylint: disable=unused-argument
         if index.data(self.EditorRole) is None:
