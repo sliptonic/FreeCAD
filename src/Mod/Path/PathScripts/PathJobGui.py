@@ -31,7 +31,7 @@ from PySide import QtCore, QtGui
 import FreeCAD
 import FreeCADGui
 
-import PathGui as PGui # ensure Path/Gui/Resources are loaded
+#import PathGui as PGui # ensure Path/Gui/Resources are loaded
 import PathScripts.PathJob as PathJob
 import PathScripts.PathJobCmd as PathJobCmd
 import PathScripts.PathJobDlg as PathJobDlg
@@ -648,6 +648,7 @@ class TaskPanel:
         FreeCAD.ActiveDocument.recompute()
 
     def updateTooltips(self):
+        PathLog.track()
         if hasattr(self.obj, "Proxy") and hasattr(self.obj.Proxy, "tooltip") and self.obj.Proxy.tooltip:
             self.form.postProcessor.setToolTip(self.obj.Proxy.tooltip)
             if hasattr(self.obj.Proxy, "tooltipArgs") and self.obj.Proxy.tooltipArgs:

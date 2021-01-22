@@ -24,7 +24,13 @@ import PathScripts.PathLog as PathLog
 import PathScripts.PathPreferences as PathPreferences
 import sys
 
-PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+LOGLEVEL = False
+
+if LOGLEVEL:
+    PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())  # lgtm [py/unreachable-statement]
+    PathLog.trackModule(PathLog.thisModule())                    # lgtm [py/unreachable-statement]
+else:
+    PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 
 class PostProcessor:
 
@@ -83,8 +89,11 @@ class PostProcessor:
 
         if hasattr(current_post, "TOOLTIP"):
             instance.tooltip = current_post.TOOLTIP
-            if hasattr(current_post, "TOOLTIP_ARGS"):
-                instance.tooltipArgs = current_post.TOOLTIP_ARGS
+
+
+        if hasattr(current_post, "TOOLTIP_ARGS"):
+            instance.tooltipArgs = current_post.TOOLTIP_ARGS
+
         return instance
 
     def __init__(self, script):
