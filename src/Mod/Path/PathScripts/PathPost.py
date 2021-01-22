@@ -40,7 +40,8 @@ from datetime import datetime
 
 LOG_MODULE = PathLog.thisModule()
 
-PathLog.setLevel(PathLog.Level.INFO, LOG_MODULE)
+PathLog.setLevel(PathLog.Level.DEBUG, LOG_MODULE)
+PathLog.trackModule(PathLog.thisModule())
 
 
 # Qt translation handling
@@ -194,17 +195,19 @@ class CommandPathPost:
         PathLog.track()
         # check if the user has a project and has set the default post and
         # output filename
-        postArgs = getattr(job, "PostProcessorArgs", PathPreferences.defaultPostProcessorArgs())
+        #postArgs = PathPreferences.defaultPostProcessorArgs()
 
-        # postArgs = PathPreferences.defaultPostProcessorArgs()
+        postArgs = getattr(job.PostProcessorArgs, PathPreferences.defaultPostProcessorArgs())
         # if hasattr(job, "PostProcessorArgs") and job.PostProcessorArgs:
         #     postArgs = job.PostProcessorArgs
         # elif hasattr(job, "PostProcessor") and job.PostProcessor:
         #     postArgs = ''
+        postname = job.PostProcessor
+        if postname == '':
+            postname = PathPreferences.defaultPostProcessor()
 
         # postname = self.resolvePostProcessor(job)
-        postname = job.PostProcessor
-        filename = '-'
+        # filename = '-'
         if postname and needFilename:
             filename = self.resolveFileName(job)
 

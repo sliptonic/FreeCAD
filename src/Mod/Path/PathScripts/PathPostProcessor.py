@@ -24,7 +24,14 @@ import PathScripts.PathLog as PathLog
 import PathScripts.PathPreferences as PathPreferences
 import sys
 
-PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+LOGLEVEL = False
+
+if LOGLEVEL:
+    PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())  # lgtm [py/unreachable-statement]
+    PathLog.trackModule(PathLog.thisModule())                    # lgtm [py/unreachable-statement]
+else:
+    PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+
 
 class PostProcessor:
 
@@ -43,8 +50,8 @@ class PostProcessor:
         postname = processor + "_post"
         namespace = {}
 
-        #can't modify function local scope with exec in python3
-        exec("import %s as current_post" % postname, namespace) # pylint: disable=exec-used
+        # can't modify function local scope with exec in python3
+        exec("import %s as current_post" % postname, namespace)  # pylint: disable=exec-used
         current_post = namespace['current_post']
 
         # make sure the script is reloaded if it was previously loaded
@@ -53,11 +60,11 @@ class PostProcessor:
         # resulting in 2 load messages if the script outputs one of those.
         try:
             # Python 2.7
-            exec("reload(%s)" % 'current_post') # pylint: disable=exec-used
+            exec("reload(%s)" % 'current_post')  # pylint: disable=exec-used
         except NameError:
             # Python 3.4+
-            from importlib import reload        # pylint: disable=redefined-builtin,unused-import
-            exec("reload(%s)" % 'current_post') # pylint: disable=exec-used
+            from importlib import reload         # pylint: disable=redefined-builtin,unused-import
+            exec("reload(%s)" % 'current_post')  # pylint: disable=exec-used
 
         sys.path = syspath
 
@@ -83,8 +90,10 @@ class PostProcessor:
 
         if hasattr(current_post, "TOOLTIP"):
             instance.tooltip = current_post.TOOLTIP
-            if hasattr(current_post, "TOOLTIP_ARGS"):
-                instance.tooltipArgs = current_post.TOOLTIP_ARGS
+
+        if hasattr(current_post, "TOOLTIP_ARGS"):
+            instance.tooltipArgs = current_post.TOOLTIP_ARGS
+
         return instance
 
     def __init__(self, script):
