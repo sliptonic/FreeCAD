@@ -22,17 +22,15 @@
 # ***************************************************************************
 
 from __future__ import print_function
-import FreeCAD
-from FreeCAD import Units
-import Path
 import argparse
 import datetime
+import FreeCAD
+from FreeCAD import Units
+import os
+import Path
+import PathLog
 from PathScripts import PostUtils
 import shlex
-import PathLog
-
-
-#parser = argparse.ArgumentParser(prog='linuxcnc', add_help=False)
 
 
 class ObjectPost(object):
@@ -96,7 +94,7 @@ M2'''
         parser.add_argument('--no-comments', action='store_true', help='suppress comment output')
         parser.add_argument('--line-numbers', action='store_true', help='prefix with line numbers')
         parser.add_argument('--no-show-editor', action='store_true', help='don\'t pop up editor before writing output')
-        parser.add_argument('--precision', default='3', help='number of digits of precision, default=3')
+        parser.add_argument('--precision', default=self._precision, help='number of digits of precision, default=3')
         parser.add_argument('--preamble', help='set commands to be issued before the first command, default="G17\nG90"')
         parser.add_argument('--postamble', help='set commands to be issued after the last command, default="M05\nG17 G90\nM2"')
         parser.add_argument('--inches', action='store_true', help='Convert output for US imperial mode (G20)')
@@ -419,25 +417,8 @@ M2'''
 
         gcode += self.buildPostamble()
 
-        # Give the user a chance to edit the result before writing to file
-        # requires to UI to be up and the show_editor flag set.
-        # If the output is too large, skip this step (> 10000 lines)
-
-        if FreeCAD.GuiUp and self._show_editor:
-            final = gcode
-            if len(gcode) > 100000:
-                print("Skipping editor since output is greater than 100kb")
-            else:
-                dia = PostUtils.GCodeEditorDialog()
-                dia.editor.setText(gcode)
-                result = dia.exec_()
-                if result:
-                    final = dia.editor.toPlainText()
-        else:
-            final = gcode
-
         print("Gcode Generated")
-        return final
+        return gcode
 
     def writeFile(self, finalgcode, filename):
         '''
@@ -445,10 +426,26 @@ M2'''
 
         Can be safely overriden
         '''
-        if not filename == '-':
+
+        # Give the user a chance to edit the result before writing to file
+        # requires to UI to be up and the show_editor flag set.
+        # If the output is too large, skip this step (> 10000 lines)
+
+        if FreeCAD.GuiUp and self._show_editor:
+            if len(finalgcode) > 100000:
+                print("Skipping editor since output is greater than 100kb")
+                result = True
+            else:
+                dia = PostUtils.GCodeEditorDialog()
+                dia.editor.setText(finalgcode)
+                result = dia.exec_()
+                if result:
+                    finalgcode = dia.editor.toPlainText()
+        else:
+            result = True
+
+        if result and os.access(os.path.dirname(filename), os.W_OK):
             with open(filename, 'w') as gfile:
                 gfile.write(finalgcode)
 
             print("File Written to {}".format(filename))
-            return True
-        return False
