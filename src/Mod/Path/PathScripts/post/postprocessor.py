@@ -57,7 +57,7 @@ class ObjectPost(object):
         self._output_doubles = True  # if false duplicate axis values are suppressed if the same as previous line.
 
         # Tool Change options
-        self._use_tlo = True # if true G43 will be output following tool changes
+        self._use_tlo = True  # if true G43 will be output following tool changes
         self._tool_change = ''''''
 
         # Units
@@ -73,7 +73,6 @@ class ObjectPost(object):
         self._post_operation = ''''''
 
         # Tool Change commands will be inserted before a tool change
-
 
         # Job Preamble text will appear at the beginning of the GCODE output file.
         self._preamble = '''G17 G54 G40 G49 G80 G90'''
@@ -137,12 +136,11 @@ M2'''
             if args.axis_modal:
                 self._output_doubles = False
 
-        except Exception as e: # pylint: disable=broad-except
+        except Exception as e:
             print(e)
             return False
 
         return True
-
 
     def linenumber(self):
         '''
@@ -155,7 +153,6 @@ M2'''
             return "N {} ".format(self._linenr)
         else:
             return ""
-
 
     def parse(self, pathobj):
         '''
@@ -198,7 +195,7 @@ M2'''
                     if command == lastcommand:
                         outstring.pop(0)
 
-                if c.Name[0] == '(' and not self._output_comments: # command is a comment
+                if c.Name[0] == '(' and not self._output_comments:  # command is a comment
                     continue
 
                 # Now add the remaining parameters in order
@@ -326,11 +323,11 @@ M2'''
             gcode += self.linenumber() + '(Coolant mode: {})\n'.format(coolantMode)
 
         if coolantMode == 'Flood':
-            gcode  += self.linenumber() + 'M8' + '\n'
+            gcode += self.linenumber() + 'M8' + '\n'
         elif coolantMode == 'Mist':
             gcode += self.linenumber() + 'M7' + '\n'
         elif coolantMode == 'Cancel':
-            gcode  += self.linenumber() +'M9' + '\n'
+            gcode += self.linenumber() + 'M9' + '\n'
 
         return gcode
 
@@ -361,7 +358,6 @@ M2'''
 
         return gcode
 
-
     def export(self, objectslist):
         '''
         Processes an entire job and generate gcode.
@@ -369,7 +365,7 @@ M2'''
         Can be safely overriden
         '''
 
-        #reset line number to 0
+        # reset line number to 0
         self._linenr = 0
 
         for obj in objectslist:
@@ -396,7 +392,7 @@ M2'''
             gcode += self.buildpreOperatonGcode(obj.Label)
 
             coolantMode = 'None'
-            if hasattr(obj, "CoolantMode") or hasattr(obj, 'Base') and  hasattr(obj.Base, "CoolantMode"):
+            if hasattr(obj, "CoolantMode") or hasattr(obj, 'Base') and hasattr(obj.Base, "CoolantMode"):
                 if hasattr(obj, "CoolantMode"):
                     coolantMode = obj.CoolantMode
                 else:
