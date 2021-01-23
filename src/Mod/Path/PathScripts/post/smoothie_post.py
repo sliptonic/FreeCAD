@@ -39,7 +39,7 @@ class SmoothiePost(postprocessor.ObjectPost):
 
     def __init__(self, name):
         super().__init__(name)
-        self._precision = 5
+        self._precision = 4
         self._IP_ADDR = None
 
     def getArgs(self):
@@ -71,13 +71,7 @@ class SmoothiePost(postprocessor.ObjectPost):
         if self._IP_ADDR is not None:
             self.sendToSmoothie(finalgcode, filename)
         else:
-            if not filename == '-':
-                with open(filename, 'w') as gfile:
-                    gfile.write(finalgcode)
-
-                print("File Written to {}".format(filename))
-                return True
-            return False
+            super().writeFile(finalgcode, filename)
 
     def sendToSmoothie(self, GCODE, fname):
         import sys
@@ -101,7 +95,7 @@ class SmoothiePost(postprocessor.ObjectPost):
             FreeCAD.Console.PrintMessage("Failed to connect with sftp: {}\n".format(ln))
             sys.exit()
 
-        if self._VERBOSE:
+        if self._verbose:
             print("RSP: " + ln.strip())
 
         # Issue initial store command
@@ -113,7 +107,7 @@ class SmoothiePost(postprocessor.ObjectPost):
             FreeCAD.Console.PrintError("Failed to create file: {}\n".format(ln))
             sys.exit()
 
-        if self._VERBOSE:
+        if self._verbose:
             print("RSP: " + ln.strip())
 
         # send size of file
@@ -125,7 +119,7 @@ class SmoothiePost(postprocessor.ObjectPost):
             FreeCAD.Console.PrintError("Failed: {}\n".format(ln))
             sys.exit()
 
-        if self._VERBOSE:
+        if self._verbose:
             print("RSP: " + ln.strip())
 
         cnt = 0
@@ -133,7 +127,7 @@ class SmoothiePost(postprocessor.ObjectPost):
         # now send file
         for line in f.splitlines(1):
             tn.write(line)
-            if self._VERBOSE:
+            if self._verbose:
                 cnt += len(line)
                 print("SND: " + line.strip())
                 print(str(cnt) + "/" + str(filesize) + "\r", end='')
@@ -145,7 +139,7 @@ class SmoothiePost(postprocessor.ObjectPost):
             FreeCAD.Console.PrintError("Failed to save file: {}\n".format(ln))
             sys.exit()
 
-        if self._VERBOSE:
+        if self._verbose:
             print("RSP: " + ln.strip())
 
 # exit
