@@ -29,9 +29,10 @@ import argparse
 import datetime
 from PathScripts import PostUtils
 import shlex
+import PathLog
 
 
-parser = argparse.ArgumentParser(prog='linuxcnc', add_help=False)
+#parser = argparse.ArgumentParser(prog='linuxcnc', add_help=False)
 
 
 class ObjectPost(object):
@@ -81,8 +82,8 @@ class ObjectPost(object):
 
         # Job Postamble text will appear following the last operation.
         self._postamble = '''M05
-G17 G54 G90 G80 G40\n
-M2\n'''
+G17 G54 G90 G80 G40
+M2'''
 
     def getArgs(self):
         '''
@@ -104,11 +105,14 @@ M2\n'''
         parser.add_argument('--no-tlo', action='store_true', help='suppress tool length offset (G43) following tool changes')
         self.TOOLTIP_ARGS = parser.format_help()
 
-        return parser
+        self._parser = parser
+
+        return self._parser
 
     def processArguments(self, argstring):
+        PathLog.debug(argstring)
         try:
-            args = parser.parse_args(shlex.split(argstring))
+            args = self._parser.parse_args(shlex.split(argstring))
             if args.no_header:
                 self._output_header = False
             if args.no_comments:
@@ -261,6 +265,104 @@ M2\n'''
 
             return out
 
+    def buildHeader(self):
+        '''
+        calculate header gcode
+        Can be safely overriden
+        '''
+        gcode = ""
+        if self._output_header:
+            now = datetime.datetime.now()
+            gcode += self.linenumber() + "(Exported by FreeCAD)\n"
+            gcode += self.linenumber() + "(Post Processor: {}\n".format(self._name)
+            gcode += self.linenumber() + "(Output Time: {})\n".format(now)
+
+        return gcode
+
+    def buildPreamble(self):
+        '''
+        Generate the preamble
+        Can be safely overriden
+        '''
+        gcode = ""
+
+        if self._output_comments:
+            gcode += self.linenumber() + "(begin preamble)\n"
+        for line in self._preamble.splitlines(False):
+            gcode += self.linenumber() + line + "\n"
+        gcode += self.linenumber() + self._units + "\n"
+        return gcode
+
+    def buildPostamble(self):
+        '''
+        Generate the post_amble
+        Can be safely overriden
+        '''
+        gcode = ""
+
+        if self._output_comments:
+            gcode += "(begin postamble)\n"
+        for line in self._postamble.splitlines(True):
+            gcode += self.linenumber() + line
+        return gcode
+
+    def buildToolChange(self):
+        '''
+        Can be safely overriden
+        '''
+        gcode = ""
+
+        return gcode
+
+    def buildCoolantGcode(self, coolantMode):
+        '''
+        Generate coolant code
+        Can be safely overriden
+        '''
+
+        gcode = ""
+        if coolantMode == 'None':
+            return gcode
+
+        if self._output_comments:
+            gcode += self.linenumber() + '(Coolant mode: {})\n'.format(coolantMode)
+
+        if coolantMode == 'Flood':
+            gcode  += self.linenumber() + 'M8' + '\n'
+        elif coolantMode == 'Mist':
+            gcode += self.linenumber() + 'M7' + '\n'
+        elif coolantMode == 'Cancel':
+            gcode  += self.linenumber() +'M9' + '\n'
+
+        return gcode
+
+    def buildpreOperatonGcode(self, opLabel):
+        '''
+        generate gcode to be inserted before each operation
+        Can be safely overriden
+        '''
+        gcode = ""
+
+        if self._output_comments:
+            gcode += self.linenumber() + "(begin operation: {})\n".format(opLabel)
+            gcode += self.linenumber() + "(speed format: {})\n".format(self._unit_speed_format)
+        for line in self._pre_operation.splitlines(True):
+            gcode += self.linenumber() + line
+        return gcode
+
+    def buildpostOperatonGcode(self, opLabel):
+        '''
+        generate gcode to be inserted after each operation
+        Can be safely overriden
+        '''
+        gcode = ""
+        if self._output_comments:
+            gcode += self.linenumber() + "(finish operation: {})\n".format(opLabel)
+        for line in self._post_operation.splitlines(True):
+            gcode += self.linenumber() + line
+
+        return gcode
+
 
     def export(self, objectslist):
         '''
@@ -280,19 +382,8 @@ M2\n'''
         print("postprocessing...")
         gcode = ""
 
-        # write header
-        if self._output_header:
-            now = datetime.datetime.now()
-            gcode += self.linenumber() + "(Exported by FreeCAD)\n"
-            gcode += self.linenumber() + "(Post Processor: {}\n".format(self._name)
-            gcode += self.linenumber() + "(Output Time: {})\n".format(now)
-
-        # Write the preamble
-        if self._output_comments:
-            gcode += self.linenumber() + "(begin preamble)\n"
-        for line in self._preamble.splitlines(False):
-            gcode += self.linenumber() + line + "\n"
-        gcode += self.linenumber() + self._units + "\n"
+        gcode += self.buildHeader()
+        gcode += self.buildPreamble()
 
         for obj in objectslist:
 
@@ -304,14 +395,8 @@ M2\n'''
                 if not obj.Base.Active:
                     continue
 
-            # do the pre_op
-            if self._output_comments:
-                gcode += self.linenumber() + "(begin operation: %s)\n" % obj.Label
-                gcode += self.linenumber() + "(speed format: {})\n".format(self._unit_speed_format)
-            for line in self._pre_operation.splitlines(True):
-                gcode += self.linenumber() + line
+            gcode += self.buildpreOperatonGcode(obj.Label)
 
-            # get coolant mode
             coolantMode = 'None'
             if hasattr(obj, "CoolantMode") or hasattr(obj, 'Base') and  hasattr(obj.Base, "CoolantMode"):
                 if hasattr(obj, "CoolantMode"):
@@ -319,35 +404,24 @@ M2\n'''
                 else:
                     coolantMode = obj.Base.CoolantMode
 
-            # turn coolant on if required
-            if self._output_comments:
-                if not coolantMode == 'None':
-                    gcode += self.linenumber() + '(Coolant On:' + coolantMode + ')\n'
-            if coolantMode == 'Flood':
-                gcode  += self.linenumber() + 'M8' + '\n'
-            if coolantMode == 'Mist':
-                gcode += self.linenumber() + 'M7' + '\n'
+            # Generate the pre-operation gcode
+            gcode += self.buildCoolantGcode(coolantMode)
 
-            # process the operation gcode
+            # Generate the operation gcode
             gcode += self.parse(obj)
 
-            # do the post_op
-            if self._output_comments:
-                gcode += self.linenumber() + "(finish operation: %s)\n" % obj.Label
-            for line in self._post_operation.splitlines(True):
-                gcode += self.linenumber() + line
+            # Generate the post-operation gcode
+            gcode += self.buildpostOperatonGcode(obj.Label)
 
             # turn coolant off if required
             if not coolantMode == 'None':
-                if self._output_comments:
-                    gcode += self.linenumber() + '(Coolant Off:' + coolantMode + ')\n'
-                gcode  += self.linenumber() +'M9' + '\n'
+                gcode += self.buildCoolantGcode('Cancel')
 
-        # do the post_amble
-        if self._output_comments:
-            gcode += "(begin postamble)\n"
-        for line in self._postamble.splitlines(True):
-            gcode += self.linenumber() + line
+        gcode += self.buildPostamble()
+
+        # Give the user a chance to edit the result before writing to file
+        # requires to UI to be up and the show_editor flag set.
+        # If the output is too large, skip this step (> 10000 lines)
 
         if FreeCAD.GuiUp and self._show_editor:
             final = gcode
@@ -378,5 +452,3 @@ M2\n'''
             print("File Written to {}".format(filename))
             return True
         return False
-
-
