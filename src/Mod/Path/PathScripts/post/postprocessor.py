@@ -33,6 +33,10 @@ from PathScripts import PostUtils
 import shlex
 
 
+PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
+
+
 class ObjectPost(object):
     '''
     Base class for postprocessor objects.

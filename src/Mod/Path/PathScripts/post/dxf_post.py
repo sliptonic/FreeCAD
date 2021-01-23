@@ -20,19 +20,24 @@
 # *   USA                                                                   *
 # *                                                                         *
 # ***************************************************************************/
+# Dxf post implementes the base post:
+# writes a dxf file rather than gcode
+# 2021/1/25 Porting to new post framework
+
 from __future__ import print_function
+import argparse
 import FreeCAD
-import datetime
-import PathScripts.PathGeom as PathGeom
-import Part
 import importDXF
+import Part
 import Path
+import PathScripts.PathGeom as PathGeom
 import PathScripts.PathLog as PathLog
+import postprocessor as postprocessor
+
 
 TOOLTIP = '''
-This is a postprocessor file for the Path workbench. It is used to
-take a pseudo-gcode fragment outputted by a Path object, and output
-a dxf file.
+DXF_post.py Used to take a pseudo-gcode fragment outputted by a Path object,
+and output a dxf file.
 Operations are output to layers.
 vertical moves are ignore
 All path moves are flattened to z=0
@@ -41,102 +46,104 @@ Does NOT remove redundant lines.  If you have multiple step-downs in your
 operation, you'll get multiple redundant lines in your dxf.
 
 import dxf_post
+dxf_post.export(object,"/path/to/file.dxf","")
 '''
-
-TOOLTIP_ARGS = '''
-Arguments for dxf:
-'''
-now = datetime.datetime.now()
-
-# # These globals set common customization preferences
-OUTPUT_HEADER = True
-
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 # PathLog.trackModule(PathLog.thisModule())
 
+class DefaultPost(postprocessor.ObjectPost):
 
-# to distinguish python built-in open function from the one declared below
-if open.__module__ in ['__builtin__', 'io']:
-    pythonopen = open
+    def getArgs(self):
+        parser = argparse.ArgumentParser(prog=self._name, add_help=False)
+        self.TOOLTIP_ARGS = parser.format_help()
+        self._parser = parser
+        return parser
 
+    def processArguments(self, argstring):
+        return True
 
-def processArguments(argstring):
-    pass
-    # global OUTPUT_HEADER
+    def export(self, objectslist, filename, argstring):
+        doc = FreeCAD.ActiveDocument
+        print("postprocessing...")
+        layers = []
+        self.processArguments(argstring)
+        for i in objectslist:
+            result = self.parse(i)
+            if len(result) > 0:
+                layername = i.Name
+                grp = doc.addObject("App::DocumentObjectGroup", layername)
+                for o in result:
+                    o.adjustRelativeLinks(grp)
+                    grp.addObject(o)
+                layers.append(grp)
 
-
-def export(objectslist, filename, argstring):
-    doc = FreeCAD.ActiveDocument
-    print("postprocessing...")
-    layers = []
-    processArguments(argstring)
-    for i in objectslist:
-        result = parse(i)
-        if len(result) > 0:
-            layername = i.Name
-            grp = doc.addObject("App::DocumentObjectGroup", layername)
-            for o in result:
-                o.adjustRelativeLinks(grp)
-                grp.addObject(o)
-            layers.append(grp)
-
-    dxfWrite(layers, filename)
-
-
-def dxfWrite(objlist, filename):
-    importDXF.export(objlist, filename)
+        self.dxfWrite(layers, filename)
 
 
-def parse(pathobj):
-    ''' accepts a Path object.  Returns a list of wires'''
+    def dxfWrite(self, objlist, filename):
+        importDXF.export(objlist, filename)
 
-    feedcommands = ['G01', 'G1', 'G2', 'G3', 'G02', 'G03']
-    rapidcommands = ['G0', 'G00']
 
-    edges = []
-    objlist = []
+    def parse(self, pathobj):
+        ''' accepts a Path object.  Returns a list of wires'''
 
-    # Gotta start somewhere.  Assume 0,0,0
-    curPoint = FreeCAD.Vector(0, 0, 0)
-    for c in pathobj.Path.Commands:
-        PathLog.debug('{} -> {}'.format(curPoint, c))
-        if 'Z' in c.Parameters:
-            newparams = c.Parameters
-            newparams.pop('Z', None)
-            flatcommand = Path.Command(c.Name, newparams)
-            c.Parameters = newparams
-        else:
-            flatcommand = c
+        feedcommands = ['G01', 'G1', 'G2', 'G3', 'G02', 'G03']
+        rapidcommands = ['G0', 'G00']
 
-        # ignore gcode that isn't moving
-        if flatcommand.Name not in feedcommands + rapidcommands:
-            PathLog.debug('non move')
-            continue
+        edges = []
+        objlist = []
 
-        # ignore pure vertical feed and rapid
-        if (flatcommand.Parameters.get('X', curPoint.x) == curPoint.x
-                and flatcommand.Parameters.get('Y', curPoint.y) == curPoint.y):
-            PathLog.debug('vertical')
-            continue
+        # Gotta start somewhere.  Assume 0,0,0
+        curPoint = FreeCAD.Vector(0, 0, 0)
+        for c in pathobj.Path.Commands:
+            PathLog.debug('{} -> {}'.format(curPoint, c))
+            if 'Z' in c.Parameters:
+                newparams = c.Parameters
+                newparams.pop('Z', None)
+                flatcommand = Path.Command(c.Name, newparams)
+                c.Parameters = newparams
+            else:
+                flatcommand = c
 
-        # feeding move.  Build an edge
-        if flatcommand.Name in feedcommands:
-            edges.append(PathGeom.edgeForCmd(flatcommand, curPoint))
-            PathLog.debug('feeding move')
+            # ignore gcode that isn't moving
+            if flatcommand.Name not in feedcommands + rapidcommands:
+                PathLog.debug('non move')
+                continue
 
-        # update the curpoint
-        curPoint.x = flatcommand.Parameters['X']
-        curPoint.y = flatcommand.Parameters['Y']
+            # ignore pure vertical feed and rapid
+            if (flatcommand.Parameters.get('X', curPoint.x) == curPoint.x
+                    and flatcommand.Parameters.get('Y', curPoint.y) == curPoint.y):
+                PathLog.debug('vertical')
+                continue
 
-    if len(edges) > 0:
-        candidates = Part.sortEdges(edges)
-        for c in candidates:
-            obj = FreeCAD.ActiveDocument.addObject("Part::Feature", "Wire")
-            obj.Shape = Part.Wire(c)
-            objlist.append(obj)
+            # feeding move.  Build an edge
+            if flatcommand.Name in feedcommands:
+                edges.append(PathGeom.edgeForCmd(flatcommand, curPoint))
+                PathLog.debug('feeding move')
 
-    return objlist
+            # update the curpoint
+            curPoint.x = flatcommand.Parameters['X']
+            curPoint.y = flatcommand.Parameters['Y']
 
+        if len(edges) > 0:
+            candidates = Part.sortEdges(edges)
+            for c in candidates:
+                obj = FreeCAD.ActiveDocument.addObject("Part::Feature", "Wire")
+                obj.Shape = Part.Wire(c)
+                objlist.append(obj)
+
+        return objlist
+
+def export(objectslist, filename, argstring=""):
+    # pylint: disable=global-statement
+    if not post.processArguments(argstring):
+        return None
+    post.export(objectslist, filename, argstring)
+
+
+post = DefaultPost('Default')
+parser = post.getArgs()
+TOOLTIP_ARGS = '''Arguments for dxf:'''
 
 print(__name__ + " gcode postprocessor loaded.")
