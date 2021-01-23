@@ -35,6 +35,7 @@ import linuxcnc_post
 linuxcnc_post.export(object,"/path/to/file.ncc","")
 '''
 
+
 class LinuxCNCPost(postprocessor.ObjectPost):
 
     def getArgs(self):
@@ -57,11 +58,12 @@ class LinuxCNCPost(postprocessor.ObjectPost):
 
             self._preamble += " G64 P{}".format(tolvalue)
 
-        except Exception as e: # pylint: disable=broad-except
+        except Exception as e:
             print(e)
             return False
 
         return True
+
 
 def export(objectslist, filename, argstring):
     # pylint: disable=global-statement

@@ -35,6 +35,7 @@ import smoothie_post
 smoothie_post.export(object,"/path/to/file.ncc","")
 '''
 
+
 class SmoothiePost(postprocessor.ObjectPost):
 
     def __init__(self, name):
@@ -61,7 +62,7 @@ class SmoothiePost(postprocessor.ObjectPost):
             else:
                 self._verbose = args.verbose
 
-        except Exception as e: # pylint: disable=broad-except
+        except Exception as e:  # pylint: disable=broad-except
             print(e)
             return False
 
@@ -142,12 +143,12 @@ class SmoothiePost(postprocessor.ObjectPost):
         if self._verbose:
             print("RSP: " + ln.strip())
 
-# exit
         tn.write("DONE\n")
         tn.flush()
         tn.close()
 
         FreeCAD.Console.PrintMessage("Upload complete\n")
+
 
 def export(objectslist, filename, argstring):
     # pylint: disable=global-statement
