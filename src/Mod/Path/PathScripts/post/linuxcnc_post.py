@@ -48,13 +48,13 @@ class LinuxCNCPost(postprocessor.ObjectPost):
 
         try:
             args = parser.parse_args(shlex.split(argstring))
-            if args.tolerance is not None:
-                tolvalue = args.tolerance
-            else:
+            if args.tolerance is None:
                 if args.inches:
                     tolvalue = 0.001
                 else:
                     tolvalue = 0.025
+            else:
+                tolvalue = args.tolerance
 
             self._preamble += " G64 P{}".format(tolvalue)
 

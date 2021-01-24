@@ -29,6 +29,7 @@ from FreeCAD import Units
 import os
 import Path
 import PathLog
+import PathScripts
 from PathScripts import PostUtils
 import shlex
 
@@ -47,27 +48,27 @@ class ObjectPost(object):
     def __init__(self, name):
         self._name = name
 
-        # Output options
-        self._output_comments = True
-        self._output_header = True
-        self._output_line_numbers = False
+        # # Output options
+        # self._output_comments = True
+        # self._output_header = True
+        # self._output_line_numbers = False
         self._linenr = 0  # line number starting value
-        self._show_editor = True
-        self._precision = 3
+        # self._show_editor = True
+        # self._precision = 3
         self._command_space = " "
 
         # Options to reduce gcode size
-        self._modal = False  # if true commands are suppressed if the same as previous line.
-        self._output_doubles = True  # if false duplicate axis values are suppressed if the same as previous line.
+        # self._modal = False  # if true commands are suppressed if the same as previous line.
+        # self._output_doubles = True  # if false duplicate axis values are suppressed if the same as previous line.
 
         # Tool Change options
-        self._use_tlo = True  # if true G43 will be output following tool changes
+        # self._use_tlo = True  # if true G43 will be output following tool changes
         self._tool_change = ''''''
 
         # Units
-        self._units = "G21"  # G21 for metric, G20 for us standard
-        self._unit_speed_format = 'mm/min'
-        self._unit_format = 'mm'
+        # self._units = "G21"  # G21 for metric, G20 for us standard
+        # self._unit_speed_format = 'mm/min'
+        # self._unit_format = 'mm'
 
         # These globals will be reflected in the Machine configuration of the project
         # Pre operation text will be inserted before every operation
@@ -97,7 +98,7 @@ M2'''
         parser.add_argument('--no-comments', action='store_true', help='suppress comment output')
         parser.add_argument('--line-numbers', action='store_true', help='prefix with line numbers')
         parser.add_argument('--no-show-editor', action='store_true', help='don\'t pop up editor before writing output')
-        parser.add_argument('--precision', default=self._precision, help='number of digits of precision, default=3')
+        parser.add_argument('--precision', default=3, help='number of digits of precision, default=3')
         parser.add_argument('--preamble', help='set commands to be issued before the first command, default="G17\nG90"')
         parser.add_argument('--postamble', help='set commands to be issued after the last command, default="M05\nG17 G90\nM2"')
         parser.add_argument('--inches', action='store_true', help='Convert output for US imperial mode (G20)')
@@ -114,32 +115,28 @@ M2'''
         PathLog.debug(argstring)
         try:
             args = self._parser.parse_args(shlex.split(argstring))
-            if args.no_header:
-                self._output_header = False
-            if args.no_comments:
-                self._output_comments = False
-            if args.line_numbers:
-                self._output_line_numbers = True
-            if args.no_show_editor:
-                self._show_editor = False
-            print("Show editor = %d" % self._show_editor)
+            print(args)
+            self._output_header = not(args.no_header)
+            self._output_comments = not(args.no_comments)
+            self._output_line_numbers = args.line_numbers
+            self._show_editor = not(args.no_show_editor)
             self._precision = args.precision
             if args.preamble is not None:
                 self._preamble = args.preamble
             if args.postamble is not None:
                 self._postamble = args.postamble
+            self._modal = args.modal
+            self._output_doubles = not(args.axis_modal)
+            self._use_tlo = not(args.no_tlo)
+            self._precision = args.precision
             if args.inches:
                 self._units = 'G20'
                 self._unit_speed_format = 'in/min'
                 self._unit_format = 'in'
-                self._precision = 4
-            if args.modal:
-                self._modal = True
-            if args.no_tlo:
-                self._use_tlo = False
-            if args.axis_modal:
-                self._output_doubles = False
-
+            else:
+                self._units = 'G21'
+                self._unit_speed_format = 'mm/min'
+                self._unit_format = 'mm'
         except Exception as e:
             print(e)
             return False
@@ -164,6 +161,10 @@ M2'''
 
         Can be safely overriden
         '''
+        PathLog.track(pathobj.Label)
+
+        if hasattr(pathobj, "ToolNumber"):
+            return self.buildToolChange(pathobj)
 
         out = ""
         lastcommand = None
@@ -232,18 +233,6 @@ M2'''
                 lastcommand = command
                 currLocation.update(c.Parameters)
 
-                # Check for Tool Change:
-                if command == 'M6':
-                    # stop the spindle
-                    out += self.linenumber() + "M5\n"
-                    for line in self._tool_change.splitlines(True):
-                        out += self.linenumber() + line
-
-                    # add height offset
-                    if self._use_tlo:
-                        tool_height = '\nG43 H' + str(int(c.Parameters['T']))
-                        outstring.append(tool_height)
-
                 if command == "message":
                     if self._output_comments is False:
                         out = []
@@ -305,11 +294,31 @@ M2'''
             gcode += self.linenumber() + line
         return gcode
 
-    def buildToolChange(self):
+    def buildToolChange(self, ToolController):
         '''
+        Generate the tool change gcode
         Can be safely overriden
         '''
         gcode = ""
+
+        # stop the spindle
+        gcode += self.linenumber() + "M5\n"
+
+        for line in self._tool_change.splitlines(True):
+            gcode += self.linenumber() + line
+
+        for c in ToolController.Path.Commands:
+            if c.Name == 'M6':
+                toolnumber = str(int(c.Parameters['T']))
+                gcode += "{} T{}\n".format(c.Name, toolnumber)
+
+                # add height offset
+                if self._use_tlo:
+                    gcode += self.linenumber() + 'G43 H{}\n'.format(toolnumber)
+
+            elif c.Name in ['M3', 'M4']:
+                spindlespeed = str(int(c.Parameters['S']))
+                gcode += "{} S{}\n".format(c.Name, spindlespeed)
 
         return gcode
 
