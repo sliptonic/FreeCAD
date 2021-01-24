@@ -31,7 +31,7 @@ from PySide import QtCore, QtGui
 import FreeCAD
 import FreeCADGui
 
-#import PathGui as PGui # ensure Path/Gui/Resources are loaded
+import PathGui as PGui # ensure Path/Gui/Resources are loaded
 import PathScripts.PathJob as PathJob
 import PathScripts.PathJobCmd as PathJobCmd
 import PathScripts.PathJobDlg as PathJobDlg
