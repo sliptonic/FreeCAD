@@ -262,7 +262,7 @@ M2'''
         if self._output_header:
             now = datetime.datetime.now()
             gcode += self.linenumber() + "(Exported by FreeCAD)\n"
-            gcode += self.linenumber() + "(Post Processor: {}\n".format(self._name)
+            gcode += self.linenumber() + "(Post Processor: {})\n".format(self._name)
             gcode += self.linenumber() + "(Output Time: {})\n".format(now)
 
         return gcode
