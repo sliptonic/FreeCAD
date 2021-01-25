@@ -23,7 +23,7 @@
 # ***************************************************************************
 
 from __future__ import print_function
-import argparse
+# import argparse
 import datetime
 import FreeCAD
 from FreeCAD import Units
@@ -33,7 +33,7 @@ import PathLog
 import PathScripts
 from PathScripts import PostUtils
 import shlex
-
+from post_args import PostArgs
 
 PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
 PathLog.trackModule(PathLog.thisModule())
@@ -52,39 +52,51 @@ class ObjectPost(object):
         self._LINENR = 100                      # line number starting value
         self._LINEINCR = 10                     # line number increment
         self._COMMAND_SPACE = " "
-        self._TOOL_CHANGE = ''''''
 
+        self._SPINDLE_WAIT = 0
+
+        self._TOOL_CHANGE = ''''''
         self._PRE_OPERATION = ''''''
         self._POST_OPERATION = ''''''
         self._PREAMBLE = '''G17 G54 G40 G49 G80 G90'''
-        self._SPINDLE_WAIT = 0
-
-        # Job Postamble text will appear following the last operation.
-        self._POSTAMBLE = '''M05
-G17 G54 G90 G80 G40
-M2'''
+        self._POSTAMBLE = '''M05\nG17 G54 G90 G80 G40\nM2'''
 
     def getArgs(self):
         '''
         creates an arparser and adds supported arguments.
         Can be extended
         '''
-        parser = argparse.ArgumentParser(prog=self._NAME, add_help=False)
 
-        parser.add_argument('--no-header', action='store_true', help='suppress header output')
-        parser.add_argument('--no-comments', action='store_true', help='suppress comment output')
-        parser.add_argument('--line-numbers', action='store_true', help='prefix with line numbers')
-        parser.add_argument('--no-show-editor', action='store_true', help='don\'t pop up editor before writing output')
-        parser.add_argument('--precision', default=3, help='number of digits of precision, default=3')
-        parser.add_argument('--preamble', help='set commands to be issued before the first command, default="G17\nG90"')
-        parser.add_argument('--postamble', help='set commands to be issued after the last command, default="M05\nG17 G90\nM2"')
-        parser.add_argument('--inches', action='store_true', help='Convert output for US imperial mode (G20)')
-        parser.add_argument('--modal', action='store_true', help='Output the Same G-command Name USE NonModal Mode')
-        parser.add_argument('--axis-modal', action='store_true', help='Output the Same Axis Value Mode')
-        parser.add_argument('--no-tlo', action='store_true', help='suppress tool length offset (G43) following tool changes')
-        parser.add_argument('--wait-for-spindle',   type=int, default=0, help='Wait for spindle to reach desired speed after M3 / M4, default=0')
+        parser = PostArgs(self._NAME)
+        parser.add_argument('no-header', True , help='suppress header output')
+        parser.add_argument('no-comments', True, help='suppress comment output')
+        parser.add_argument('line-numbers', True, help='prefix with line numbers')
+        parser.add_argument('no-show-editor', False, help='don\'t pop up editor before writing output')
+        parser.add_argument('precision', default=3, help='number of digits of precision, default=3')
+        parser.add_argument('preamble', default="", help='set commands to be issued before the first command, default="G17\nG90"')
+        parser.add_argument('postamble', default="", help='set commands to be issued after the last command, default="M05\nG17 G90\nM2"')
+        parser.add_argument('inches', True, help='Convert output for US imperial mode (G20)')
+        parser.add_argument('modal', True, help='Output the Same G-command Name USE NonModal Mode')
+        parser.add_argument('axis-modal', True, help='Output the Same Axis Value Mode')
+        parser.add_argument('no-tlo', True, help='suppress tool length offset (G43) following tool changes')
+        parser.add_argument('wait-for-spindle', default=0, help='Wait for spindle to reach desired speed after M3 / M4, default=0')
+
+        # parser = argparse.ArgumentParser(prog=self._NAME, add_help=False)
+
+        # parser.add_argument('--no-header', action='store_true', help='suppress header output')
+        # parser.add_argument('--no-comments', action='store_true', help='suppress comment output')
+        # parser.add_argument('--line-numbers', action='store_true', help='prefix with line numbers')
+        # parser.add_argument('--no-show-editor', action='store_true', help='don\'t pop up editor before writing output')
+        # parser.add_argument('--precision', default=3, help='number of digits of precision, default=3')
+        # parser.add_argument('--preamble', help='set commands to be issued before the first command, default="G17\nG90"')
+        # parser.add_argument('--postamble', help='set commands to be issued after the last command, default="M05\nG17 G90\nM2"')
+        # parser.add_argument('--inches', action='store_true', help='Convert output for US imperial mode (G20)')
+        # parser.add_argument('--modal', action='store_true', help='Output the Same G-command Name USE NonModal Mode')
+        # parser.add_argument('--axis-modal', action='store_true', help='Output the Same Axis Value Mode')
+        # parser.add_argument('--no-tlo', action='store_true', help='suppress tool length offset (G43) following tool changes')
+        # parser.add_argument('--wait-for-spindle',   type=int, default=0, help='Wait for spindle to reach desired speed after M3 / M4, default=0')
+
         self.TOOLTIP_ARGS = parser.format_help()
-
         self._parser = parser
 
         return self._parser
@@ -92,7 +104,8 @@ M2'''
     def processArguments(self, argstring):
         PathLog.debug(argstring)
         try:
-            args = self._parser.parse_args(shlex.split(argstring))
+            #args = self._parser.parse_args(shlex.split(argstring))
+            args = self._parser.processArguments(argstring)
             print(args)
             self._output_header = not(args.no_header)
             self._output_comments = not(args.no_comments)
@@ -180,7 +193,7 @@ M2'''
 
                 # handle any special commands
                 result = self.processCommand(command)
-                if result != ""
+                if result != "":
                     return result
 
                 outstring = []
@@ -407,10 +420,10 @@ M2'''
 
         for obj in objectslist:
 
-            if PathLog.getLevel(PathLog.thisModule()) == PathLog.Level.DEBUG:
-                PathLog.debug("\n" + "*"*70)
-                self.dump(obj)
-                PathLog.debug("\n" + "*"*70)
+            # if PathLog.getLevel(PathLog.thisModule()) == PathLog.Level.DEBUG:
+            #     PathLog.debug("\n" + "*"*70)
+            #     self.dump(obj)
+            #     PathLog.debug("\n" + "*"*70)
 
             # Skip inactive operations
             if hasattr(obj, 'Active'):
@@ -480,6 +493,9 @@ M2'''
             print("File Written to {}".format(filename))
 
     # For debug...
-    def dump(obj):
+    def dump(self, obj):
         for attr in dir(obj):
-            print("obj.%s = %s" % (attr, getattr(obj, attr)))
+            try:
+                print("obj.%s = %s" % (attr, getattr(obj, attr)))
+            except Exception as e:
+                print (e)

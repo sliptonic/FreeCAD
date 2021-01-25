@@ -25,7 +25,7 @@
 # 2021/1/25  Tolerance argument and value added by sliptonic
 
 from __future__ import print_function
-import shlex
+#import shlex
 import postprocessor as postprocessor
 
 TOOLTIP = '''
@@ -39,30 +39,45 @@ linuxcnc_post.export(object,"/path/to/file.ncc","")
 class LinuxCNCPost(postprocessor.ObjectPost):
 
     def getArgs(self):
-        parser = super().getArgs()
-        parser.add_argument('--tolerance', help='Path blending tolerance')
-        return parser
+        self.parser = super().getArgs()
+        #parser.add_argument('--tolerance', help='Path blending tolerance')
+        self.parser.add_argument('tolerance', default=0.001, help='Path blending tolerance')
+
+        return self.parser
 
     def processArguments(self, argstring):
+        print('argstring: {}'.format(argstring))
         super().processArguments(argstring)
+        args = self.parser.processArguments(argstring)
+        print(args)
 
-        try:
-            args = parser.parse_args(shlex.split(argstring))
-            if args.tolerance is None:
-                if args.inches:
-                    tolvalue = 0.001
-                else:
-                    tolvalue = 0.025
+        if args.tolerance is None:
+            if args.inches:
+                tolvalue = 0.001
             else:
-                tolvalue = args.tolerance
+                tolvalue = 0.025
+        else:
+            tolvalue = args.tolerance
 
-            self._preamble += " G64 P{}".format(tolvalue)
-
-        except Exception as e:
-            print(e)
-            return False
-
+        self._PREAMBLE += " G64 P{}".format(tolvalue)
         return True
+        # try:
+        #     args = parser.parse_args(shlex.split(argstring))
+        #     if args.tolerance is None:
+        #         if args.inches:
+        #             tolvalue = 0.001
+        #         else:
+        #             tolvalue = 0.025
+        #     else:
+        #         tolvalue = args.tolerance
+
+        #     self._preamble += " G64 P{}".format(tolvalue)
+
+        # except Exception as e:
+        #     print(e)
+        #     return False
+
+        # return True
 
 
 def export(objectslist, filename, argstring):
