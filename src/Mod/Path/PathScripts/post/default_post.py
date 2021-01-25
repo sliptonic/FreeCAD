@@ -46,7 +46,6 @@ class DefaultPost(postprocessor.ObjectPost):
 
 
 def export(objectslist, filename, argstring):
-    # pylint: disable=global-statement
     if not post.processArguments(argstring):
         return None
     finalGcode = post.export(objectslist)

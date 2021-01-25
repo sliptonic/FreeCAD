@@ -52,7 +52,7 @@ dxf_post.export(object,"/path/to/file.dxf","")
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 # PathLog.trackModule(PathLog.thisModule())
 
-class DefaultPost(postprocessor.ObjectPost):
+class DXFPost(postprocessor.ObjectPost):
 
     def getArgs(self):
         parser = argparse.ArgumentParser(prog=self._name, add_help=False)
@@ -142,7 +142,7 @@ def export(objectslist, filename, argstring=""):
     post.export(objectslist, filename, argstring)
 
 
-post = DefaultPost('Default')
+post = DXFPost('DXFPost')
 parser = post.getArgs()
 TOOLTIP_ARGS = '''Arguments for dxf:'''
 

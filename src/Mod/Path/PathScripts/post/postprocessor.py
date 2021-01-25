@@ -1,4 +1,5 @@
 # ***************************************************************************
+
 # *   Copyright (c) 2014 sliptonic <shopinthewoods@gmail.com>               *
 # *                                                                         *
 # *   This file is part of the FreeCAD CAx development system.              *
@@ -46,44 +47,20 @@ class ObjectPost(object):
     properties and functionality for the standard posts.
     '''
     def __init__(self, name):
-        self._name = name
+        self._NAME = name
 
-        # # Output options
-        # self._output_comments = True
-        # self._output_header = True
-        # self._output_line_numbers = False
-        self._linenr = 0  # line number starting value
-        # self._show_editor = True
-        # self._precision = 3
-        self._command_space = " "
+        self._LINENR = 100                      # line number starting value
+        self._LINEINCR = 10                     # line number increment
+        self._COMMAND_SPACE = " "
+        self._TOOL_CHANGE = ''''''
 
-        # Options to reduce gcode size
-        # self._modal = False  # if true commands are suppressed if the same as previous line.
-        # self._output_doubles = True  # if false duplicate axis values are suppressed if the same as previous line.
-
-        # Tool Change options
-        # self._use_tlo = True  # if true G43 will be output following tool changes
-        self._tool_change = ''''''
-
-        # Units
-        # self._units = "G21"  # G21 for metric, G20 for us standard
-        # self._unit_speed_format = 'mm/min'
-        # self._unit_format = 'mm'
-
-        # These globals will be reflected in the Machine configuration of the project
-        # Pre operation text will be inserted before every operation
-        self._pre_operation = ''''''
-
-        # Post operation text will be inserted after every operation
-        self._post_operation = ''''''
-
-        # Tool Change commands will be inserted before a tool change
-
-        # Job Preamble text will appear at the beginning of the GCODE output file.
-        self._preamble = '''G17 G54 G40 G49 G80 G90'''
+        self._PRE_OPERATION = ''''''
+        self._POST_OPERATION = ''''''
+        self._PREAMBLE = '''G17 G54 G40 G49 G80 G90'''
+        self._SPINDLE_WAIT = 0
 
         # Job Postamble text will appear following the last operation.
-        self._postamble = '''M05
+        self._POSTAMBLE = '''M05
 G17 G54 G90 G80 G40
 M2'''
 
@@ -92,7 +69,7 @@ M2'''
         creates an arparser and adds supported arguments.
         Can be extended
         '''
-        parser = argparse.ArgumentParser(prog=self._name, add_help=False)
+        parser = argparse.ArgumentParser(prog=self._NAME, add_help=False)
 
         parser.add_argument('--no-header', action='store_true', help='suppress header output')
         parser.add_argument('--no-comments', action='store_true', help='suppress comment output')
@@ -105,6 +82,7 @@ M2'''
         parser.add_argument('--modal', action='store_true', help='Output the Same G-command Name USE NonModal Mode')
         parser.add_argument('--axis-modal', action='store_true', help='Output the Same Axis Value Mode')
         parser.add_argument('--no-tlo', action='store_true', help='suppress tool length offset (G43) following tool changes')
+        parser.add_argument('--wait-for-spindle',   type=int, default=0, help='Wait for spindle to reach desired speed after M3 / M4, default=0')
         self.TOOLTIP_ARGS = parser.format_help()
 
         self._parser = parser
@@ -122,9 +100,9 @@ M2'''
             self._show_editor = not(args.no_show_editor)
             self._precision = args.precision
             if args.preamble is not None:
-                self._preamble = args.preamble
+                self._PREAMBLE = args.preamble
             if args.postamble is not None:
-                self._postamble = args.postamble
+                self._POSTAMBLE = args.postamble
             self._modal = args.modal
             self._output_doubles = not(args.axis_modal)
             self._use_tlo = not(args.no_tlo)
@@ -137,6 +115,8 @@ M2'''
                 self._units = 'G21'
                 self._unit_speed_format = 'mm/min'
                 self._unit_format = 'mm'
+            if args.wait_for_spindle > 0:
+                self._SPINDLE_WAIT = args.wait_for_spindle
         except Exception as e:
             print(e)
             return False
@@ -150,8 +130,8 @@ M2'''
         Can be safely overriden
         '''
         if self._output_line_numbers:
-            self._linenr += 10
-            return "N {} ".format(self._linenr)
+            self._LINENR += self._LINEINCR
+            return "N {} ".format(self._LINENR)
         else:
             return ""
 
@@ -163,45 +143,53 @@ M2'''
         '''
         PathLog.track(pathobj.Label)
 
+        # Handle Tool Changes
         if hasattr(pathobj, "ToolNumber"):
             return self.buildToolChange(pathobj)
 
         out = ""
         lastcommand = None
-        precision_string = '.' + str(self._precision) + 'f'
+        precision_string = '.{}f'.format(self._precision)
         currLocation = {}  # keep track for no doubles
 
         # the order of parameters
-        # linuxcnc doesn't want K properties on XY plane  Arcs need work.
+        # Don't put K properties on XY plane  Arcs need work.
         params = ['X', 'Y', 'Z', 'A', 'B', 'C', 'I', 'J', 'F', 'S', 'T', 'Q', 'R', 'L', 'H', 'D', 'P']
         firstmove = Path.Command("G0", {"X": -1, "Y": -1, "Z": -1, "F": 0.0})
         currLocation.update(firstmove.Parameters)  # set First location Parameters
 
-        if hasattr(pathobj, "Group"):  # We have a compound or project.
-            # if OUTPUT_COMMENTS:
-            #     out += linenumber() + "(compound: " + pathobj.Label + ")\n"
+        # Recursively process compounds
+        if hasattr(pathobj, "Group"):
             for p in pathobj.Group:
                 out += self.parse(p)
             return out
-        else:  # parsing simple path
+        else:
+            # parsing single object
 
-            # groups might contain non-path things like stock.
+            # Skip objects that don't contain a path. e.g. stock.
             if not hasattr(pathobj, "Path"):
                 return out
 
             for c in pathobj.Path.Commands:
 
-                outstring = []
                 command = c.Name
+
+                # handle comments
+                if command[0] == '(' or command == "message":
+                    return self.buildComment(command)
+
+                # handle any special commands
+                result = self.processCommand(command)
+                if result != ""
+                    return result
+
+                outstring = []
                 outstring.append(command)
 
                 # if modal: suppress the command if it is the same as the last one
                 if self._modal is True:
                     if command == lastcommand:
                         outstring.pop(0)
-
-                if c.Name[0] == '(' and not self._output_comments:  # command is a comment
-                    continue
 
                 # Now add the remaining parameters in order
                 for param in params:
@@ -233,12 +221,6 @@ M2'''
                 lastcommand = command
                 currLocation.update(c.Parameters)
 
-                if command == "message":
-                    if self._output_comments is False:
-                        out = []
-                    else:
-                        outstring.pop(0)  # remove the command
-
                 # prepend a line number and append a newline
                 if len(outstring) >= 1:
                     if self._output_line_numbers:
@@ -246,12 +228,41 @@ M2'''
 
                     # append the line to the final output
                     for w in outstring:
-                        out += w + self._command_space
+                        out += w + self._COMMAND_SPACE
                     # Note: Do *not* strip `out`, since that forces the allocation
                     # of a contiguous string & thus quadratic complexity.
                     out += "\n"
 
             return out
+
+    def processCommand(self, command):
+        '''Special handling of command
+        May be overridden
+        '''
+        gcode = ""
+        return gcode
+
+
+    def buildComment(self, command):
+        '''
+        calculate comment gcode
+        Can be safely overriden
+        '''
+        gcode = ""
+        # we shouldn't have 'message' commands. Appears to be deprecated from
+        # PostUtils.stringsplit
+        if not self._output_comments or command == "message":
+            return gcode
+        else:
+            if command[0] != '(':
+                gcode += '('
+
+            gcode += command
+
+            if command[-1] != ')':
+                gcode += ')'
+
+        return gcode
 
     def buildHeader(self):
         '''
@@ -262,7 +273,7 @@ M2'''
         if self._output_header:
             now = datetime.datetime.now()
             gcode += self.linenumber() + "(Exported by FreeCAD)\n"
-            gcode += self.linenumber() + "(Post Processor: {}\n".format(self._name)
+            gcode += self.linenumber() + "(Post Processor: {})\n".format(self._NAME)
             gcode += self.linenumber() + "(Output Time: {})\n".format(now)
 
         return gcode
@@ -276,7 +287,7 @@ M2'''
 
         if self._output_comments:
             gcode += self.linenumber() + "(begin preamble)\n"
-        for line in self._preamble.splitlines(False):
+        for line in self._PREAMBLE.splitlines(False):
             gcode += self.linenumber() + line + "\n"
         gcode += self.linenumber() + self._units + "\n"
         return gcode
@@ -290,7 +301,7 @@ M2'''
 
         if self._output_comments:
             gcode += "(begin postamble)\n"
-        for line in self._postamble.splitlines(True):
+        for line in self._POSTAMBLE.splitlines(True):
             gcode += self.linenumber() + line
         return gcode
 
@@ -304,11 +315,11 @@ M2'''
         # stop the spindle
         gcode += self.linenumber() + "M5\n"
 
-        for line in self._tool_change.splitlines(True):
+        for line in self._TOOL_CHANGE.splitlines(True):
             gcode += self.linenumber() + line
 
         for c in ToolController.Path.Commands:
-            if c.Name == 'M6':
+            if c.Name in ('M6', 'M06'):
                 toolnumber = str(int(c.Parameters['T']))
                 gcode += "{} T{}\n".format(c.Name, toolnumber)
 
@@ -316,9 +327,11 @@ M2'''
                 if self._use_tlo:
                     gcode += self.linenumber() + 'G43 H{}\n'.format(toolnumber)
 
-            elif c.Name in ['M3', 'M4']:
+            elif c.Name in ('M3', 'M03', 'M4', 'M04'):
                 spindlespeed = str(int(c.Parameters['S']))
-                gcode += "{} S{}\n".format(c.Name, spindlespeed)
+                gcode += self.linenumber() + "{} S{}\n".format(c.Name, spindlespeed)
+                if self._SPINDLE_WAIT > 0:
+                    gcode += self.linenumber() + 'G4 P{}\n'.format(self._SPINDLE_WAIT)
 
         return gcode
 
@@ -344,7 +357,7 @@ M2'''
 
         return gcode
 
-    def buildpreOperatonGcode(self, opLabel):
+    def buildpreOperationGcode(self, opLabel):
         '''
         generate gcode to be inserted before each operation
         Can be safely overriden
@@ -354,11 +367,11 @@ M2'''
         if self._output_comments:
             gcode += self.linenumber() + "(begin operation: {})\n".format(opLabel)
             gcode += self.linenumber() + "(speed format: {})\n".format(self._unit_speed_format)
-        for line in self._pre_operation.splitlines(True):
+        for line in self._PRE_OPERATION.splitlines(True):
             gcode += self.linenumber() + line
         return gcode
 
-    def buildpostOperatonGcode(self, opLabel):
+    def buildpostOperationGcode(self, opLabel):
         '''
         generate gcode to be inserted after each operation
         Can be safely overriden
@@ -366,7 +379,7 @@ M2'''
         gcode = ""
         if self._output_comments:
             gcode += self.linenumber() + "(finish operation: {})\n".format(opLabel)
-        for line in self._post_operation.splitlines(True):
+        for line in self._POST_OPERATION.splitlines(True):
             gcode += self.linenumber() + line
 
         return gcode
@@ -379,7 +392,7 @@ M2'''
         '''
 
         # reset line number to 0
-        self._linenr = 0
+        self._LINENR = 0
 
         for obj in objectslist:
             if not hasattr(obj, "Path"):
@@ -394,6 +407,11 @@ M2'''
 
         for obj in objectslist:
 
+            if PathLog.getLevel(PathLog.thisModule()) == PathLog.Level.DEBUG:
+                PathLog.debug("\n" + "*"*70)
+                self.dump(obj)
+                PathLog.debug("\n" + "*"*70)
+
             # Skip inactive operations
             if hasattr(obj, 'Active'):
                 if not obj.Active:
@@ -402,7 +420,7 @@ M2'''
                 if not obj.Base.Active:
                     continue
 
-            gcode += self.buildpreOperatonGcode(obj.Label)
+            gcode += self.buildpreOperationGcode(obj.Label)
 
             coolantMode = 'None'
             if hasattr(obj, "CoolantMode") or hasattr(obj, 'Base') and hasattr(obj.Base, "CoolantMode"):
@@ -411,14 +429,16 @@ M2'''
                 else:
                     coolantMode = obj.Base.CoolantMode
 
-            # Generate the pre-operation gcode
-            gcode += self.buildCoolantGcode(coolantMode)
+            # Generate the pre-operation gcode (except comments)
+            if obj.Name[:7] != 'Comment':
+                gcode += self.buildCoolantGcode(coolantMode)
 
             # Generate the operation gcode
             gcode += self.parse(obj)
 
-            # Generate the post-operation gcode
-            gcode += self.buildpostOperatonGcode(obj.Label)
+            # Generate the post-operation gcode (except comments)
+            if obj.Name[:7] != 'Comment':
+                gcode += self.buildpostOperationGcode(obj.Label)
 
             # turn coolant off if required
             if not coolantMode == 'None':
@@ -458,3 +478,8 @@ M2'''
                 gfile.write(finalgcode)
 
             print("File Written to {}".format(filename))
+
+    # For debug...
+    def dump(obj):
+        for attr in dir(obj):
+            print("obj.%s = %s" % (attr, getattr(obj, attr)))
