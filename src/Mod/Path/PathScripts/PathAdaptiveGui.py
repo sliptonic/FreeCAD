@@ -24,6 +24,7 @@
 import PathScripts.PathOpGui as PathOpGui
 from PySide import QtCore, QtGui
 import PathScripts.PathAdaptive as PathAdaptive
+import PathScripts.features.PathFeatureExtensionsGui as PathFeatureExtensionsGui
 
 
 class TaskPanelOpPage(PathOpGui.TaskPanelPage):
@@ -240,6 +241,11 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         obj.setEditorMode('AdaptiveOutputState', 2)  # hide this property
         obj.setEditorMode('StopProcessing', 2)  # hide this property
         obj.setEditorMode('Stopped', 2)  # hide this property
+
+    def taskPanelBaseLocationPage(self, obj, features):
+        if not hasattr(self, 'extensionsPanel'):
+            self.extensionsPanel = PathFeatureExtensionsGui.TaskPanelExtensionPage(obj, features) # pylint: disable=attribute-defined-outside-init
+        return self.extensionsPanel
 
 
 Command = PathOpGui.SetupOperation('Adaptive',
