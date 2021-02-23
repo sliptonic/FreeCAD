@@ -73,11 +73,11 @@ if(BUILD_GUI)
     list (APPEND Cloud_Scripts InitGui.py)
 endif(BUILD_GUI)
 
-add_custom_target(CloudScripts ALL
+add_custom_target(cloudScripts ALL
     SOURCES ${Cloud_Scripts}
 )
 
-fc_target_copy_resource_flat(CloudScripts
+fc_target_copy_resource_flat(cloudScripts
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/Mod/Cloud
     ${Cloud_Scripts}

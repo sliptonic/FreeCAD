@@ -21,7 +21,7 @@
    enable-background="new 0 0 32 32"
    xml:space="preserve"
    inkscape:version="0.92.5 (2060ec1f9f, 2020-04-08)"
-   sodipodi:docname="cloud.svg">
+   sodipodi:docname="cloud-down.svg">
   <metadata
    id="metadata9">
     <rdf:RDF>
@@ -997,4 +997,9 @@
      style="opacity:1;fill:#ffffff;fill-opacity:0.98642536;stroke:none;stroke-width:0.11092093"
      inkscape:connector-curvature="0"
      d="m 21.582269,14.802284 h 1.725375 c 0,-2.957152 2.405875,-5.3630274 5.363138,-5.3630274 V 7.7138815 c -3.908521,-1.11e-4 -7.088513,3.1797705 -7.088513,7.0884025 z"
-     id="path1496" /></g></svg>
+     id="path1496" /></g><path
+   style="fill:#ffff0c;fill-opacity:0.98642536;stroke:#000000;stroke-width:3.05336714;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+   d="M 24.148946,19.210839 24,38.33006 l -8,0 16,17.149624 16,-17.149624 -8,0 0,-19.293327 z"
+   id="path1790"
+   inkscape:connector-curvature="0"
+   sodipodi:nodetypes="cccccccc" /></svg>

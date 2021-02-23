@@ -1,4 +1,10 @@
 <!DOCTYPE RCC><RCC version="1.0">
-    <qresource> 
+    <qresource>
+        <file>preferences/CloudPreferences.ui</file>
+        <file>preferences/ServerCreate.ui</file>
+        <file>icons/cloud-down.svg</file>
+        <file>icons/cloud-up.svg</file>
+        <file>icons/CloudWorkbench.svg</file>
+        <file>icons/preferences-cloud.svg</file>
     </qresource>
-</RCC> 
+</RCC>
