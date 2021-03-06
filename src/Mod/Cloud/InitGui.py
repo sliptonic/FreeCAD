@@ -22,13 +22,14 @@ class CloudWorkbench (Workbench):
         import CloudGui
         #import cloudScripts
         from cloudScripts import sender
+        from cloudScripts import cloudCommands
         from PySide import QtCore, QtGui
 
         FreeCADGui.addLanguagePath(":/translations")
         FreeCADGui.addIconPath(":/icons")
 
         # build commands list
-        cmdlist = ["Cloud_Send", "Cloud_Get"]
+        cmdlist = ["Cloud_Send", "Cloud_Get", "Cloud_Dock"]
         self.appendToolbar(QtCore.QT_TRANSLATE_NOOP("Cloud", "Communicate"), cmdlist)
         self.appendMenu(QtCore.QT_TRANSLATE_NOOP("Cloud", "&Cloud"), cmdlist)
 
