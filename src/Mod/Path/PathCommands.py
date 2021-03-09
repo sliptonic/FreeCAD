@@ -115,7 +115,7 @@ class _CommandCamoticsSimulate:
             if split:
                 for i, slist in enumerate(postlist):
                     filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
-                    fnames.append(pp.exportObjectsWith(slist, job, "{}{}{}-{}{}".format(td,os.sep, filename)))
+                    fnames.append(pp.exportObjectsWith(slist, job, "{}{}{}".format(td, os.sep, filename)))
             else:
                 finalpostlist = [item for slist in postlist for item in slist]
                 filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
@@ -144,14 +144,20 @@ class _CommandCamoticsSimulate:
         templ["resolution-mode"] = "medium"
         templ["resolution"] = 1
 
+        shapemap = {'ballend': 'Ballnose',
+                    'endmill': 'Cylindrical',
+                    'v-bit'  : 'Conical',
+                    'chamfer': 'Snubnose'}
+
         toollist = {}
-        for t in job.ToolController:
+        for t in job.Tools.Group:
             ttemplate = self.tooltemplate
             ttemplate["units"] = unitstring
             if hasattr(t.Tool, 'Camotics'):
-                ttemplate["shape"] =  t.Tool.Camotics
+                ttemplate["shape"] = t.Tool.Camotics
             else:
-                ttemplate["shape"] =  "cylindrical"
+                ttemplate["shape"] = shapemap.get(t.Tool.ShapeName, 'Cylindrical')
+
             ttemplate["length"] = t.Tool.Length.Value
             ttemplate["diameter"] = t.Tool.Diameter.Value
             ttemplate["description"] = t.Label
