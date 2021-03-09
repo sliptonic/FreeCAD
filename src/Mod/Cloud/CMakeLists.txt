@@ -67,6 +67,12 @@ endif(BUILD_GUI)
 
 set(Cloud_Scripts
     Init.py
+    cloudScripts/__init__.py
+    cloudScripts/cloudCommands.py
+    cloudScripts/cloudDockGui.py
+    cloudScripts/preferences.py
+    cloudScripts/preferencesGui.py
+    cloudScripts/sender.py
 )
 
 if(BUILD_GUI)
@@ -88,4 +94,18 @@ install(
         ${Cloud_Scripts}
     DESTINATION
         Mod/Cloud
+)
+
+
+SET(all_files
+    ${Cloud_Scripts}
+)
+
+fc_copy_sources(cloudScripts "${CMAKE_BINARY_DIR}/Mod/Cloud" ${all_files})
+
+INSTALL(
+    FILES
+        ${cloud_Scripts}
+    DESTINATION
+        Mod/Cloud/cloudScripts
 )
