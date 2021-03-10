@@ -31,6 +31,7 @@ import os
 import Mesh
 import string
 import random
+import camotics
 
 from PathScripts.PathUtils import loopdetect
 from PathScripts.PathUtils import horizontalEdgeLoop
@@ -38,6 +39,7 @@ from PathScripts.PathUtils import horizontalFaceLoop
 from PathScripts.PathUtils import addToJob
 from PathScripts.PathUtils import findParentJob
 from PathScripts.PathPost  import CommandPathPost
+import time 
 
 if FreeCAD.GuiUp:
     import FreeCADGui
@@ -51,43 +53,56 @@ __title__ = "FreeCAD Path Commands"
 __author__ = "sliptonic"
 __url__ = "https://www.freecadweb.org"
 
+
+def callback(status, progress):
+
+    if progress == 1.0:
+        print('done')
+    else:
+        print('{} {:.0%}'.format(status, progress))
+        time.sleep(0.5)
+
+
 class _CommandCamoticsSimulate:
 
+    SIM = camotics.Simulation()
+
     def __init__(self):
-        self.obj = None
-        self.sub = []
-        self.active = False
+        pass
+        # self.obj = None
+        # self.sub = []
+        # self.active = False
 
-        self.tooltemplate = {
-            "units": "metric",
-            "shape": "cylindrical",
-            "length": 10,
-            "diameter": 3.125,
-            "description": ""
-        }
+        # self.tooltemplate = {
+        #     "units": "metric",
+        #     "shape": "cylindrical",
+        #     "length": 10,
+        #     "diameter": 3.125,
+        #     "description": ""
+        # }
 
-        self.workpiecetemplate = {
-            "automatic": "false",
-            "margin": 0,
-            "bounds": {
-                "min": [0, 0, 0],
-                "max": [0, 0, 0]}
-        }
+        # self.workpiecetemplate = {
+        #     "automatic": "false",
+        #     "margin": 0,
+        #     "bounds": {
+        #         "min": [0, 0, 0],
+        #         "max": [0, 0, 0]}
+        # }
 
-        self.camoticstemplate = {
-            "units": "metric",
-            "resolution-mode": "medium",
-            "resolution": 1,
-            "tools": {},
-            "workpiece": {},
-            "files": []
-        }
+        # self.camoticstemplate = {
+        #     "units": "metric",
+        #     "resolution-mode": "medium",
+        #     "resolution": 1,
+        #     "tools": {},
+        #     "workpiece": {},
+        #     "files": []
+        # }
 
     def GetResources(self):
         return {'Pixmap': 'Path_Camotics',
                 'MenuText': QtCore.QT_TRANSLATE_NOOP("Path_Camotics", "Camotics"),
                 'Accel': "P, C",
-                'ToolTip': QtCore.QT_TRANSLATE_NOOP("PatCamoticsop", "Simulate using Camotics"),
+                'ToolTip': QtCore.QT_TRANSLATE_NOOP("Path_Camotics", "Simulate using Camotics"),
                 'CmdType': "ForEdit"}
 
     def IsActive(self):
@@ -100,39 +115,103 @@ class _CommandCamoticsSimulate:
             return False
 
     def Activated(self):
-        pp = CommandPathPost()
-        job = FreeCADGui.Selection.getSelectionEx()[0].Object
 
-        with tempfile.TemporaryDirectory() as td:
-            postlist = pp.getPostObjects(job)
+        s = self.SIM
+        print('activated')
+        print (s.is_running())
 
-            if hasattr(job, "SplitOutput"):
-                split = job.SplitOutput
-            else:
-                split = False
+        if s.is_running():
+            print('interrupted')
+            s.interrupt()
+            s.wait()
+        else:
+            try:
+                surface = s.get_surface('python')
+            except Exception as e:
+                print(e)
+                pp = CommandPathPost()
+                job = FreeCADGui.Selection.getSelectionEx()[0].Object
 
-            fnames = []
-            if split:
-                for i, slist in enumerate(postlist):
-                    filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
-                    fnames.append(pp.exportObjectsWith(slist, job, "{}{}{}".format(td, os.sep, filename)))
-            else:
-                finalpostlist = [item for slist in postlist for item in slist]
-                filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
-                fnames.append(pp.exportObjectsWith(finalpostlist, job, "{}{}{}".format(td,os.sep,filename)))
-
-            data = self.buildproject(job, fnames)
-            f_name = os.path.join(td, 'project.camotics')
-            meshname = os.path.join(td, 'output.stl')
-
-            with open(f_name, 'w') as fh:
-                fh.write(data)
-                fh.close()
-                os.system('camsim {} {}'.format(f_name, meshname))
-
-                Mesh.insert(meshname, FreeCAD.ActiveDocument.Name)
+                import io
                 import time
-                time.sleep(60)
+
+                s = camotics.Simulation()
+                s.set_metric()
+                s.set_resolution('high')
+
+                bb = job.Stock.Shape.BoundBox
+                s.set_workpiece(min = (bb.XMin, bb.YMin, bb.ZMin), max = (bb.XMax, bb.YMax, bb.ZMax))
+
+                shapemap = {'ballend': 'Ballnose',
+                            'endmill': 'Cylindrical',
+                            'v-bit'  : 'Conical',
+                            'chamfer': 'Snubnose'}
+
+                for t in job.Tools.Group:
+                    s.set_tool(t.ToolNumber,
+                            metric = True,
+                            shape = shapemap.get(t.Tool.ShapeName, 'Cylindrical'),
+                            length = t.Tool.Length.Value,
+                            diameter = t.Tool.Diameter.Value)
+
+                gcode = job.Path.toGCode()  #temporary solution!!!!!
+                s.compute_path(gcode)
+                s.wait()
+                s.start(callback)
+
+                # while s.is_running():
+                #     time.sleep(0.1)
+
+                # s.wait()
+
+        # surface = s.get_surface('binary')
+
+        # buffer=io.BytesIO()
+        # buffer.write(surface)
+        # buffer.seek(0)
+        # mesh=Mesh.Mesh()
+        # mesh.read(buffer, "STL")   # This is very slow
+        # Mesh.show(mesh)
+
+        #surface = s.get_surface('python')
+            print(surface.keys())
+
+
+        #print(surface)
+
+
+        # with tempfile.TemporaryDirectory() as td:
+        #     postlist = pp.getPostObjects(job)
+        #     finalpostlist = [item for slist in postlist for item in slist]
+        #     pp.exportObjectsWith(finalpostlist, job, "{}{}{}".format(td,os.sep,filename))
+
+            # if hasattr(job, "SplitOutput"):
+            #     split = job.SplitOutput
+            # else:
+            #     split = False
+
+            # fnames = []
+            # if split:
+            #     for i, slist in enumerate(postlist):
+            #         filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+            #         fnames.append(pp.exportObjectsWith(slist, job, "{}{}{}".format(td, os.sep, filename)))
+            # else:
+            #     finalpostlist = [item for slist in postlist for item in slist]
+            #     filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+            #     fnames.append(pp.exportObjectsWith(finalpostlist, job, "{}{}{}".format(td,os.sep,filename)))
+
+            # data = self.buildproject(job, fnames)
+            # f_name = os.path.join(td, 'project.camotics')
+            # meshname = os.path.join(td, 'output.stl')
+
+            # with open(f_name, 'w') as fh:
+            #     fh.write(data)
+            #     fh.close()
+            #     os.system('camsim {} {}'.format(f_name, meshname))
+
+            #     Mesh.insert(meshname, FreeCAD.ActiveDocument.Name)
+            #     import time
+            #     time.sleep(60)
 
     def buildproject(self, job, files=[]):
 
