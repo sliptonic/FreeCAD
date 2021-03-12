@@ -131,6 +131,7 @@
         <file>panels/ToolBitSelector.ui</file>
         <file>panels/ToolEditor.ui</file>
         <file>panels/ToolLibraryEditor.ui</file>
+        <file>panels/TaskPathCamoticsSim.ui</file>
         <file>panels/TaskPathSimulator.ui</file>
         <file>panels/ZCorrectEdit.ui</file>
         <file>preferences/Advanced.ui</file>
