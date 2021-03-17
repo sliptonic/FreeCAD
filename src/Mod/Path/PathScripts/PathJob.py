@@ -124,12 +124,15 @@ class ObjectJob:
 
         obj.addProperty("App::PropertyLink", "Stock", "Base", QtCore.QT_TRANSLATE_NOOP("PathJob", "Solid object to be used as stock."))
         obj.addProperty("App::PropertyLink", "Operations", "Base", QtCore.QT_TRANSLATE_NOOP("PathJob", "Compound path of all operations in the order they are processed."))
+        obj.addProperty("App::PropertyEnumeration", "JobType", "Base", QtCore.QT_TRANSLATE_NOOP("PathJob","Select the Type of Job"))
 
         obj.addProperty("App::PropertyBool", "SplitOutput", "Output", QtCore.QT_TRANSLATE_NOOP("PathJob", "Split output into multiple gcode files"))
         obj.addProperty("App::PropertyEnumeration", "OrderOutputBy", "WCS", QtCore.QT_TRANSLATE_NOOP("PathJob", "If multiple WCS, order the output this way"))
         obj.addProperty("App::PropertyStringList", "Fixtures", "WCS", QtCore.QT_TRANSLATE_NOOP("PathJob", "The Work Coordinate Systems for the Job"))
         obj.OrderOutputBy = ['Fixture', 'Tool', 'Operation']
         obj.Fixtures = ['G54']
+
+        obj.JobType = ["2D", "2.5D", "Lathe", "4th Axis"]
 
         obj.PostProcessorOutputFile = PathPreferences.defaultOutputFile()
         obj.PostProcessor = postProcessors = PathPreferences.allEnabledPostProcessors()

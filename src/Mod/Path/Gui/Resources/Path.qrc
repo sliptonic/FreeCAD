@@ -39,6 +39,7 @@
         <file>icons/Path_Machine.svg</file>
         <file>icons/Path_MachineLathe.svg</file>
         <file>icons/Path_MachineMill.svg</file>
+        <file>icons/Path-New-Operation.svg</file>
         <file>icons/Path_OpActive.svg</file>
         <file>icons/Path_OpCopy.svg</file>
         <file>icons/Path_OperationA.svg</file>
@@ -51,6 +52,7 @@
         <file>icons/Path_Profile_Face.svg</file>
         <file>icons/Path_Profile.svg</file>
         <file>icons/Path_Sanity.svg</file>
+        <file>icons/Path_SelectionToy.svg</file>
         <file>icons/Path_SelectLoop.svg</file>
         <file>icons/Path_SetupSheet.svg</file>
         <file>icons/Path_Shape.svg</file>
@@ -109,6 +111,7 @@
         <file>panels/PageOpDeburrEdit.ui</file>
         <file>panels/PageOpDrillingEdit.ui</file>
         <file>panels/PageOpEngraveEdit.ui</file>
+        <file>panels/PageOpGenericEdit.ui</file>
         <file>panels/PageOpHelixEdit.ui</file>
         <file>panels/PageOpPocketExtEdit.ui</file>
         <file>panels/PageOpPocketFullEdit.ui</file>
@@ -125,6 +128,8 @@
         <file>panels/PropertyCreate.ui</file>
         <file>panels/SetupGlobal.ui</file>
         <file>panels/SetupOp.ui</file>
+        <file>panels/StrategySelector.ui</file>
+        <file>panels/TaskSelectionToy.ui</file>
         <file>panels/ToolBitEditor.ui</file>
         <file>panels/ToolBitLibraryEdit.ui</file>
         <file>panels/ToolBitSelector.ui</file>
