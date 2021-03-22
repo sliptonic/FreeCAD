@@ -15,6 +15,13 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="QProgressBar" name="progressBar">
+     <property name="value">
+      <number>23</number>
+     </property>
+    </widget>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="horizontalLayout_2">
      <item>
       <widget class="QLabel" name="txtStatus">
@@ -53,14 +60,21 @@
     </layout>
    </item>
    <item>
-    <widget class="QPushButton" name="pushButton">
+    <widget class="QTextBrowser" name="pathData"/>
+   </item>
+   <item>
+    <widget class="QPushButton" name="btnLaunchCamotics">
      <property name="text">
-      <string>Make Camotics File</string>
+      <string>Launch Camotics</string>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="QTextBrowser" name="pathData"/>
+    <widget class="QPushButton" name="btnMakeFile">
+     <property name="text">
+      <string>Make Camotics File</string>
+     </property>
+    </widget>
    </item>
   </layout>
  </widget>

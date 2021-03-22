@@ -56,7 +56,7 @@ class _TempObject:
     Label = "Fixture"
 
 def resolveFileName(job):
-        
+
         path = PathPreferences.defaultOutputFile()
         if job.PostProcessorOutputFile:
             path = job.PostProcessorOutputFile
@@ -301,7 +301,10 @@ class CommandPathPost:
 
         return False
 
-    def exportObjectsWith(self, objs, job, filename):
+    def getGcodeSilently(self, objs, job):
+
+
+    def exportObjectsWith(self, objs, job, needFilename=True):
         PathLog.track("objs:{}".format(objs))
         # check if the user has a project and has set the default post and
         # output filename
@@ -313,14 +316,17 @@ class CommandPathPost:
             postArgs = ''
 
         postname = self.resolvePostProcessor(job)
+        filename = '-'
+        if postname and needFilename:
+            filename = self.resolveFileName(job)
 
         if postname and filename:
             print("post: %s(%s, %s)" % (postname, filename, postArgs))
             processor = PostProcessor.load(postname)
             gcode = processor.export(objs, filename, postArgs)
-            return gcode # (False, gcode, filename)
+            return (False, gcode, filename)
         else:
-            return None#(True, '', filename)
+            return (True, '', filename)
 
     def Activated(self):
         PathLog.track()

@@ -23,10 +23,10 @@
 import FreeCAD
 import FreeCADGui
 import PathScripts.PathLog as PathLog
-from pivy import coin
-from itertools import cycle
-import FreeCADGui as Gui
-import json
+# from pivy import coin
+# from itertools import cycle
+# import FreeCADGui as Gui
+# import json
 # import tempfile
 import os
 import Mesh
@@ -35,10 +35,13 @@ import Mesh
 import camotics
 import PathScripts.PathPost  as PathPost
 import io
-import time
+# import time
 import PathScripts
+import queue
+from threading import Thread, Lock
+import subprocess
 
-from PySide import QtCore, QtGui
+from PySide import QtCore #, QtGui
 
 __title__ = "Camotics Simulator"
 __author__ = "sliptonic (Brad Collette)"
@@ -54,56 +57,84 @@ def translate(context, text, disambig=None):
 
 
 class CAMoticsUI:
-    def __init__(self, parent):
+    def __init__(self, simulation):
         # this will create a Qt widget from our ui file
         self.form = FreeCADGui.PySideUic.loadUi(":/panels/TaskPathCamoticsSim.ui")
-        self.parent = parent
-        self.form.timeSlider.sliderReleased.connect(lambda : parent.XXX(self.form.timeSlider.value()))
+        self.simulation = simulation
+        self.initializeUI()
+        self.lock = False
+
+    def initializeUI(self):
+        self.form.timeSlider.sliderReleased.connect(lambda : self.simulation.XXX(self.form.timeSlider.value()))
+        self.form.progressBar.reset() #setValue(0)
         self.form.timeSlider.setEnabled=False
+        self.form.btnLaunchCamotics.clicked.connect(self.launchCamotics)
+        # self.form.btnMakeFile.clicked.connect(self.f2)
+        self.simulation.progressUpdate.connect(self.calculating)
+
+    def launchCamotics(self):
+        subprocess.Popen(["camotics", ""])
 
     def accept(self):
-        self.parent.accept()
+        self.simulation.accept()
         FreeCADGui.Control.closeDialog()
 
     def reject(self):
-        self.parent.cancel()
+        self.simulation.cancel()
         FreeCADGui.Control.closeDialog()
 
     def setRunTime(self, duration):
         self.form.timeSlider.setMinimum(0)
         self.form.timeSlider.setMaximum(duration)
 
-    def calculating(self, status=True):
-        print('calculating: {}'.format(status))
-        self.form.timeSlider.setEnabled=status
+    def calculating(self, progress=0.0):
+        self.form.timeSlider.setEnabled = (progress == 1.0)
+        self.form.progressBar.setValue(int(progress*100))
 
 
-class CamoticsSimulation:
+class CamoticsSimulation(QtCore.QObject):
 
     SIM = camotics.Simulation()
+    q = queue.Queue()
+    progressUpdate      = QtCore.Signal(object)
 
     SHAPEMAP = {'ballend': 'Ballnose',
                 'endmill': 'Cylindrical',
                 'v-bit'  : 'Conical',
                 'chamfer': 'Snubnose'}
 
+    def worker(self, lock):
+        while True:
+            item = self.q.get()
+            print('worker processing: {}'.format(item))
+            with lock:
+                if item['TYPE'] == 'STATUS':
+                    if item['VALUE'] == 'DONE':
+                        self.SIM.wait()
+                        surface = self.SIM.get_surface('binary')
+                        self.SIM.wait()
+                        self.addMesh(surface)
+                elif item['TYPE'] == 'PROGRESS':
+                    #self.taskForm.calculating(item['VALUE'])
+                    msg = item['VALUE']
+                    self.progressUpdate.emit(msg)
+            print('lockoff')
+            self.q.task_done()
+
+
+
     def __init__(self):
-        pass
+        super().__init__()  # needed for QT signals
+        lock = Lock()
+        Thread(target=self.worker, daemon=True, args=(lock,)).start()
 
     def callback(self, status, progress):
-
-        if progress == 1.0:
-            print('done')
-        else:
-            print('{} {:.0%}'.format(status, progress))
+        self.q.put({'TYPE': 'PROGRESS', 'VALUE': progress})
+        self.q.put({'TYPE': 'STATUS'  , 'VALUE': status  })
 
     def isDone(self, success):
-        print('in done: {}'.format(success))
-        self.SIM.wait()
-        surface = self.SIM.get_surface('binary')
-        self.SIM.wait()
-        self.addMesh(surface)
-        self.taskForm.calculating(False)
+        self.q.put({'TYPE': 'STATUS'  , 'VALUE': 'DONE'})
+
 
     def addMesh(self, surface):
         '''takes a binary stl and adds a Mesh to the current docuemnt'''
@@ -113,7 +144,6 @@ class CamoticsSimulation:
         buffer.seek(0)
         mesh=Mesh.Mesh()
         mesh.read(buffer, "STL")
-        # print('in addmesh: ')
         Mesh.show(mesh)
 
     def Activate(self):
@@ -153,7 +183,7 @@ class CamoticsSimulation:
 
         else:
             finalpostlist = [item for slist in postlist for item in slist]
-            gcode = PathPost.CommandPathPost().exportObjectsWith(finalpostlist, self.job, filename)
+            gcode = PathPost.CommandPathPost().exportObjectsWith(finalpostlist, self.job, False)
             success = gcode is not None
 
         if not success:
@@ -172,7 +202,7 @@ class CamoticsSimulation:
         #self.SIM.start(self.callback, done=self.isDone)
 
     def XXX(self, timeIndex):
-        self.taskForm.calculating()
+        #self.taskForm.calculating()
         self.SIM.start(self.callback, time=timeIndex, done=self.isDone)
         # while self.SIM.is_running():
         #     time.sleep(0.1)
@@ -300,48 +330,65 @@ class CamoticsSimulation:
         self.RemoveMaterial()
 
 
+    def buildproject(self, files=[]):
 
+        job = self.job
 
-    # def buildproject(self, job, files=[]):
+        tooltemplate = {
+            "units": "metric",
+            "shape": "cylindrical",
+            "length": 10,
+            "diameter": 3.125,
+            "description": ""
+        }
 
-    #     unitstring = "imperial" if FreeCAD.Units.getSchema() in [2,3,5,7] else "metric"
+        workpiecetemplate = {
+            "automatic": "false",
+            "margin": 0,
+            "bounds": {
+                "min": [0, 0, 0],
+                "max": [0, 0, 0]}
+        }
 
-    #     templ = self.camoticstemplate
+        camoticstemplate = {
+            "units": "metric",
+            "resolution-mode": "medium",
+            "resolution": 1,
+            "tools": {},
+            "workpiece": {},
+            "files": []
+        }
 
-    #     templ["units"] = unitstring
-    #     templ["resolution-mode"] = "medium"
-    #     templ["resolution"] = 1
+        unitstring = "imperial" if FreeCAD.Units.getSchema() in [2,3,5,7] else "metric"
 
-    #     shapemap = {'ballend': 'Ballnose',
-    #                 'endmill': 'Cylindrical',
-    #                 'v-bit'  : 'Conical',
-    #                 'chamfer': 'Snubnose'}
+        camoticstemplate["units"] = unitstring
+        camoticstemplate["resolution-mode"] = "medium"
+        camoticstemplate["resolution"] = 1
 
-    #     toollist = {}
-    #     for t in job.Tools.Group:
-    #         ttemplate = self.tooltemplate
-    #         ttemplate["units"] = unitstring
-    #         if hasattr(t.Tool, 'Camotics'):
-    #             ttemplate["shape"] = t.Tool.Camotics
-    #         else:
-    #             ttemplate["shape"] = shapemap.get(t.Tool.ShapeName, 'Cylindrical')
+        toollist = {}
+        for t in job.Tools.Group:
+            tooltemplate["units"] = unitstring
+            if hasattr(t.Tool, 'Camotics'):
+                tooltemplate["shape"] = t.Tool.Camotics
+            else:
+                tooltemplate["shape"] = self.shapemap.get(t.Tool.ShapeName, 'Cylindrical')
 
-    #         ttemplate["length"] = t.Tool.Length.Value
-    #         ttemplate["diameter"] = t.Tool.Diameter.Value
-    #         ttemplate["description"] = t.Label
-    #         toollist[t.ToolNumber] = ttemplate
+            tooltemplate["length"] = t.Tool.Length.Value
+            tooltemplate["diameter"] = t.Tool.Diameter.Value
+            tooltemplate["description"] = t.Label
+            toollist[t.ToolNumber] = tooltemplate
 
-    #     templ['tools'] = toollist
+        camoticstemplate['tools'] = toollist
 
-    #     bb = job.Stock.Shape.BoundBox
-    #     workpiecetmpl = self.workpiecetemplate
-    #     workpiecetmpl['bounds']['min'] = [bb.XMin, bb.YMin, bb.ZMin]
-    #     workpiecetmpl['bounds']['max'] = [bb.XMax, bb.YMax, bb.ZMax]
-    #     templ['workpiece'] = workpiecetmpl
+        bb = job.Stock.Shape.BoundBox
 
-    #     templ['files'] = files
+        workpiecetemplate['bounds']['min'] = [bb.XMin, bb.YMin, bb.ZMin]
+        workpiecetemplate['bounds']['max'] = [bb.XMax, bb.YMax, bb.ZMax]
+        camoticstemplate['workpiece'] = workpiecetmpl
 
-    #     return json.dumps(templ, indent=2)
+        camoticstemplate['files'] = files
+
+        return json.dumps(camoticstemplate, indent=2)
 
 
 class CommandCamoticsSimulate:
