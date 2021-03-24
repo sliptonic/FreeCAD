@@ -242,10 +242,12 @@ class CommandPathPost:
                 job = None
         if job is None:
             targetlist = []
+            jobNames = []
             for o in FreeCAD.ActiveDocument.Objects:
                 if hasattr(o, "Proxy"):
                     if isinstance(o.Proxy, PathJob.ObjectJob):
                         targetlist.append(o.Label)
+                        jobNames.append(o.Name)
             PathLog.debug("Possible post objects: {}".format(targetlist))
             if len(targetlist) > 1:
                 form = FreeCADGui.PySideUic.loadUi(":/panels/DlgJobChooser.ui")
@@ -254,9 +256,11 @@ class CommandPathPost:
                 if r is False:
                     return
                 else:
-                    jobname = form.cboProject.currentText()
+                    jobLabel = form.cboProject.currentText()
+                    nameIdx = targetlist.index(jobLabel)
+                    jobname = jobNames[nameIdx]
             else:
-                jobname = targetlist[0]
+                jobname = jobNames[0]
             job = FreeCAD.ActiveDocument.getObject(jobname)
 
         PathLog.debug("about to postprocess job: {}".format(job.Name))
