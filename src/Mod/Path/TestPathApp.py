@@ -22,6 +22,7 @@
 
 import TestApp
 
+from PathTests.TestPathJob import TestPathJob
 from PathTests.TestPathLog   import TestPathLog
 from PathTests.TestPathJob   import TestPathJob
 from PathTests.TestPathPreferences  import TestPathPreferences

@@ -769,6 +769,8 @@ class TaskPanel:
                 item = self.form.wcslist.findItems(f, QtCore.Qt.MatchExactly)[0]
                 item.setCheckState(QtCore.Qt.Checked)
 
+        self.form.RotationGroup.setVisible(self.obj.JobType == '4th Axis')
+
         self.form.postProcessorOutputFile.setText(self.obj.PostProcessorOutputFile)
         self.selectComboBoxText(self.form.postProcessor, self.obj.PostProcessor)
         self.form.postProcessorArguments.setText(self.obj.PostProcessorArgs)
