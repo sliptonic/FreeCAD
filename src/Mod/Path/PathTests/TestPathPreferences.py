@@ -48,7 +48,6 @@ class TestPathPreferences(PathTestUtils.PathTestBase):
         self.assertTrue('grbl' in posts)
         self.assertTrue('opensbp' in posts)
 
-
     def test10(self):
         '''Default paths for tools are resolved correctly'''
 
@@ -56,3 +55,8 @@ class TestPathPreferences(PathTestUtils.PathTestBase):
         self.assertTrue(PathPreferences.pathDefaultToolsPath('Bit').endswith('/Path/Tools/Bit'))
         self.assertTrue(PathPreferences.pathDefaultToolsPath('Library').endswith('/Path/Tools/Library'))
         self.assertTrue(PathPreferences.pathDefaultToolsPath('Template').endswith('/Path/Tools/Template'))
+
+    def test20(self):
+        '''test that the default post is not nothing and is in the available postprocessors'''
+        defaultpost = PathPreferences.defaultPostProcessor()
+        self.assertTrue(defaultpost in PathPreferences.allAvailablePostProcessors())

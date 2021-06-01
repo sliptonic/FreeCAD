@@ -32,20 +32,20 @@ import json
 import FreeCAD
 import FreeCADGui
 
+import PathScripts.PathGeom as PathGeom
+import PathScripts.PathGuiInit as PathGuiInit
 import PathScripts.PathJob as PathJob
 import PathScripts.PathJobCmd as PathJobCmd
 import PathScripts.PathJobDlg as PathJobDlg
-import PathScripts.PathGeom as PathGeom
-import PathScripts.PathGuiInit as PathGuiInit
 import PathScripts.PathLog as PathLog
 import PathScripts.PathPreferences as PathPreferences
 import PathScripts.PathSetupSheetGui as PathSetupSheetGui
 import PathScripts.PathStock as PathStock
+import PathScripts.PathToolBitGui as PathToolBitGui
 import PathScripts.PathToolControllerGui as PathToolControllerGui
 import PathScripts.PathToolLibraryEditor as PathToolLibraryEditor
 import PathScripts.PathUtil as PathUtil
 import PathScripts.PathUtils as PathUtils
-import PathScripts.PathToolBitGui as PathToolBitGui
 
 # lazily loaded modules
 from lazy_loader.lazy_loader import LazyLoader
@@ -586,11 +586,11 @@ class TaskPanel:
         self.form.toolControllerList.resizeColumnsToContents()
 
         currentPostProcessor = self.obj.PostProcessor
-        postProcessors = PathPreferences.allEnabledPostProcessors(['', currentPostProcessor])
+        postProcessors = PathPreferences.allEnabledPostProcessors([currentPostProcessor])
         for post in postProcessors:
             self.form.postProcessor.addItem(post)
         # update the enumeration values, just to make sure all selections are valid
-        self.obj.PostProcessor = postProcessors
+        # self.obj.PostProcessor = postProcessors
         self.obj.PostProcessor = currentPostProcessor
 
         self.postProcessorDefaultTooltip = self.form.postProcessor.toolTip()

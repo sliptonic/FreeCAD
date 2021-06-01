@@ -23,6 +23,7 @@
 import TestApp
 
 from PathTests.TestPathLog   import TestPathLog
+from PathTests.TestPathJob   import TestPathJob
 from PathTests.TestPathPreferences  import TestPathPreferences
 from PathTests.TestPathPropertyBag  import TestPathPropertyBag
 from PathTests.TestPathCore  import TestPathCore
@@ -48,6 +49,7 @@ from PathTests.TestPathVcarve  import TestPathVcarve
 # dummy usage to get flake8 and lgtm quiet
 False if TestApp.__name__ else True
 False if TestPathLog.__name__ else True
+False if TestPathJob.__name__ else True
 False if TestPathCore.__name__ else True
 False if TestPathGeom.__name__ else True
 False if TestPathOpTools.__name__ else True

@@ -56,41 +56,41 @@ class _TempObject:
     Label = "Fixture"
 
 
-class DlgSelectPostProcessor:
+# class DlgSelectPostProcessor:
 
-    def __init__(self, parent=None):
-        # pylint: disable=unused-argument
-        self.dialog = FreeCADGui.PySideUic.loadUi(":/panels/DlgSelectPostProcessor.ui")
-        firstItem = None
-        for post in PathPreferences.allEnabledPostProcessors():
-            item = QtGui.QListWidgetItem(post)
-            item.setFlags(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled)
-            self.dialog.lwPostProcessor.addItem(item)
-            if not firstItem:
-                firstItem = item
-        if firstItem:
-            self.dialog.lwPostProcessor.setCurrentItem(firstItem)
-        else:
-            self.dialog.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
-        self.tooltips = {}
-        self.dialog.lwPostProcessor.itemDoubleClicked.connect(self.dialog.accept)
-        self.dialog.lwPostProcessor.setMouseTracking(True)
-        self.dialog.lwPostProcessor.itemEntered.connect(self.updateTooltip)
+#     def __init__(self, parent=None):
+#         # pylint: disable=unused-argument
+#         self.dialog = FreeCADGui.PySideUic.loadUi(":/panels/DlgSelectPostProcessor.ui")
+#         firstItem = None
+#         for post in PathPreferences.allEnabledPostProcessors():
+#             item = QtGui.QListWidgetItem(post)
+#             item.setFlags(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled)
+#             self.dialog.lwPostProcessor.addItem(item)
+#             if not firstItem:
+#                 firstItem = item
+#         if firstItem:
+#             self.dialog.lwPostProcessor.setCurrentItem(firstItem)
+#         else:
+#             self.dialog.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
+#         self.tooltips = {}
+#         self.dialog.lwPostProcessor.itemDoubleClicked.connect(self.dialog.accept)
+#         self.dialog.lwPostProcessor.setMouseTracking(True)
+#         self.dialog.lwPostProcessor.itemEntered.connect(self.updateTooltip)
 
-    def updateTooltip(self, item):
-        if item.text() in self.tooltips.keys():
-            tooltip = self.tooltips[item.text()]
-        else:
-            processor = PostProcessor.load(item.text())
-            self.tooltips[item.text()] = processor.tooltip
-            tooltip = processor.tooltip
-        self.dialog.lwPostProcessor.setToolTip(tooltip)
+#     def updateTooltip(self, item):
+#         if item.text() in self.tooltips.keys():
+#             tooltip = self.tooltips[item.text()]
+#         else:
+#             processor = PostProcessor.load(item.text())
+#             self.tooltips[item.text()] = processor.tooltip
+#             tooltip = processor.tooltip
+#         self.dialog.lwPostProcessor.setToolTip(tooltip)
 
-    def exec_(self):
-        if self.dialog.exec_() == 1:
-            posts = self.dialog.lwPostProcessor.selectedItems()
-            return posts[0].text()
-        return None
+#     def exec_(self):
+#         if self.dialog.exec_() == 1:
+#             posts = self.dialog.lwPostProcessor.selectedItems()
+#             return posts[0].text()
+#         return None
 
 
 class CommandPathPost:
@@ -165,15 +165,15 @@ class CommandPathPost:
 
         return filename
 
-    def resolvePostProcessor(self, job):
-        if hasattr(job, "PostProcessor"):
-            post = PathPreferences.defaultPostProcessor()
-            if job.PostProcessor:
-                post = job.PostProcessor
-            if post and PostProcessor.exists(post):
-                return post
-        dlg = DlgSelectPostProcessor()
-        return dlg.exec_()
+    # def resolvePostProcessor(self, job):
+    #     if hasattr(job, "PostProcessor"):
+    #         post = PathPreferences.defaultPostProcessor()
+    #         if job.PostProcessor:
+    #             post = job.PostProcessor
+    #         if post and PostProcessor.exists(post):
+    #             return post
+    #     dlg = DlgSelectPostProcessor()
+    #     return dlg.exec_()
 
     def GetResources(self):
         return {'Pixmap': 'Path_Post',
@@ -194,13 +194,16 @@ class CommandPathPost:
         PathLog.track()
         # check if the user has a project and has set the default post and
         # output filename
-        postArgs = PathPreferences.defaultPostProcessorArgs()
-        if hasattr(job, "PostProcessorArgs") and job.PostProcessorArgs:
-            postArgs = job.PostProcessorArgs
-        elif hasattr(job, "PostProcessor") and job.PostProcessor:
-            postArgs = ''
+        postArgs = getattr(job, "PostProcessorArgs", PathPreferences.defaultPostProcessorArgs())
 
-        postname = self.resolvePostProcessor(job)
+        # postArgs = PathPreferences.defaultPostProcessorArgs()
+        # if hasattr(job, "PostProcessorArgs") and job.PostProcessorArgs:
+        #     postArgs = job.PostProcessorArgs
+        # elif hasattr(job, "PostProcessor") and job.PostProcessor:
+        #     postArgs = ''
+
+        # postname = self.resolvePostProcessor(job)
+        postname = job.PostProcessor
         filename = '-'
         if postname and needFilename:
             filename = self.resolveFileName(job)

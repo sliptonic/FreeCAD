@@ -154,6 +154,7 @@ class ObjectJob:
         obj.setEditorMode('Operations', 2)  # hide
         obj.setEditorMode('Placement', 2)
 
+        self.__setPostProcessor(obj)
         self.setupSetupSheet(obj)
         self.setupBaseModel(obj, models)
         self.setupToolTable(obj)
@@ -173,7 +174,18 @@ class ObjectJob:
         if obj.Stock.ViewObject:
             obj.Stock.ViewObject.Visibility = False
 
+    def __setPostProcessor(self, obj, currentPost=None):
+        obj.PostProcessor = postProcessors = PathPreferences.allEnabledPostProcessors()
+        PathLog.track(obj.Label, obj.PostProcessor, currentPost)
+
+        if currentPost not in postProcessors:
+            currentPost = PathPreferences.defaultPostProcessor()
+
+        obj.PostProcessor = currentPost
+        PathLog.track(obj.PostProcessor)
+
     def setupSetupSheet(self, obj):
+        PathLog.track(obj.Label)
         if not getattr(obj, 'SetupSheet', None):
             obj.addProperty('App::PropertyLink', 'SetupSheet', 'Base', QtCore.QT_TRANSLATE_NOOP('PathJob', 'SetupSheet holding the settings for this job'))
             obj.SetupSheet = PathSetupSheet.Create()
@@ -293,6 +305,7 @@ class ObjectJob:
                 ops.Label = label
 
     def onDocumentRestored(self, obj):
+        PathLog.track(obj.Label)
         self.setupBaseModel(obj)
         self.fixupOperations(obj)
         self.setupSetupSheet(obj)
@@ -317,11 +330,18 @@ class ObjectJob:
             obj.addProperty("App::PropertyBool", "SplitOutput", "Output", QtCore.QT_TRANSLATE_NOOP("PathJob", "Split output into multiple gcode files"))
             obj.SplitOutput = False
 
+        self.__setPostProcessor(obj, currentPost=obj.PostProcessor)
+
     def onChanged(self, obj, prop):
+        PathLog.track(obj.Label, prop)
         if prop == "PostProcessor" and obj.PostProcessor:
-            processor = PostProcessor.load(obj.PostProcessor)
-            self.tooltip = processor.tooltip
-            self.tooltipArgs = processor.tooltipArgs
+            PathLog.track(obj.PostProcessor)
+            try:
+                processor = PostProcessor.load(obj.PostProcessor)
+                self.tooltip = processor.tooltip
+                self.tooltipArgs = processor.tooltipArgs
+            except:
+                raise ValueError('Postprocessor: {} was not found or is not enabled. Setting default.'.format(obj.PostProcessor))
 
     def baseObject(self, obj, base):
         '''Return the base object, not its clone.'''

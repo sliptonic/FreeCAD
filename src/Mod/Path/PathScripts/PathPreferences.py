@@ -100,7 +100,10 @@ def allEnabledPostProcessors(include=None):
 
 def defaultPostProcessor():
     pref = preferences()
-    return pref.GetString(PostProcessorDefault, "")
+    post = pref.GetString(PostProcessorDefault, "default")
+    if post == "" or post not in allAvailablePostProcessors():
+        post = "default"
+    return post
 
 
 def defaultPostProcessorArgs():
