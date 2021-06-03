@@ -1090,6 +1090,34 @@ class TaskPanel:
             FreeCADGui.Selection.addSelection(selObject, selFeature)
         return (selObject, p)
 
+    def modelAddRotationIndex(self):
+        PathLog.track()
+
+        sel in FreeCADGui.Selection.getSelectionEx():
+            if len(sel) > 1:
+                return None
+
+        selItem = sel[0]
+
+        if not selItem.HasSubObjects:
+            return None
+
+        if len(selItem.SubObjects) > 1:
+            return None
+
+        selObject = selItem.SubObjects[0]
+        if selObject.ShapeType != 'Face':
+            return None
+
+        return selObject
+
+
+    def modelDeleteRotationIndex(self):
+        PathLog.track()
+
+    def rotationIndexChanged(self):
+        PathLog.track()
+
     def updateStockEditor(self, index, force=False):
 
         def setupFromBaseEdit():
@@ -1343,6 +1371,15 @@ class TaskPanel:
 
         self.form.modelRotateLeft.clicked.connect(lambda: self.modelRotate(FreeCAD.Vector(0, 0, 1)))
         self.form.modelRotateRight.clicked.connect(lambda: self.modelRotate(FreeCAD.Vector(0, 0, -1)))
+
+        # Rotation Indices.
+        self.form.addRotationIndex.clicked.connect(self.modelAddRotationIndex)
+        self.form.deleteRotationIndex.clicked.connect(self.modelDeleteRotationIndex)
+        # self.form.rotationIndexList.itemSelectionChanged.connect(self.toolControllerSelect)
+        self.form.rotationIndexList.itemChanged.connect(self.rotationIndexChanged)
+
+
+
 
         self.updateSelection()
 

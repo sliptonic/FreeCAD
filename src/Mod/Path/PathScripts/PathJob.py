@@ -136,6 +136,11 @@ class ObjectJob:
 
         obj.JobType = ["2D", "2.5D", "Lathe", "4th Axis"]
 
+        # This needs to be a list but such a property doesn't exist using a
+        # single item for testing.
+        obj.addProperty("App::PropertyPlacement", "rotations", "Base", QtCore.QT_TRANSLATE_NOOP("PathJob", "Alternate rotations for multiaxis milling"))
+        obj.setEditorMode('rotations', 2)  # Hide
+
         obj.PostProcessorOutputFile = PathPreferences.defaultOutputFile()
         obj.PostProcessor = postProcessors = PathPreferences.allEnabledPostProcessors()
         defaultPostProcessor = PathPreferences.defaultPostProcessor()
@@ -176,6 +181,30 @@ class ObjectJob:
                 obj.Stock = PathStock.CreateFromBase(obj)
         if obj.Stock.ViewObject:
             obj.Stock.ViewObject.Visibility = False
+
+    def __setModelRotation(self, obj, index=0):
+        '''This method repostions the model and the stock based on the selected rotation index.
+        rotation index 0 is the base rotation established during the setup.  Calling the method
+        with no index will restore the model and placement.'''
+
+        # TODO Rewrite when rotations is a proper list. For now it just swaps
+        # placements if obj.rotations isn't None
+
+
+        if obj.rotations is None:
+            return
+
+        self.obj.Placement, obj.rotations = obj.rotations, self.obj.Placement
+
+
+    def addModelRotationIndex(self, obj, placement):
+
+        # TODO Rewrite when rotations is a proper list
+        obj.rotations = placement
+        return 1
+
+
+
 
     def __setPostProcessor(self, obj, currentPost=None):
         obj.PostProcessor = postProcessors = PathPreferences.allEnabledPostProcessors()
