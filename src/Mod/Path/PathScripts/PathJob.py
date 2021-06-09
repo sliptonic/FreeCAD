@@ -29,6 +29,7 @@ import PathScripts.PathToolController as PathToolController
 import PathScripts.PathUtil as PathUtil
 import json
 import time
+import math
 from PathScripts.PathPostProcessor import PostProcessor
 from PySide import QtCore
 
@@ -182,7 +183,8 @@ class ObjectJob:
         if obj.Stock.ViewObject:
             obj.Stock.ViewObject.Visibility = False
 
-    def __setModelRotation(self, obj, index=0):
+    def __setModelRotation(self, index=0):
+        PathLog.track()
         '''This method repostions the model and the stock based on the selected rotation index.
         rotation index 0 is the base rotation established during the setup.  Calling the method
         with no index will restore the model and placement.'''
@@ -191,16 +193,35 @@ class ObjectJob:
         # placements if obj.rotations isn't None
 
 
-        if obj.rotations is None:
-            return
+        # if obj.rotations is None:
+        #     return
 
-        self.obj.Placement, obj.rotations = obj.rotations, self.obj.Placement
+        mod = self.obj.Model.Shape.Placement
+        rot = self.obj.Proxy.rotations
+        PathLog.track(mod, rot)
+        mod, rot = rot, mod
 
 
-    def addModelRotationIndex(self, obj, placement):
+    def __calculateRotationPlacement(self, face):
+        PathLog.track(face)
+        facenormal = face.normalAt(0,0)
+
+        axis = facenormal.cross(FreeCAD.Vector(0,0,1))
+        if axis.Length > 0 and axis.Length < 1:
+            axis = axis.normalize()
+            angle = facenormal.getAngle(FreeCAD.Vector(0,0,1))*180/math.pi
+            newplace = self.Model.Shape.Placement.multiply(FreeCAD.Placement(FreeCAD.Vector(0,0,0), axis, angle))
+            return newplace
+
+    def addModelRotationIndex(self, face):
+        PathLog.track()
+
+        newplace = self.__calculateRotationPlacement(face)
+        PathLog.track(newplace)
 
         # TODO Rewrite when rotations is a proper list
-        obj.rotations = placement
+        self.obj.Proxy.rotations = newplace
+        self.__setModelRotation()
         return 1
 
 

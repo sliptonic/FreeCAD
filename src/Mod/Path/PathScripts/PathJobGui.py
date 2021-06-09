@@ -1093,9 +1093,9 @@ class TaskPanel:
     def modelAddRotationIndex(self):
         PathLog.track()
 
-        sel in FreeCADGui.Selection.getSelectionEx():
-            if len(sel) > 1:
-                return None
+        sel = FreeCADGui.Selection.getSelectionEx()
+        if len(sel) != 1:
+            return None
 
         selItem = sel[0]
 
@@ -1109,7 +1109,7 @@ class TaskPanel:
         if selObject.ShapeType != 'Face':
             return None
 
-        return selObject
+        self.obj.Proxy.addModelRotationIndex(selObject)
 
 
     def modelDeleteRotationIndex(self):
@@ -1375,8 +1375,8 @@ class TaskPanel:
         # Rotation Indices.
         self.form.addRotationIndex.clicked.connect(self.modelAddRotationIndex)
         self.form.deleteRotationIndex.clicked.connect(self.modelDeleteRotationIndex)
-        # self.form.rotationIndexList.itemSelectionChanged.connect(self.toolControllerSelect)
-        self.form.rotationIndexList.itemChanged.connect(self.rotationIndexChanged)
+        # self.form.rotationIndexList.itemSelectionChanged.connect(self.rotationIndexChanged)
+        # self.form.rotationIndexList.itemChanged.connect(self.rotationIndexChanged)
 
 
 
