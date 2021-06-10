@@ -125,6 +125,7 @@ class ViewProvider(object):
         job = self.Object.Proxy.getJob(self.Object)
         if job:
             job.ViewObject.Proxy.resetEditVisibility(job)
+            job.Proxy.setRotation() #Tell the job to reset the rotation
 
     def unsetEdit(self, arg1, arg2):
         # pylint: disable=unused-argument
@@ -618,6 +619,40 @@ class TaskPanelBaseGeometryPage(TaskPanelPage):
         self.form.deleteBase.clicked.connect(self.deleteBase)
         self.form.clearBase.clicked.connect(self.clearBase)
         self.form.geometryImportButton.clicked.connect(self.importBaseGeometry)
+
+        self.form.previewRotationRef.clicked.connect(self.previewRotation)
+        self.form.setRotationRef.clicked.connect(self.setRotation)
+        self.form.deleteRotationRef.clicked.connect(self.deleteRotation)
+
+
+    def previewRotation(self):
+        pass
+
+    def setRotation(self):
+        sel = FreeCADGui.Selection.getSelectionEx()
+        if len(sel) != 1:
+            return None
+
+        selItem = sel[0]
+
+        if not selItem.HasSubObjects:
+            return None
+
+        if len(selItem.SubObjects) > 1:
+            return None
+
+        selObject = selItem.SubObjects[0]
+        if selObject.ShapeType != 'Face':
+            return None
+
+        self.obj.ReferenceFace = (selItem.Object, selItem.SubElementNames[0])
+
+
+        pass
+
+    def deleteRotation(self):
+        pass
+
 
     def pageUpdateData(self, obj, prop):
         if prop in ['Base']:
@@ -1144,6 +1179,7 @@ class TaskPanel(object):
     def cleanup(self, resetEdit):
         '''cleanup() ... implements common cleanup tasks.'''
         self.panelCleanup()
+
         FreeCADGui.Control.closeDialog()
         if resetEdit:
             FreeCADGui.ActiveDocument.resetEdit()

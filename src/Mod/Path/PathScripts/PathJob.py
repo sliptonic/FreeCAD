@@ -135,12 +135,7 @@ class ObjectJob:
         obj.OrderOutputBy = ['Fixture', 'Tool', 'Operation']
         obj.Fixtures = ['G54']
 
-        obj.JobType = ["2D", "2.5D", "Lathe", "4th Axis"]
-
-        # This needs to be a list but such a property doesn't exist using a
-        # single item for testing.
-        obj.addProperty("App::PropertyPlacement", "rotations", "Base", QtCore.QT_TRANSLATE_NOOP("PathJob", "Alternate rotations for multiaxis milling"))
-        obj.setEditorMode('rotations', 2)  # Hide
+        obj.JobType = ["2D", "2.5D", "Lathe", "Multiaxis"]
 
         obj.PostProcessorOutputFile = PathPreferences.defaultOutputFile()
         obj.PostProcessor = postProcessors = PathPreferences.allEnabledPostProcessors()
@@ -183,24 +178,42 @@ class ObjectJob:
         if obj.Stock.ViewObject:
             obj.Stock.ViewObject.Visibility = False
 
-    def __setModelRotation(self, index=0):
+    def setRotation(self, referenceFace=None):
         PathLog.track()
-        '''This method repostions the model and the stock based on the selected rotation index.
-        rotation index 0 is the base rotation established during the setup.  Calling the method
-        with no index will restore the model and placement.'''
+        '''This method repostions the model and the stock based on the rotation reference face.
+        Calling the method with no reference face will restore the model and placement.'''
 
-        # TODO Rewrite when rotations is a proper list. For now it just swaps
-        # placements if obj.rotations isn't None
+        rotObjectList = [self.obj.Stock]
+        rotObjectList.extend(self.obj.Model.Group)
+
+        if referenceFace is None:
+            print('face none. Restore placement')
+            orientationVector = self.obj.Stock.Placement.Rotation.Axis
+
+        else:
+            face=getattr(referenceFace[0].Shape, referenceFace[1][0])
+            facenormal = face.normalAt(0,0)
+            orientationVector = FreeCAD.Vector(facenormal)
+
+        # Calculate C rotation
+        orientationVector.projectToPlane(FreeCAD.Vector(0,0,0),FreeCAD.Vector(0,0,1))
+        cRot = math.degrees(orientationVector.getAngle(FreeCAD.Vector(0,1,0)))
 
 
-        # if obj.rotations is None:
-        #     return
+        # calculate A rotation
+        # orientationVector = FreeCAD.Vector(facenormal)
+        aRot = math.degrees(orientationVector.getAngle(FreeCAD.Vector(0,0,1)))
 
-        mod = self.obj.Model.Shape.Placement
-        rot = self.obj.Proxy.rotations
-        PathLog.track(mod, rot)
-        mod, rot = rot, mod
 
+        for o in rotObjectList:
+            center = FreeCAD.Vector(0,0,0)
+            ci = o.getGlobalPlacement().inverse().multVec(center)
+            real_center = o.Placement.multVec(ci)
+
+            shape = o.Shape.copy()
+            shape.rotate(real_center, FreeCAD.Vector(0,0,1), cRot)
+            shape.rotate(real_center, FreeCAD.Vector(1,0,0), aRot)
+            o.Placement = shape.Placement
 
     def __calculateRotationPlacement(self, face):
         PathLog.track(face)
@@ -212,19 +225,6 @@ class ObjectJob:
             angle = facenormal.getAngle(FreeCAD.Vector(0,0,1))*180/math.pi
             newplace = self.Model.Shape.Placement.multiply(FreeCAD.Placement(FreeCAD.Vector(0,0,0), axis, angle))
             return newplace
-
-    def addModelRotationIndex(self, face):
-        PathLog.track()
-
-        newplace = self.__calculateRotationPlacement(face)
-        PathLog.track(newplace)
-
-        # TODO Rewrite when rotations is a proper list
-        self.obj.Proxy.rotations = newplace
-        self.__setModelRotation()
-        return 1
-
-
 
 
     def __setPostProcessor(self, obj, currentPost=None):
@@ -387,10 +387,11 @@ class ObjectJob:
 
         if not hasattr(obj, "JobType"):
             obj.addProperty("App::PropertyEnumeration", "JobType", "Base", QtCore.QT_TRANSLATE_NOOP("PathJob","Select the Type of Job"))
-            obj.JobType = ["2D", "2.5D", "Lathe", "4th Axis"]
+            obj.JobType = ["2D", "2.5D", "Lathe", "Multiaxis"]
 
     def onChanged(self, obj, prop):
         PathLog.track(obj.Label, prop)
+
         if prop == "PostProcessor" and obj.PostProcessor:
             PathLog.track(obj.PostProcessor)
             try:

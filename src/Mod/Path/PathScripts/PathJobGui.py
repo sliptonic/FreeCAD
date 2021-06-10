@@ -769,8 +769,6 @@ class TaskPanel:
                 item = self.form.wcslist.findItems(f, QtCore.Qt.MatchExactly)[0]
                 item.setCheckState(QtCore.Qt.Checked)
 
-        self.form.RotationGroup.setVisible(self.obj.JobType == '4th Axis')
-
         self.form.postProcessorOutputFile.setText(self.obj.PostProcessorOutputFile)
         self.selectComboBoxText(self.form.postProcessor, self.obj.PostProcessor)
         self.form.postProcessorArguments.setText(self.obj.PostProcessorArgs)
@@ -1090,33 +1088,33 @@ class TaskPanel:
             FreeCADGui.Selection.addSelection(selObject, selFeature)
         return (selObject, p)
 
-    def modelAddRotationIndex(self):
-        PathLog.track()
+    # def modelAddRotationIndex(self):
+    #     PathLog.track()
 
-        sel = FreeCADGui.Selection.getSelectionEx()
-        if len(sel) != 1:
-            return None
+    #     sel = FreeCADGui.Selection.getSelectionEx()
+    #     if len(sel) != 1:
+    #         return None
 
-        selItem = sel[0]
+    #     selItem = sel[0]
 
-        if not selItem.HasSubObjects:
-            return None
+    #     if not selItem.HasSubObjects:
+    #         return None
 
-        if len(selItem.SubObjects) > 1:
-            return None
+    #     if len(selItem.SubObjects) > 1:
+    #         return None
 
-        selObject = selItem.SubObjects[0]
-        if selObject.ShapeType != 'Face':
-            return None
+    #     selObject = selItem.SubObjects[0]
+    #     if selObject.ShapeType != 'Face':
+    #         return None
 
-        self.obj.Proxy.addModelRotationIndex(selObject)
+    #     self.obj.Proxy.addModelRotationIndex(selItem.Object, selItem.SubElementNames[0])
 
 
-    def modelDeleteRotationIndex(self):
-        PathLog.track()
+    # def modelDeleteRotationIndex(self):
+    #     PathLog.track()
 
-    def rotationIndexChanged(self):
-        PathLog.track()
+    # def rotationIndexChanged(self):
+    #     PathLog.track()
 
     def updateStockEditor(self, index, force=False):
 
@@ -1372,11 +1370,11 @@ class TaskPanel:
         self.form.modelRotateLeft.clicked.connect(lambda: self.modelRotate(FreeCAD.Vector(0, 0, 1)))
         self.form.modelRotateRight.clicked.connect(lambda: self.modelRotate(FreeCAD.Vector(0, 0, -1)))
 
-        # Rotation Indices.
-        self.form.addRotationIndex.clicked.connect(self.modelAddRotationIndex)
-        self.form.deleteRotationIndex.clicked.connect(self.modelDeleteRotationIndex)
-        # self.form.rotationIndexList.itemSelectionChanged.connect(self.rotationIndexChanged)
-        # self.form.rotationIndexList.itemChanged.connect(self.rotationIndexChanged)
+        # # Rotation Indices.
+        # self.form.addRotationIndex.clicked.connect(self.modelAddRotationIndex)
+        # self.form.deleteRotationIndex.clicked.connect(self.modelDeleteRotationIndex)
+        # # self.form.rotationIndexList.itemSelectionChanged.connect(self.rotationIndexChanged)
+        # # self.form.rotationIndexList.itemChanged.connect(self.rotationIndexChanged)
 
 
 

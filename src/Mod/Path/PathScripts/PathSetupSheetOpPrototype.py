@@ -163,6 +163,7 @@ class OpPrototype(object):
             'App::PropertyLength':              PropertyLength,
             'App::PropertyLink':                Property,
             'App::PropertyLinkList':            Property,
+            'App::PropertyLinkSubGlobal':       Property,
             'App::PropertyLinkSubListGlobal':   Property,
             'App::PropertyMap':                 PropertyMap,
             'App::PropertyPercent':             PropertyPercent,

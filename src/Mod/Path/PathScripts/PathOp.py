@@ -128,6 +128,9 @@ class ObjectOp(object):
         obj.addProperty("App::PropertyString", "CycleTime", "Path", QtCore.QT_TRANSLATE_NOOP("PathOp", "Operations Cycle Time Estimation"))
         obj.setEditorMode('CycleTime', 1)  # read-only
 
+        obj.addProperty("App::PropertyLinkSubGlobal", "ReferenceFace", "Path", QtCore.QT_TRANSLATE_NOOP("PathOp", "Reference Face for 3+2 milling"))
+        obj.setEditorMode('ReferenceFace', 2)  # hidden
+
         features = self.opFeatures(obj)
 
         if FeatureBaseGeometry & features:
@@ -235,6 +238,10 @@ class ObjectOp(object):
         if not hasattr(obj, 'CycleTime'):
             obj.addProperty("App::PropertyString", "CycleTime", "Path", QtCore.QT_TRANSLATE_NOOP("PathOp", "Operations Cycle Time Estimation"))
 
+        if not hasattr(obj, 'ReferenceFace'):
+            obj.addProperty("App::PropertyLinkSubGlobal", "ReferenceFace", "Path", QtCore.QT_TRANSLATE_NOOP("PathOp", "Reference Face for 3+2 milling"))
+            obj.setEditorMode('ReferenceFace', 2)  # hidden
+
         self.setEditorModes(obj, features)
         self.opOnDocumentRestored(obj)
 
@@ -309,6 +316,11 @@ class ObjectOp(object):
 
         if 'Restore' not in obj.State and prop in ['Base', 'StartDepth', 'FinalDepth']:
             self.updateDepths(obj, True)
+
+        if prop == 'ReferenceFace':
+            print('made it here')
+            job = self.getJob(obj)
+            job.Proxy.setRotation(obj.ReferenceFace)
 
         self.opOnChanged(obj, prop)
 

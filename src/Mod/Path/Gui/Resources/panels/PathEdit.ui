@@ -112,8 +112,8 @@
         <rect>
          <x>0</x>
          <y>0</y>
-         <width>98</width>
-         <height>28</height>
+         <width>100</width>
+         <height>30</height>
         </rect>
        </property>
        <attribute name="label">
@@ -432,7 +432,7 @@
          <x>0</x>
          <y>0</y>
          <width>555</width>
-         <height>1084</height>
+         <height>941</height>
         </rect>
        </property>
        <attribute name="label">
@@ -664,36 +664,6 @@
             <widget class="QPushButton" name="moveToOrigin">
              <property name="text">
               <string>Move to Origin</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
-        <item>
-         <widget class="QGroupBox" name="RotationGroup">
-          <property name="title">
-           <string>Rotation Indices</string>
-          </property>
-          <layout class="QGridLayout" name="gridLayout_7">
-           <item row="0" column="0">
-            <widget class="QListView" name="rotationIndexList">
-             <property name="selectionBehavior">
-              <enum>QAbstractItemView::SelectRows</enum>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="0">
-            <widget class="QPushButton" name="addRotationIndex">
-             <property name="text">
-              <string>Add Index</string>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="1">
-            <widget class="QPushButton" name="deleteRotationIndex">
-             <property name="text">
-              <string>Remove Index</string>
              </property>
             </widget>
            </item>
