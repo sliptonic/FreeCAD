@@ -197,7 +197,7 @@ class PathWorkbench (Workbench):
                     self.appendContextMenu("", ["Path_ExportTemplate"] + self.toolbitctxmenu)
                 menuAppended = True
             if isinstance(obj.Proxy, PathScripts.PathOp.ObjectOp):
-                self.appendContextMenu("", ["Path_OperationCopy", "Path_OpActiveToggle"])
+                self.appendContextMenu("", ["Path_OperationCopy", "Path_OpActiveToggle", "Path_OpRecompute"])
                 menuAppended = True
             if obj.isDerivedFrom("Path::Feature"):
                 if "Profile" in selectedName or "Contour" in selectedName or "Dressup" in selectedName:

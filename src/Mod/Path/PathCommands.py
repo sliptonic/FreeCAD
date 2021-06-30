@@ -127,6 +127,40 @@ if FreeCAD.GuiUp:
     FreeCADGui.addCommand('Path_SelectLoop', _CommandSelectLoop())
 
 
+class _RecomputeOperation:
+    "command definition to recompute Operation tool path"
+    def GetResources(self):
+        return {'Pixmap': 'Path_OpRecompute',
+                'MenuText': QtCore.QT_TRANSLATE_NOOP("Path_OpRecompute", "Recompute the Operation Tool Path"),
+                'Accel': "P, R",
+                'ToolTip': QtCore.QT_TRANSLATE_NOOP("Path_OpRecompute", "Recompute the Operation Tool Path"),
+                'CmdType': "ForEdit"}
+
+    def IsActive(self):
+        if bool(FreeCADGui.Selection.getSelection()) is False:
+            return False
+        try:
+            for sel in FreeCADGui.Selection.getSelectionEx():
+                if not isinstance(sel.Object.Proxy, PathScripts.PathOp.ObjectOp):
+                    return False
+            return True
+        except(IndexError, AttributeError):
+            return False
+
+    def Activated(self):
+        FreeCAD.Console.PrintMessage('in PathCommands line 151\n')
+        # for sel in FreeCADGui.Selection.getSelectionEx():
+        #     op = PathScripts.PathDressup.baseOp(sel.Object)
+        #     op.Active = not op.Active
+        #     op.ViewObject.Visibility = op.Active
+
+        # FreeCAD.ActiveDocument.recompute()
+
+
+if FreeCAD.GuiUp:
+    FreeCADGui.addCommand('Path_OpRecompute', _RecomputeOperation())
+
+
 class _ToggleOperation:
     "command definition to toggle Operation Active state"
     def GetResources(self):
