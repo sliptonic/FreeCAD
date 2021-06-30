@@ -83,7 +83,7 @@ class PathWorkbench (Workbench):
         # build commands list
         projcmdlist = ["Path_Job", "Path_Post"]
         toolcmdlist = ["Path_Inspect", "Path_Simulator", "Path_SelectLoop",
-                       "Path_OpActiveToggle"]
+                       "Path_OpActiveToggle", "Path_OpRecompute"]
         prepcmdlist = ["Path_Fixture", "Path_Comment", "Path_Stop",
                        "Path_Custom", "Path_Probe"]
         twodopcmdlist = ["Path_Profile", "Path_Pocket_Shape", "Path_Drilling",
@@ -197,7 +197,7 @@ class PathWorkbench (Workbench):
                     self.appendContextMenu("", ["Path_ExportTemplate"] + self.toolbitctxmenu)
                 menuAppended = True
             if isinstance(obj.Proxy, PathScripts.PathOp.ObjectOp):
-                self.appendContextMenu("", ["Path_OperationCopy", "Path_OpActiveToggle"])
+                self.appendContextMenu("", ["Path_OperationCopy", "Path_OpActiveToggle", "Path_OpRecompute"])
                 menuAppended = True
             if obj.isDerivedFrom("Path::Feature"):
                 if "Profile" in selectedName or "Contour" in selectedName or "Dressup" in selectedName:
