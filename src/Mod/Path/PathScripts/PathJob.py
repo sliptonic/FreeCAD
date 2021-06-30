@@ -180,40 +180,93 @@ class ObjectJob:
 
     def setRotation(self, referenceFace=None):
         PathLog.track()
-        '''This method repostions the model and the stock based on the rotation reference face.
+        '''This method repositions the model and the stock based on the rotation reference face.
         Calling the method with no reference face will restore the model and placement.'''
 
         rotObjectList = [self.obj.Stock]
         rotObjectList.extend(self.obj.Model.Group)
 
         if referenceFace is None:
+            # Restoring placements of all objects
             print('face none. Restore placement')
-            orientationVector = self.obj.Stock.Placement.Rotation.Axis
+            for rotObject in rotObjectList:
+                rotObject.Placement = rotObject.home
+            return
 
-        else:
-            face=getattr(referenceFace[0].Shape, referenceFace[1][0])
-            facenormal = face.normalAt(0,0)
-            orientationVector = FreeCAD.Vector(facenormal)
+        # Reposition all objects for the reference
+
+        face=getattr(referenceFace[0].Shape, referenceFace[1][0])
 
         # Calculate C rotation
-        orientationVector.projectToPlane(FreeCAD.Vector(0,0,0),FreeCAD.Vector(0,0,1))
-        cRot = math.degrees(orientationVector.getAngle(FreeCAD.Vector(0,1,0)))
+        facenormal = face.normalAt(0,0)
 
+        facenormal.projectToPlane(FreeCAD.Vector(0,0,0),FreeCAD.Vector(0,0,1))
+        posRot = facenormal.getAngle(FreeCAD.Vector(0,1,0))
+        posRot = math.degrees(posRot) if not math.isnan(posRot) else 0
 
-        # calculate A rotation
-        # orientationVector = FreeCAD.Vector(facenormal)
-        aRot = math.degrees(orientationVector.getAngle(FreeCAD.Vector(0,0,1)))
+        negRot = facenormal.getAngle(FreeCAD.Vector(0,-1,0))
+        negRot = math.degrees(negRot) if not math.isnan(negRot) else 0
 
+        cRot = 0-negRot if negRot < posRot else posRot
 
-        for o in rotObjectList:
-            center = FreeCAD.Vector(0,0,0)
-            ci = o.getGlobalPlacement().inverse().multVec(center)
-            real_center = o.Placement.multVec(ci)
+        print('Rotating C {} degrees'.format(cRot))
+        for rotObject in rotObjectList:
+            self.__oneRotation(rotObject, FreeCAD.Vector(0,0,1), cRot)
 
-            shape = o.Shape.copy()
-            shape.rotate(real_center, FreeCAD.Vector(0,0,1), cRot)
-            shape.rotate(real_center, FreeCAD.Vector(1,0,0), aRot)
-            o.Placement = shape.Placement
+        #calculate A rotation
+        face=getattr(referenceFace[0].Shape, referenceFace[1][0])
+        facenormal = face.normalAt(0,0)
+
+        aRot = facenormal.getAngle(FreeCAD.Vector(0,0,1))
+        aRot = math.degrees(aRot) if not math.isnan(aRot) else 0
+
+        align = facenormal.getAngle(FreeCAD.Vector(0,1,0))
+        if math.isnan(align):
+            aRot = 0
+        else:
+            aRot = 0-aRot if math.degrees(align) >= 90 else aRot
+
+        print('Rotating A {} degrees'.format(aRot))
+        for rotObject in rotObjectList:
+            self.__oneRotation(rotObject, FreeCAD.Vector(1,0,0), cRot)
+
+        self.__setVisePosition(aRot=aRot, cRot=cRot)
+
+        FreeCAD.ActiveDocument.recompute()
+
+        return {'A':aRot, 'C':cRot}
+
+    def __setVisePosition(self, jawopen=None, aRot=None, bRot=None, cRot=None):
+        # Set up the vise visualization
+        try:
+            pb = FreeCAD.ActiveDocument.getObject("PropertyBag")
+            if jawopen is not None:
+                pb.jawopen = jawopen
+            if aRot is not None:
+                pb.aRot = aRot
+            if bRot is not None:
+                pb.bRot = bRot
+            if cRot is not None:
+                pb.cRot = cRot
+
+            # pb.APosition = aRot #+ pb.APosition.Value
+            # pb.CPosition = cRot #+ pb.CPosition.Value
+        except:
+            pass
+
+    def __oneRotation(self, obj, vec, angle):
+        '''rotates an object around one machine axis'''
+
+        if angle == 0:
+            return
+        center = FreeCAD.Vector(0,0,0)
+        ci = obj.getGlobalPlacement().inverse().multVec(center)
+        real_center = obj.Placement.multVec(ci)
+
+        shape = obj.Shape.copy()
+        shape.rotate(real_center, vec, angle)
+
+        obj.Placement = shape.Placement
 
     def __calculateRotationPlacement(self, face):
         PathLog.track(face)
@@ -257,6 +310,11 @@ class ObjectJob:
             if models:
                 model.addObjects([createModelResourceClone(obj, base) for base in models])
             obj.Model = model
+
+        for model in obj.Model.Group:
+            if not hasattr(model, 'home'):
+                model.addProperty('App::PropertyPlacement', 'home')
+                model.home = model.Placement
 
         if hasattr(obj, 'Base'):
             PathLog.info("Converting Job.Base to new Job.Model for {}".format(obj.Label))

@@ -90,6 +90,9 @@ class Stock(object):
     def onDocumentRestored(self, obj):
         if hasattr(obj, 'StockType'):
             obj.setEditorMode('StockType', 2) # hide
+        if not hasattr(obj, 'home'):
+            obj.addProperty("App::PropertyPlacement", 'home')
+            obj.home = obj.Placement
 
 class StockFromBase(Stock):
 
@@ -103,6 +106,7 @@ class StockFromBase(Stock):
         obj.addProperty("App::PropertyDistance", "ExtZneg", "Stock", QtCore.QT_TRANSLATE_NOOP("PathStock", "Extra allowance from part bound box in negative Z direction"))
         obj.addProperty("App::PropertyDistance", "ExtZpos", "Stock", QtCore.QT_TRANSLATE_NOOP("PathStock", "Extra allowance from part bound box in positive Z direction"))
         obj.addProperty("App::PropertyLink","Material","Component", QtCore.QT_TRANSLATE_NOOP("App::Property","A material for this object"))
+        obj.addProperty("App::PropertyPlacement", 'home')
 
         obj.Base = base
         obj.ExtXneg= 1.0
@@ -116,6 +120,7 @@ class StockFromBase(Stock):
         bb = shapeBoundBox(base.Group) if base else None
         if bb:
             obj.Placement = FreeCAD.Placement(FreeCAD.Vector(bb.XMin, bb.YMin, bb.ZMin), FreeCAD.Rotation())
+            obj.home = obj.Placement
         else:
             PathLog.track(obj.Label, base.Label)
         obj.Proxy = self
@@ -262,6 +267,7 @@ def CreateFromBase(job, neg=None, pos=None, placement=None):
 
     if placement:
         obj.Placement = placement
+        obj.home = placement
 
     SetupStockObject(obj, StockType.FromBase)
     obj.Proxy.execute(obj)
@@ -285,12 +291,14 @@ def CreateBox(job, extent=None, placement=None):
 
     if placement:
         obj.Placement = placement
+
     elif base:
         bb = shapeBoundBox(base.Group)
         origin = FreeCAD.Vector(bb.XMin, bb.YMin, bb.ZMin)
         obj.Placement = FreeCAD.Placement(origin, FreeCAD.Vector(), 0)
 
     SetupStockObject(obj, StockType.CreateBox)
+    obj.home = obj.Placement
     return obj
 
 def CreateCylinder(job, radius=None, height=None, placement=None):
@@ -316,6 +324,7 @@ def CreateCylinder(job, radius=None, height=None, placement=None):
         obj.Placement = FreeCAD.Placement(origin, FreeCAD.Vector(), 0)
 
     SetupStockObject(obj, StockType.CreateCylinder)
+    obj.home = obj.Placement
     return obj
 
 def TemplateAttributes(stock, includeExtent=True, includePlacement=True):

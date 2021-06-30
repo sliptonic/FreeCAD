@@ -45,7 +45,7 @@ __contributors__ = "russ4262 (Russell Johnson)"
 
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-# PathLog.trackModule(PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 
 # Qt translation handling
@@ -289,6 +289,15 @@ class ObjectOp(PathOp.ObjectOp):
 
         return paths, simobj
 
+    def getRotation(self, obj):
+        PathLog.track()
+        commands = []
+        rotation = self.job.Proxy.setRotation(obj.ReferenceFace)
+        if rotation:
+            commands.append(Path.Command('G0', {'Z': obj.ClearanceHeight.Value, 'F': self.vertRapid}))
+            for axis in rotation.keys():
+                commands.append(Path.Command('G0', {axis: rotation[axis], 'F': self.vertRapid}))
+
     def opExecute(self, obj, getsim=False): # pylint: disable=arguments-differ
         '''opExecute(obj, getsim=False) ... implementation of Path.Area ops.
         determines the parameters for _buildPathArea().
@@ -299,6 +308,10 @@ class ObjectOp(PathOp.ObjectOp):
             areaOpUseProjection(obj)      ... return true if operation can use projection
         instead.'''
         PathLog.track()
+
+        # First rotate the model to the correct orientation and get the
+        # corresponding gcodes for that rotation.
+        self.commandlist = self.getRotation(obj)
 
         # Instantiate class variables for operation reference
         self.endVector = None # pylint: disable=attribute-defined-outside-init

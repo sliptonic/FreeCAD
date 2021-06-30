@@ -42,7 +42,7 @@ __contributors__ = "russ4262 (Russell Johnson)"
 
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-# PathLog.trackModule()
+PathLog.trackModule()
 
 
 # Qt translation handling
@@ -100,9 +100,10 @@ class ObjectFace(PathPocketBase.ObjectPocket):
 
         PathLog.debug('depthparams: {}'.format([i for i in self.depthparams]))
 
+        self.removalshapes = []
+
         if obj.Base:
             PathLog.debug("obj.Base: {}".format(obj.Base))
-            self.removalshapes = []
             faces = []
             holes = []
             holeEnvs = []

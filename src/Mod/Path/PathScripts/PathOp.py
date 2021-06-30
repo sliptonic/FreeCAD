@@ -321,6 +321,7 @@ class ObjectOp(object):
             print('made it here')
             job = self.getJob(obj)
             job.Proxy.setRotation(obj.ReferenceFace)
+            return
 
         self.opOnChanged(obj, prop)
 
@@ -528,6 +529,10 @@ class ObjectOp(object):
 
         # make sure Base is still valid or clear it
         self.sanitizeBase(obj)
+
+        if self.job.JobType == 'Multiaxis':
+            PathLog.track('processing multiaxis')
+
 
         if FeatureCoolant & self.opFeatures(obj):
             if not hasattr(obj, 'CoolantMode'):

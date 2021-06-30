@@ -1247,14 +1247,14 @@ class TaskPanel:
             self.form.modelSetY0.setEnabled(True)
             self.form.modelSetZ0.setEnabled(True)
             self.form.modelMoveGroup.setEnabled(True)
-            self.form.modelRotateGroup.setEnabled(True)
+            # self.form.modelRotateGroup.setEnabled(True)
             self.form.modelRotateCompound.setEnabled(len(sel) > 1)
         else:
             self.form.modelSetX0.setEnabled(False)
             self.form.modelSetY0.setEnabled(False)
             self.form.modelSetZ0.setEnabled(False)
             self.form.modelMoveGroup.setEnabled(False)
-            self.form.modelRotateGroup.setEnabled(False)
+            # self.form.modelRotateGroup.setEnabled(False)
 
     def jobModelEdit(self):
         dialog = PathJobDlg.JobCreate()
