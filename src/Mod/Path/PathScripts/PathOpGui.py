@@ -116,8 +116,12 @@ class ViewProvider(object):
         job = self.Object.Proxy.getJob(self.Object)
         if job:
             job.ViewObject.Proxy.setupEditVisibility(job)
+
+            #Rotate the model and stock to correct orientation
+            if self.Object.ReferenceFace is not None:
+                job.Proxy.setRotation(self.Object.ReferenceFace)
         else:
-            PathLog.info("did not find no job")
+            PathLog.info("No Job found")
 
     def clearTaskPanel(self):
         '''clearTaskPanel() ... internal callback function when editing has finished.'''
@@ -126,6 +130,7 @@ class ViewProvider(object):
         if job:
             job.ViewObject.Proxy.resetEditVisibility(job)
             job.Proxy.setRotation() #Tell the job to reset the rotation
+
 
     def unsetEdit(self, arg1, arg2):
         # pylint: disable=unused-argument
@@ -1195,6 +1200,7 @@ class TaskPanel(object):
         if button == QtGui.QDialogButtonBox.Apply:
             self.panelGetFields()
             self.setClean()
+            self.obj.Proxy.opExecute(self.obj)
             FreeCAD.ActiveDocument.recompute()
 
     def modifyStandardButtons(self, buttonBox):

@@ -191,6 +191,7 @@ class ObjectJob:
             print('face none. Restore placement')
             for rotObject in rotObjectList:
                 rotObject.Placement = rotObject.home
+                self.__setVisePosition(aPosition=0, cPosition=0)
             return
 
         # Reposition all objects for the reference
@@ -228,30 +229,32 @@ class ObjectJob:
 
         print('Rotating A {} degrees'.format(aRot))
         for rotObject in rotObjectList:
-            self.__oneRotation(rotObject, FreeCAD.Vector(1,0,0), cRot)
+            self.__oneRotation(rotObject, FreeCAD.Vector(1,0,0), aRot)
 
-        self.__setVisePosition(aRot=aRot, cRot=cRot)
+        self.__setVisePosition(aPosition=aRot, cPosition=cRot)
 
         FreeCAD.ActiveDocument.recompute()
 
         return {'A':aRot, 'C':cRot}
 
-    def __setVisePosition(self, jawopen=None, aRot=None, bRot=None, cRot=None):
+    def __setVisePosition(self, jawopen=None, aPosition=None, bPosition=None, cPosition=None):
+        PathLog.track('jawopen: {}, aPosition {}, bPosition: {}, cPosition: {}'.format(jawopen, aPosition, bPosition, cPosition))
         # Set up the vise visualization
         try:
             pb = FreeCAD.ActiveDocument.getObject("PropertyBag")
-            if jawopen is not None:
+            if jawopen is not None and hasattr(pb, 'jawopen'):
                 pb.jawopen = jawopen
-            if aRot is not None:
-                pb.aRot = aRot
-            if bRot is not None:
-                pb.bRot = bRot
-            if cRot is not None:
-                pb.cRot = cRot
+            if aPosition is not None and hasattr(pb, 'APosition'):
+                pb.APosition = aPosition
+            if bPosition is not None and hasattr(pb, 'BPosition'):
+                pb.BPosition = bPosition
+            if cPosition is not None and hasattr(pb, 'CPosition'):
+                pb.CPosition = cPosition
 
             # pb.APosition = aRot #+ pb.APosition.Value
             # pb.CPosition = cRot #+ pb.CPosition.Value
-        except:
+        except Exception as e:
+            PathLog.track(e)
             pass
 
     def __oneRotation(self, obj, vec, angle):

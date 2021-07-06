@@ -33,7 +33,7 @@ from lazy_loader.lazy_loader import LazyLoader
 Part = LazyLoader('Part', globals(), 'Part')
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-#PathLog.trackModule(PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 # Qt translation handling
 def translate(context, text, disambig=None):
@@ -87,16 +87,27 @@ def shapeBoundBox(obj):
     return None
 
 class Stock(object):
+    def __init__(self, obj):
+        obj.addProperty("App::PropertyPlacement", 'home')
+        obj.addProperty("App::PropertyBool", "locked")
+
     def onDocumentRestored(self, obj):
         if hasattr(obj, 'StockType'):
             obj.setEditorMode('StockType', 2) # hide
         if not hasattr(obj, 'home'):
             obj.addProperty("App::PropertyPlacement", 'home')
             obj.home = obj.Placement
+        if not hasattr(obj, 'locked'):
+            obj.addProperty("App::PropertyBool", "locked")
+            obj.setEditorMode('locked', 2) # hide
+            obj.locked = True
+
+
 
 class StockFromBase(Stock):
 
     def __init__(self, obj, base):
+        super().__init__(obj)
         "Make stock"
         obj.addProperty("App::PropertyLink", "Base", "Base", QtCore.QT_TRANSLATE_NOOP("PathStock", "The base object this stock is derived from"))
         obj.addProperty("App::PropertyDistance", "ExtXneg", "Stock", QtCore.QT_TRANSLATE_NOOP("PathStock", "Extra allowance from part bound box in negative X direction"))
@@ -106,7 +117,8 @@ class StockFromBase(Stock):
         obj.addProperty("App::PropertyDistance", "ExtZneg", "Stock", QtCore.QT_TRANSLATE_NOOP("PathStock", "Extra allowance from part bound box in negative Z direction"))
         obj.addProperty("App::PropertyDistance", "ExtZpos", "Stock", QtCore.QT_TRANSLATE_NOOP("PathStock", "Extra allowance from part bound box in positive Z direction"))
         obj.addProperty("App::PropertyLink","Material","Component", QtCore.QT_TRANSLATE_NOOP("App::Property","A material for this object"))
-        obj.addProperty("App::PropertyPlacement", 'home')
+        # obj.addProperty("App::PropertyPlacement", 'home')
+        # obj.addProperty("App::PropertyBool", "locked")
 
         obj.Base = base
         obj.ExtXneg= 1.0
@@ -125,6 +137,8 @@ class StockFromBase(Stock):
             PathLog.track(obj.Label, base.Label)
         obj.Proxy = self
 
+        obj.locked = True
+
         # debugging aids
         self.origin = None
         self.length = None
@@ -137,6 +151,8 @@ class StockFromBase(Stock):
         return None
 
     def execute(self, obj):
+        if obj.locked:
+            return
         bb = shapeBoundBox(obj.Base.Group) if obj.Base and hasattr(obj.Base, 'Group') else None
         PathLog.track(obj.Label, bb)
 
@@ -178,6 +194,8 @@ class StockCreateBox(Stock):
         return None
 
     def execute(self, obj):
+        if obj.locked:
+            return
         if obj.Length < self.MinExtent:
             obj.Length = self.MinExtent
         if obj.Width < self.MinExtent:
@@ -211,6 +229,8 @@ class StockCreateCylinder(Stock):
         return None
 
     def execute(self, obj):
+        if obj.locked:
+            return
         if obj.Radius < self.MinExtent:
             obj.Radius = self.MinExtent
         if obj.Height < self.MinExtent:

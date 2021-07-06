@@ -561,22 +561,26 @@ class ObjectOp(object):
         # in case they still have an expression referencing any op values
         obj.recompute()
 
-        self.commandlist = []
-        self.commandlist.append(Path.Command("(%s)" % obj.Label))
-        if obj.Comment:
-            self.commandlist.append(Path.Command("(%s)" % obj.Comment))
+        if self.commandlist is None:
+            self.commandlist = []
+        # self.commandlist.append(Path.Command("(%s)" % obj.Label))
+        # if obj.Comment:
+        #     self.commandlist.append(Path.Command("(%s)" % obj.Comment))
 
-        result = self.opExecute(obj)  # pylint: disable=assignment-from-no-return
+        # result = self.opExecute(obj)  # pylint: disable=assignment-from-no-return
 
-        if self.commandlist and (FeatureHeights & self.opFeatures(obj)):
-            # Let's finish by rapid to clearance...just for safety
-            self.commandlist.append(Path.Command("G0", {"Z": obj.ClearanceHeight.Value}))
+        # if self.commandlist and (FeatureHeights & self.opFeatures(obj)):
+        #     # Let's finish by rapid to clearance...just for safety
+        #     self.commandlist.append(Path.Command("G0", {"Z": obj.ClearanceHeight.Value}))
+
+        #print('575 commandlist: {}'.format(self.commandlist))
 
         path = Path.Path(self.commandlist)
         obj.Path = path
         obj.CycleTime = self.getCycleTimeEstimate(obj)
         self.job.Proxy.getCycleTime()
-        return result
+        # return result
+        return obj.Path
 
     def getCycleTimeEstimate(self, obj):
 

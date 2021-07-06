@@ -297,6 +297,8 @@ class ObjectOp(PathOp.ObjectOp):
             commands.append(Path.Command('G0', {'Z': obj.ClearanceHeight.Value, 'F': self.vertRapid}))
             for axis in rotation.keys():
                 commands.append(Path.Command('G0', {axis: rotation[axis], 'F': self.vertRapid}))
+        PathLog.track('commands: {}'.format(commands))
+        return commands
 
     def opExecute(self, obj, getsim=False): # pylint: disable=arguments-differ
         '''opExecute(obj, getsim=False) ... implementation of Path.Area ops.
@@ -308,10 +310,12 @@ class ObjectOp(PathOp.ObjectOp):
             areaOpUseProjection(obj)      ... return true if operation can use projection
         instead.'''
         PathLog.track()
+        if self.commandlist is None:
+            self.commandlist = []
 
         # First rotate the model to the correct orientation and get the
         # corresponding gcodes for that rotation.
-        self.commandlist = self.getRotation(obj)
+        self.commandlist.extend(self.getRotation(obj))
 
         # Instantiate class variables for operation reference
         self.endVector = None # pylint: disable=attribute-defined-outside-init
