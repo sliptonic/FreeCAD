@@ -151,13 +151,42 @@ class _RecomputeOperation:
         FreeCAD.Console.PrintMessage('in PathCommands line 151\n')
         for sel in FreeCADGui.Selection.getSelectionEx():
             op = sel.Object
-            op.recompute()
+            op.Proxy.execute(op, recalculate=True)
 
         FreeCAD.ActiveDocument.recompute()
 
 
 if FreeCAD.GuiUp:
     FreeCADGui.addCommand('Path_OpRecompute', _RecomputeOperation())
+
+
+class _RecomputeToggle:
+    "command definition to set recompute preference"
+    def GetResources(self):
+        return {'Pixmap': 'Path_Recompute',
+                'MenuText': QtCore.QT_TRANSLATE_NOOP("Path_ToggleRecompute", "Enable/Disable Automatic Path Recompute"),
+                'Accel': "P, R",
+                'ToolTip': QtCore.QT_TRANSLATE_NOOP("Path_ToggleRecompute", "Enable/Disable Automatic Path Recompute"),
+                'CmdType': "ForEdit"}
+
+    def IsActive(self):
+        return True
+
+    def Activated(self):
+        mainwin = FreeCADGui.getMainWindow()
+        toolbar = [t for t in mainwin.findChildren(QtGui.QToolBar) if t.objectName() == 'Tool Commands'][0]
+        button = [b for b in toolbar.actions() if b.objectName() == 'Path_ToggleRecompute'][0]
+
+        FreeCAD.PathRecalc = not FreeCAD.PathRecalc
+        print(FreeCAD.PathRecalc)
+
+        if not button.isCheckable():
+            button.setCheckable(True)
+
+        button.setChecked(FreeCAD.PathRecalc)
+
+if FreeCAD.GuiUp:
+    FreeCADGui.addCommand('Path_ToggleRecompute', _RecomputeToggle())
 
 
 class _ToggleOperation:

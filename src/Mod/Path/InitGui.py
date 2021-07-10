@@ -55,6 +55,7 @@ class PathWorkbench (Workbench):
 
     def Initialize(self):
         global PathCommandGroup
+        FreeCAD.PathRecalc = False
 
         # Add preferences pages - before loading PathGui to properly order pages of Path group
         from PathScripts import PathPreferencesPathJob, PathPreferencesPathDressup
@@ -83,7 +84,7 @@ class PathWorkbench (Workbench):
         # build commands list
         projcmdlist = ["Path_Job", "Path_Post"]
         toolcmdlist = ["Path_Inspect", "Path_Simulator", "Path_SelectLoop",
-                       "Path_OpActiveToggle", "Path_OpRecompute"]
+                       "Path_OpActiveToggle", "Path_OpRecompute", "Path_ToggleRecompute"]
         prepcmdlist = ["Path_Fixture", "Path_Comment", "Path_Stop",
                        "Path_Custom", "Path_Probe"]
         twodopcmdlist = ["Path_Profile", "Path_Pocket_Shape", "Path_Drilling",
