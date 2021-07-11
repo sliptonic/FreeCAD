@@ -25,6 +25,7 @@ import time
 from PySide import QtCore
 
 import Path
+import FreeCAD
 import PathScripts.PathGeom as PathGeom
 import PathScripts.PathLog as PathLog
 import PathScripts.PathPreferences as PathPreferences
@@ -484,7 +485,7 @@ class ObjectOp(object):
         return False
 
     @waiting_effects
-    def execute(self, obj):
+    def execute(self, obj, recalculate=False):
         '''execute(obj) ... base implementation - do not overwrite!
         Verifies that the operation is assigned to a job and that the job also has a valid Base.
         It also sets the following instance variables that can and should be safely be used by
@@ -544,19 +545,24 @@ class ObjectOp(object):
         # in case they still have an expression referencing any op values
         obj.recompute()
 
-        self.commandlist = []
-        self.commandlist.append(Path.Command("(%s)" % obj.Label))
-        if obj.Comment:
-            self.commandlist.append(Path.Command("(%s)" % obj.Comment))
+        recalculate = getattr(FreeCAD, 'PathRecalc', False) or recalculate
 
-        result = self.opExecute(obj)  # pylint: disable=assignment-from-no-return
+        if recalculate:
+            self.commandlist = []
+            self.commandlist.append(Path.Command("(%s)" % obj.Label))
+            if obj.Comment:
+                self.commandlist.append(Path.Command("(%s)" % obj.Comment))
 
-        if self.commandlist and (FeatureHeights & self.opFeatures(obj)):
-            # Let's finish by rapid to clearance...just for safety
-            self.commandlist.append(Path.Command("G0", {"Z": obj.ClearanceHeight.Value}))
+            result = self.opExecute(obj)  # pylint: disable=assignment-from-no-return
 
-        path = Path.Path(self.commandlist)
-        obj.Path = path
+            if self.commandlist and (FeatureHeights & self.opFeatures(obj)):
+                # Let's finish by rapid to clearance...just for safety
+                self.commandlist.append(Path.Command("G0", {"Z": obj.ClearanceHeight.Value}))
+
+            path = Path.Path(self.commandlist)
+            obj.Path = path
+        else:
+            result = obj.Path
         obj.CycleTime = self.getCycleTimeEstimate(obj)
         self.job.Proxy.getCycleTime()
         return result

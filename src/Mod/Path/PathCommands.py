@@ -31,6 +31,9 @@ from PathScripts.PathUtils import horizontalFaceLoop
 from PathScripts.PathUtils import addToJob
 from PathScripts.PathUtils import findParentJob
 
+PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+PathLog.trackModule()
+
 if FreeCAD.GuiUp:
     import FreeCADGui
     from PySide import QtCore
@@ -148,7 +151,7 @@ class _RecomputeOperation:
             return False
 
     def Activated(self):
-        FreeCAD.Console.PrintMessage('in PathCommands line 151\n')
+        PathLog.track()
         for sel in FreeCADGui.Selection.getSelectionEx():
             op = sel.Object
             op.Proxy.execute(op, recalculate=True)

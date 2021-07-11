@@ -1156,7 +1156,8 @@ class TaskPanel(object):
 
     def clicked(self, button):
         '''clicked(button) ... callback invoked when the user presses any of the task panel buttons.'''
-        if button == QtGui.QDialogButtonBox.Apply:
+        if button in [QtGui.QDialogButtonBox.Apply, QtGui.QDialogButtonBox.Ok]:
+            self.obj.Proxy.execute(self.obj, recalculate=True)
             self.panelGetFields()
             self.setClean()
             FreeCAD.ActiveDocument.recompute()
