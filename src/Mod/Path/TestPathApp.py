@@ -31,6 +31,7 @@ from PathTests.TestPathDressupHoldingTags import TestHoldingTags
 from PathTests.TestPathDrillGenerator import TestPathDrillGenerator
 from PathTests.TestPathGeom import TestPathGeom
 # from PathTests.TestPathHelix import TestPathHelix
+from PathTests.TestPathHelixGenerator import TestPathHelixGenerator
 from PathTests.TestPathLog import TestPathLog
 from PathTests.TestPathOpTools import TestPathOpTools
 # from PathTests.TestPathPost import PathPostTestCases
@@ -72,3 +73,4 @@ False if TestPathUtil.__name__ else True
 False if TestPathVcarve.__name__ else True
 False if TestPathVoronoi.__name__ else True
 False if TestPathDrillGenerator.__name__ else True
+False if TestPathHelixGenerator.__name__ else True
