@@ -142,7 +142,7 @@ SET(PathScripts_SRCS
     PathScripts/__init__.py
 )
 
-SET(PathScripts_generator_SRCS
+SET(PathScripts_Generators_SRCS
     Generators/drill_generator.py
     Generators/helix_generator.py
 )
@@ -266,6 +266,7 @@ SET(Path_Data
 
 SET(all_files
     ${PathScripts_SRCS}
+    ${PathScripts_Generators_SRCS}
     ${PathScripts_post_SRCS}
     ${Tools_SRCS}
     ${Tools_Bit_SRCS}
@@ -312,6 +313,13 @@ INSTALL(
         Mod/Path/PathTests
 )
 
+
+INSTALL(
+    FILES
+        ${PathScripts_Generators_SRCS}
+    DESTINATION
+        Mod/Path/PathScripts/Generators
+)
 
 INSTALL(
     FILES
@@ -368,4 +376,3 @@ INSTALL(
     DESTINATION
         Mod/Path/Data/Threads
 )
-
