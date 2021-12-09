@@ -56,7 +56,11 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
     """Page controller class for the Deburr operation."""
 
     def getForm(self):
-        return FreeCADGui.PySideUic.loadUi(":/panels/PageOpDeburrEdit.ui")
+        form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpDeburrEdit.ui")
+        form.direction.clear()
+        form.direction.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "CW"), "CW")
+        form.direction.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "CCW"), "CCW")
+        return form
 
     def initPage(self, obj):
         self.opImagePath = "{}Mod/Path/Images/Ops/{}".format(
@@ -81,8 +85,8 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         elif self.form.joinMiter.isChecked():
             obj.Join = "Miter"
 
-        if obj.Direction != str(self.form.direction.currentText()):
-            obj.Direction = str(self.form.direction.currentText())
+        if obj.Direction != str(self.form.direction.currentData()):
+            obj.Direction = str(self.form.direction.currentData())
 
         self.updateToolController(obj, self.form.toolController)
         self.updateCoolant(obj, self.form.coolantController)
