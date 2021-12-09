@@ -612,6 +612,31 @@ class TaskPanel:
         self.obj = vobj.Object
         self.deleteOnReject = deleteOnReject
         self.form = FreeCADGui.PySideUic.loadUi(":/panels/PathEdit.ui")
+
+        self.form.orderBy.clear()
+        self.form.orderBy.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Fixture"), "Fixture"
+        )
+        self.form.orderBy.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Tool"), "Tool")
+        self.form.orderBy.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Operation"), "Operation"
+        )
+
+        self.form.stock.clear()
+        self.form.stock.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Create Box"), "Create Box"
+        )
+        self.form.stock.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Create Cylinder"), "Create Cylinder"
+        )
+        self.form.stock.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Extend Model's Bound Box"),
+            "Extend Model's Bound Box",
+        )
+        self.form.stock.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Use Existing Solid"), "Use Existing Solid"
+        )
+
         self.template = PathJobDlg.JobTemplateExport(
             self.obj, self.form.jobBox.widget(1)
         )
@@ -739,7 +764,7 @@ class TaskPanel:
             ]
             try:
                 self.obj.SplitOutput = self.form.splitOutput.isChecked()
-                self.obj.OrderOutputBy = str(self.form.orderBy.currentText())
+                self.obj.OrderOutputBy = str(self.form.orderBy.currentData())
 
                 flist = []
                 for i in range(self.form.wcslist.count()):
@@ -763,7 +788,7 @@ class TaskPanel:
         self.setupOps.getFields()
 
     def selectComboBoxText(self, widget, text):
-        index = widget.findText(text, QtCore.Qt.MatchFixedString)
+        index = widget.findData(text, QtCore.Qt.MatchFixedString)
         if index >= 0:
             widget.blockSignals(True)
             widget.setCurrentIndex(index)
@@ -1271,7 +1296,7 @@ class TaskPanel:
             else:
                 PathLog.error(
                     translate("PathJob", "Unsupported stock type %s (%d)")
-                    % (self.form.stock.currentText(), index)
+                    % (self.form.stock.currentData(), index)
                 )
         self.stockEdit.activate(self.obj, index == -1)
 
