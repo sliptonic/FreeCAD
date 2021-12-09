@@ -51,7 +51,60 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
     def getForm(self):
         """getForm() ... returns UI"""
         debugMsg("getForm()")
-        return FreeCADGui.PySideUic.loadUi(":/panels/PageOpSlotEdit.ui")
+        form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpSlotEdit.ui")
+        form.geo1Reference.clear()
+        form.geo1Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Center of Mass"), "Center of Mass"
+        )
+        form.geo1Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Center of BoundBox"), "Center of BoundBox"
+        )
+        form.geo1Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Lowest Point"), "Lowest Point"
+        )
+        form.geo1Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Highest Point"), "Highest Point"
+        )
+        form.geo1Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Long Edge"), "Long Edge"
+        )
+        form.geo1Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Short Edge"), "Short Edge"
+        )
+        form.geo1Reference.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Vertex"), "Vertex")
+
+        form.geo2Reference.clear()
+        form.geo2Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Center of Mass"), "Center of Mass"
+        )
+        form.geo2Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Center of BoundBox"), "Center of BoundBox"
+        )
+        form.geo2Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Lowest Point"), "Lowest Point"
+        )
+        form.geo2Reference.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Highest Point"), "Highest Point"
+        )
+        form.geo2Reference.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Vertex"), "Vertex")
+
+        form.layerMode.clear()
+        form.layerMode.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Single-pass"), "Single-pass"
+        )
+        form.layerMode.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Multi-pass"), "Multi-pass"
+        )
+
+        form.pathOrientation.clear()
+        form.pathOrientation.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Start to End"), "Start to End"
+        )
+        form.pathOrientation.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Perpendicular"), "Perpendicular"
+        )
+
+        return form
 
     def initPage(self, obj):
         """initPage(obj) ... Is called after getForm() to initiate the task panel."""
@@ -113,10 +166,10 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.updateToolController(obj, self.form.toolController)
         self.updateCoolant(obj, self.form.coolantController)
 
-        obj.Reference1 = str(self.form.geo1Reference.currentText())
+        obj.Reference1 = str(self.form.geo1Reference.currentData())
         self.geo1Extension.updateProperty()
 
-        obj.Reference2 = str(self.form.geo2Reference.currentText())
+        obj.Reference2 = str(self.form.geo2Reference.currentData())
         self.geo2Extension.updateProperty()
 
         val = self.propEnums["LayerMode"][self.form.layerMode.currentIndex()]
