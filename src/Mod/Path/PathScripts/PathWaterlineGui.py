@@ -46,24 +46,60 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
 
     def getForm(self):
         """getForm() ... returns UI"""
-        return FreeCADGui.PySideUic.loadUi(":/panels/PageOpWaterlineEdit.ui")
+        form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpWaterlineEdit.ui")
+        form.algorithmSelect.clear()
+        form.algorithmSelect.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "OCL Dropcutter"), "OCL Dropcutter"
+        )
+        form.algorithmSelect.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Experimental"), "Experimental"
+        )
+
+        form.boundBoxSelect.clear()
+        form.boundBoxSelect.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Stock"), "Stock")
+        form.boundBoxSelect.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "BaseBoundBox"), "BaseBoundBox"
+        )
+
+        form.layerMode.clear()
+        form.layerMode.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Single-pass"), "Single-pass"
+        )
+        form.layerMode.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Multi-pass"), "Multi-pass"
+        )
+
+        form.cutPattern.clear()
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "None"), "None")
+        form.cutPattern.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Circular"), "Circular"
+        )
+        form.cutPattern.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "CircularZigZag"), "CircularZigZag"
+        )
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Line"), "Line")
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Offset"), "Offset")
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Spiral"), "Spiral")
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "ZigZag"), "ZigZag")
+
+        return form
 
     def getFields(self, obj):
         """getFields(obj) ... transfers values from UI to obj's proprties"""
         self.updateToolController(obj, self.form.toolController)
         self.updateCoolant(obj, self.form.coolantController)
 
-        if obj.Algorithm != str(self.form.algorithmSelect.currentText()):
-            obj.Algorithm = str(self.form.algorithmSelect.currentText())
+        if obj.Algorithm != str(self.form.algorithmSelect.currentData()):
+            obj.Algorithm = str(self.form.algorithmSelect.currentData())
 
-        if obj.BoundBox != str(self.form.boundBoxSelect.currentText()):
-            obj.BoundBox = str(self.form.boundBoxSelect.currentText())
+        if obj.BoundBox != str(self.form.boundBoxSelect.currentData()):
+            obj.BoundBox = str(self.form.boundBoxSelect.currentData())
 
-        if obj.LayerMode != str(self.form.layerMode.currentText()):
-            obj.LayerMode = str(self.form.layerMode.currentText())
+        if obj.LayerMode != str(self.form.layerMode.currentData()):
+            obj.LayerMode = str(self.form.layerMode.currentData())
 
-        if obj.CutPattern != str(self.form.cutPattern.currentText()):
-            obj.CutPattern = str(self.form.cutPattern.currentText())
+        if obj.CutPattern != str(self.form.cutPattern.currentData()):
+            obj.CutPattern = str(self.form.cutPattern.currentData())
 
         PathGui.updateInputField(
             obj, "BoundaryAdjustment", self.form.boundaryAdjustment
