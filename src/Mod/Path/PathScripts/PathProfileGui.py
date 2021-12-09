@@ -65,6 +65,13 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
     def getForm(self):
         """getForm() ... returns UI customized according to profileFeatures()"""
         form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpProfileFullEdit.ui")
+        form.cutSide.clear()
+        form.cutSide.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Outside"), "Outside")
+        form.cutSide.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Inside"), "Inside")
+
+        form.direction.clear()
+        form.direction.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "CW"), "CW")
+        form.direction.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "CCW"), "CCW")
         return form
 
     def getFields(self, obj):
@@ -72,10 +79,10 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.updateToolController(obj, self.form.toolController)
         self.updateCoolant(obj, self.form.coolantController)
 
-        if obj.Side != str(self.form.cutSide.currentText()):
-            obj.Side = str(self.form.cutSide.currentText())
-        if obj.Direction != str(self.form.direction.currentText()):
-            obj.Direction = str(self.form.direction.currentText())
+        if obj.Side != str(self.form.cutSide.currentData()):
+            obj.Side = str(self.form.cutSide.currentData())
+        if obj.Direction != str(self.form.direction.currentData()):
+            obj.Direction = str(self.form.direction.currentData())
         PathGui.updateInputField(obj, "OffsetExtra", self.form.extraOffset)
 
         if obj.UseComp != self.form.useCompensation.isChecked():
