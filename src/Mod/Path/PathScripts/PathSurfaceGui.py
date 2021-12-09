@@ -46,21 +46,60 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
 
     def getForm(self):
         """getForm() ... returns UI"""
-        return FreeCADGui.PySideUic.loadUi(":/panels/PageOpSurfaceEdit.ui")
+        form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpSurfaceEdit.ui")
+
+        form.boundBoxSelect.clear()
+        form.boundBoxSelect.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Stock"), "Stock")
+        form.boundBoxSelect.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "BaseBoundBox"), "BaseBoundBox"
+        )
+
+        form.ScanType.clear()
+        form.ScanType.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Planar"), "Planar")
+        form.ScanType.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Rotational"), "Rotational"
+        )
+
+        form.LayerMode.clear()
+        form.LayerMode.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Single-pass"), "Single-pass"
+        )
+        form.LayerMode.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Multi-pass"), "Multi-pass"
+        )
+
+        form.cutPattern.clear()
+        form.cutPattern.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Circular"), "Circular"
+        )
+        form.cutPattern.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "CircularZigZag"), "CircularZigZag"
+        )
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Line"), "Line")
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Offset"), "Offset")
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Spiral"), "Spiral")
+        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "ZigZag"), "ZigZag")
+
+        form.profileEdges.clear()
+        form.profileEdges.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "None"), "None")
+        form.profileEdges.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Only"), "Only")
+        form.profileEdges.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "First"), "First")
+        form.profileEdges.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Last"), "Last")
+        return form
 
     def getFields(self, obj):
         """getFields(obj) ... transfers values from UI to obj's proprties"""
         self.updateToolController(obj, self.form.toolController)
         self.updateCoolant(obj, self.form.coolantController)
 
-        if obj.BoundBox != str(self.form.boundBoxSelect.currentText()):
-            obj.BoundBox = str(self.form.boundBoxSelect.currentText())
+        if obj.BoundBox != str(self.form.boundBoxSelect.currentData()):
+            obj.BoundBox = str(self.form.boundBoxSelect.currentData())
 
-        if obj.ScanType != str(self.form.scanType.currentText()):
-            obj.ScanType = str(self.form.scanType.currentText())
+        if obj.ScanType != str(self.form.scanType.currentData()):
+            obj.ScanType = str(self.form.scanType.currentData())
 
-        if obj.LayerMode != str(self.form.layerMode.currentText()):
-            obj.LayerMode = str(self.form.layerMode.currentText())
+        if obj.LayerMode != str(self.form.layerMode.currentData()):
+            obj.LayerMode = str(self.form.layerMode.currentData())
 
         """
         The following method of getting values from the UI form
