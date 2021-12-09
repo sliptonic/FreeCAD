@@ -24,7 +24,8 @@
 from __future__ import print_function
 
 import FreeCAD
-import FreeCADGui
+
+# import FreeCADGui
 import Path
 import PathScripts.PathDressup as PathDressup
 import PathScripts.PathGeom as PathGeom
@@ -590,6 +591,32 @@ class TaskPanel:
         self.obj = obj
         self.viewProvider = view
         self.form = FreeCADGui.PySideUic.loadUi(":/panels/DressUpLeadInOutEdit.ui")
+        self.form.cboStyleIn.clear()
+        self.form.cboStyleIn.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Arc"), "Arc")
+        self.form.cboStyleIn.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Tangent"), "Tangent"
+        )
+        self.form.cboStyleIn.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Perpendicular"), "Perpendicular"
+        )
+
+        self.form.cboStyleOut.clear()
+        self.form.cboStyleOut.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Arc"), "Arc")
+        self.form.cboStyleOut.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Tangent"), "Tangent"
+        )
+        self.form.cboStyleOut.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Perpendicular"), "Perpendicular"
+        )
+
+        self.form.cboRadius.clear()
+        self.form.cboRadius.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Radius"), "Radius"
+        )
+        self.form.cboRadius.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Center"), "Center"
+        )
+
         self.setupUi()
 
         FreeCAD.ActiveDocument.openTransaction(
@@ -651,9 +678,9 @@ class TaskPanel:
         self.obj.Length = self.form.dsbLen.value()
         self.obj.ExtendLeadIn = self.form.dsbExtendIn.value()
         self.obj.ExtendLeadOut = self.form.dsbExtendOut.value()
-        self.obj.StyleOn = str(self.form.cboStyleIn.currentText())
-        self.obj.StyleOff = str(self.form.cboStyleOut.currentText())
-        self.obj.RadiusCenter = str(self.form.cboRadius.currentText())
+        self.obj.StyleOn = str(self.form.cboStyleIn.currentData())
+        self.obj.StyleOff = str(self.form.cboStyleOut.currentData())
+        self.obj.RadiusCenter = str(self.form.cboRadius.currentData())
         self.obj.RapidPlunge = self.form.chkRapidPlunge.isChecked()
         self.obj.IncludeLayers = self.form.chkLayers.isChecked()
         self.obj.KeepToolDown = self.form.chkKeepToolDown.isChecked()
@@ -679,17 +706,17 @@ class TaskPanel:
         # self.form.dsbExtendOut.setEnabled(self.obj.LeadOut)
 
         self.form.cboStyleIn.setCurrentIndex(
-            self.form.cboStyleIn.findText(self.obj.StyleOn)
+            self.form.cboStyleIn.findData(self.obj.StyleOn)
         )
         # self.form.cboStyleIn.setEnabled(self.obj.LeadIn)
 
         self.form.cboStyleOut.setCurrentIndex(
-            self.form.cboStyleIn.findText(self.obj.StyleOff)
+            self.form.cboStyleIn.findData(self.obj.StyleOff)
         )
         # self.form.cboStyleOut.setEnabled(self.obj.LeadOut)
 
         self.form.cboRadius.setCurrentIndex(
-            self.form.cboRadius.findText(self.obj.RadiusCenter)
+            self.form.cboRadius.findData(self.obj.RadiusCenter)
         )
 
     def updateModel(self):
