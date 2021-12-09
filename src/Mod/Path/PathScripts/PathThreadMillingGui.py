@@ -81,7 +81,31 @@ class TaskPanelOpPage(PathCircularHoleBaseGui.TaskPanelOpPage):
 
     def getForm(self):
         """getForm() ... return UI"""
-        return FreeCADGui.PySideUic.loadUi(":/panels/PageOpThreadMillingEdit.ui")
+        form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpThreadMillingEdit.ui")
+        form.threadOrientation.clear()
+        form.threadOrientation.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Left Hand"), "Left Hand"
+        )
+        form.threadOrientation.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Right Hand"), "Right Hand"
+        )
+
+        form.threadType.clear()
+        form.threadType.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Custom"), "Custom")
+        form.threadType.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Metric - internal"), "Metric - internal"
+        )
+        form.threadType.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "SAE - Internal"), "SAE - Internal"
+        )
+
+        form.opDirection.clear()
+        form.opDirection.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Climb"), "Climb")
+        form.opDirection.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Conventional"), "Conventional"
+        )
+
+        return form
 
     def getFields(self, obj):
         """getFields(obj) ... update obj's properties with values from the UI"""
@@ -91,10 +115,10 @@ class TaskPanelOpPage(PathCircularHoleBaseGui.TaskPanelOpPage):
         self.minorDia.updateProperty()
         self.pitch.updateProperty()
 
-        obj.ThreadOrientation = self.form.threadOrientation.currentText()
-        obj.ThreadType = self.form.threadType.currentText()
+        obj.ThreadOrientation = self.form.threadOrientation.currentData()
+        obj.ThreadType = self.form.threadType.currentData()
         obj.ThreadName = self.form.threadName.currentText()
-        obj.Direction = self.form.opDirection.currentText()
+        obj.Direction = self.form.opDirection.currentData()
         obj.Passes = self.form.opPasses.value()
         obj.LeadInOut = self.form.leadInOut.checkState() == QtCore.Qt.Checked
         obj.TPI = self.form.threadTPI.value()
@@ -130,20 +154,20 @@ class TaskPanelOpPage(PathCircularHoleBaseGui.TaskPanelOpPage):
 
     def _isThreadMetric(self):
         return (
-            self.form.threadType.currentText()
+            self.form.threadType.currentData()
             == PathThreadMilling.ObjectThreadMilling.ThreadTypeMetricInternal
         )
 
     def _isThreadImperial(self):
         return (
-            self.form.threadType.currentText()
+            self.form.threadType.currentData()
             == PathThreadMilling.ObjectThreadMilling.ThreadTypeImperialInternal
         )
 
     def _updateFromThreadType(self):
 
         if (
-            self.form.threadType.currentText()
+            self.form.threadType.currentData()
             == PathThreadMilling.ObjectThreadMilling.ThreadTypeCustom
         ):
             self.form.threadName.setEnabled(False)
