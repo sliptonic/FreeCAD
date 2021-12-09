@@ -83,7 +83,17 @@ class TaskPanelOpPage(PathCircularHoleBaseGui.TaskPanelOpPage):
 
     def getForm(self):
         """getForm() ... return UI"""
-        return FreeCADGui.PySideUic.loadUi(":/panels/PageOpDrillingEdit.ui")
+        form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpDrillingEdit.ui")
+        form.ExtraOffset.clear()
+        form.ExtraOffset.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "None"), "None")
+        form.ExtraOffset.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Drill Tip"), "Drill Tip"
+        )
+        form.ExtraOffset.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "2x Drill Tip"), "2x Drill Tip"
+        )
+
+        return form
 
     def updateQuantitySpinBoxes(self, index=None):
         # pylint: disable=unused-argument
@@ -102,8 +112,8 @@ class TaskPanelOpPage(PathCircularHoleBaseGui.TaskPanelOpPage):
             obj.DwellEnabled = self.form.dwellEnabled.isChecked()
         if obj.PeckEnabled != self.form.peckEnabled.isChecked():
             obj.PeckEnabled = self.form.peckEnabled.isChecked()
-        if obj.ExtraOffset != str(self.form.ExtraOffset.currentText()):
-            obj.ExtraOffset = str(self.form.ExtraOffset.currentText())
+        if obj.ExtraOffset != str(self.form.ExtraOffset.currentData()):
+            obj.ExtraOffset = str(self.form.ExtraOffset.currentData())
 
         self.updateToolController(obj, self.form.toolController)
         self.updateCoolant(obj, self.form.coolantController)
