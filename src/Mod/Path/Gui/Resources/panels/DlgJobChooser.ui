@@ -18,7 +18,11 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QComboBox" name="cboProject"/>
+    <widget class="QComboBox" name="cboProject">
+     <property name="toolTip">
+      <string notr="true"/>
+     </property>
+    </widget>
    </item>
    <item>
     <widget class="QDialogButtonBox" name="buttonBox">

@@ -29,6 +29,9 @@
       </item>
       <item row="0" column="1">
        <widget class="QComboBox" name="threadOrientation">
+        <property name="toolTip">
+         <string notr="true"/>
+        </property>
         <property name="currentIndex">
          <number>1</number>
         </property>
@@ -53,6 +56,9 @@
       </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="threadType">
+        <property name="toolTip">
+         <string notr="true"/>
+        </property>
         <item>
          <property name="text">
           <string>Custom</string>
@@ -71,7 +77,11 @@
        </widget>
       </item>
       <item row="2" column="1">
-       <widget class="QComboBox" name="threadName"/>
+       <widget class="QComboBox" name="threadName">
+        <property name="toolTip">
+         <string notr="true"/>
+        </property>
+       </widget>
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="threadFitLabel">
@@ -159,7 +169,11 @@
      </property>
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
-       <widget class="QComboBox" name="toolController"/>
+       <widget class="QComboBox" name="toolController">
+        <property name="toolTip">
+         <string notr="true"/>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>
@@ -209,6 +223,9 @@
       </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="opDirection">
+        <property name="toolTip">
+         <string notr="true"/>
+        </property>
         <item>
          <property name="text">
           <string>Climb</string>
@@ -236,7 +253,7 @@
  <customwidgets>
   <customwidget>
    <class>Gui::QuantitySpinBox</class>
-   <extends>QDoubleSpinBox</extends>
+   <extends>QWidget</extends>
    <header>Gui/QuantitySpinBox.h</header>
   </customwidget>
  </customwidgets>

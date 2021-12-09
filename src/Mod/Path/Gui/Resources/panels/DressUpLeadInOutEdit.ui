@@ -36,8 +36,8 @@
        <rect>
         <x>0</x>
         <y>0</y>
-        <width>363</width>
-        <height>403</height>
+        <width>365</width>
+        <height>404</height>
        </rect>
       </property>
       <attribute name="label">
@@ -142,6 +142,9 @@
                     <height>16777215</height>
                    </size>
                   </property>
+                  <property name="toolTip">
+                   <string notr="true"/>
+                  </property>
                   <item>
                    <property name="text">
                     <string>Arc</string>
@@ -181,7 +184,7 @@
               <rect>
                <x>10</x>
                <y>30</y>
-               <width>161</width>
+               <width>164</width>
                <height>151</height>
               </rect>
              </property>
@@ -236,6 +239,9 @@
                     <width>80</width>
                     <height>16777215</height>
                    </size>
+                  </property>
+                  <property name="toolTip">
+                   <string notr="true"/>
                   </property>
                   <item>
                    <property name="text">
@@ -313,6 +319,9 @@
                 <width>80</width>
                 <height>16777215</height>
                </size>
+              </property>
+              <property name="toolTip">
+               <string notr="true"/>
               </property>
               <item>
                <property name="text">

@@ -21,8 +21,8 @@
        <rect>
         <x>0</x>
         <y>0</y>
-        <width>543</width>
-        <height>638</height>
+        <width>545</width>
+        <height>631</height>
        </rect>
       </property>
       <attribute name="label">
@@ -79,14 +79,14 @@
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
+            <property name="unit" stdset="0">
+             <string notr="true">s</string>
+            </property>
             <property name="minimum">
              <double>0.000000000000000</double>
             </property>
             <property name="maximum">
              <double>9999999.000000000000000</double>
-            </property>
-            <property name="unit" stdset="0">
-             <string notr="true">mm/s</string>
             </property>
            </widget>
           </item>
@@ -108,14 +108,14 @@
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
+            <property name="unit" stdset="0">
+             <string notr="true">s</string>
+            </property>
             <property name="minimum">
              <double>0.000000000000000</double>
             </property>
             <property name="maximum">
              <double>9999999.000000000000000</double>
-            </property>
-            <property name="unit" stdset="0">
-             <string notr="true">mm/s</string>
             </property>
            </widget>
           </item>
@@ -137,14 +137,14 @@
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
+            <property name="unit" stdset="0">
+             <string notr="true">s</string>
+            </property>
             <property name="minimum">
              <double>0.000000000000000</double>
             </property>
             <property name="maximum">
              <double>9999999.000000000000000</double>
-            </property>
-            <property name="unit" stdset="0">
-             <string notr="true">mm/s</string>
             </property>
            </widget>
           </item>
@@ -166,14 +166,14 @@
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
+            <property name="unit" stdset="0">
+             <string notr="true">s</string>
+            </property>
             <property name="minimum">
              <double>0.000000000000000</double>
             </property>
             <property name="maximum">
              <double>9999999.000000000000000</double>
-            </property>
-            <property name="unit" stdset="0">
-             <string notr="true">mm/s</string>
             </property>
            </widget>
           </item>
@@ -191,6 +191,9 @@
           </property>
           <item row="0" column="1">
            <widget class="QComboBox" name="spindleDirection">
+            <property name="toolTip">
+             <string notr="true"/>
+            </property>
             <item>
              <property name="text">
               <string>Forward</string>
@@ -236,8 +239,8 @@
        <rect>
         <x>0</x>
         <y>0</y>
-        <width>543</width>
-        <height>638</height>
+        <width>545</width>
+        <height>631</height>
        </rect>
       </property>
       <attribute name="label">
@@ -245,31 +248,23 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_3">
        <item>
-        <widget class="QWidget" name="toolEditor">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
+        <layout class="QVBoxLayout" name="verticalLayout_4">
+         <property name="spacing">
+          <number>0</number>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_4">
-          <property name="spacing">
-           <number>0</number>
-          </property>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-         </layout>
-        </widget>
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+        </layout>
        </item>
        <item>
         <spacer name="verticalSpacer_2">
@@ -319,7 +314,7 @@
  <customwidgets>
   <customwidget>
    <class>Gui::QuantitySpinBox</class>
-   <extends>QDoubleSpinBox</extends>
+   <extends>QWidget</extends>
    <header>Gui/QuantitySpinBox.h</header>
   </customwidget>
  </customwidgets>
