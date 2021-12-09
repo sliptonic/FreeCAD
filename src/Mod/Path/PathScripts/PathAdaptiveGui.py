@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- cmding: utf-8 -*-
 # ***************************************************************************
 # *   Copyright (c) 2018 Kresimir Tusek <kresimir.tusek@gmail.com>          *
 # *                                                                         *
@@ -45,16 +45,22 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         formLayout.addRow(QtGui.QLabel("Coolant Mode"), form.coolantController)
 
         # cut region
+
+        form.direction.clear()
         form.Side = QtGui.QComboBox()
-        form.Side.addItem("Inside")
-        form.Side.addItem("Outside")
+        form.side.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Inside"), "Inside"
+        )
+        form.side.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Outside"), "Outside"
+        )
         form.Side.setToolTip("Cut inside or outside of the selected shapes")
         formLayout.addRow(QtGui.QLabel("Cut Region"), form.Side)
 
         # operation type
         form.OperationType = QtGui.QComboBox()
-        form.OperationType.addItem("Clearing")
-        form.OperationType.addItem("Profiling")
+        form.OperationType.addItem(QtCore.QT_TRANSLATE_NOOP("Path_Adaptive", "Clearing"), "Clearing")
+        form.OperationType.addItem(QtCore.QT_TRANSLATE_NOOP("Path_Adaptive", "Profiling"), "Profiling")
         form.OperationType.setToolTip("Type of adaptive operation")
         formLayout.addRow(QtGui.QLabel("Operation Type"), form.OperationType)
 
@@ -220,11 +226,11 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         obj.setEditorMode("Stopped", 2)  # hide this property
 
     def getFields(self, obj):
-        if obj.Side != str(self.form.Side.currentText()):
-            obj.Side = str(self.form.Side.currentText())
+        if obj.Side != str(self.form.Side.currentData()):
+            obj.Side = str(self.form.Side.currentData())
 
-        if obj.OperationType != str(self.form.OperationType.currentText()):
-            obj.OperationType = str(self.form.OperationType.currentText())
+        if obj.OperationType != str(self.form.OperationType.currentData()):
+            obj.OperationType = str(self.form.OperationType.currentData())
 
         obj.StepOver = self.form.StepOver.value()
         obj.Tolerance = 1.0 * self.form.Tolerance.value() / 100.0
