@@ -42,6 +42,20 @@ class TaskPanel(object):
         self.obj = obj
         self.viewProvider = viewProvider
         self.form = FreeCADGui.PySideUic.loadUi(":/panels/DressupPathBoundary.ui")
+        self.form.stock.clear()
+        self.form.stock.additem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Create Box"), "Create Box"
+        )
+        self.form.stock.additem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Create Cylinder"), "Create Cylinder"
+        )
+        self.form.stock.additem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Extend Model's Bound Box"),
+            "Extend Model's Bound Box",
+        )
+        self.form.stock.additem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Use Existing Solid"), "Use Existing Solid"
+        )
         if obj.Stock:
             self.visibilityBoundary = obj.Stock.ViewObject.Visibility
             obj.Stock.ViewObject.Visibility = True
@@ -179,7 +193,7 @@ class TaskPanel(object):
             else:
                 PathLog.error(
                     translate("PathJob", "Unsupported stock type %s (%d)")
-                    % (self.form.stock.currentText(), index)
+                    % (self.form.stock.currentData(), index)
                 )
         self.stockEdit.activate(self.obj, index == -1)
 
