@@ -45,16 +45,26 @@ class TaskPanelOpPage(PathCircularHoleBaseGui.TaskPanelOpPage):
     """Page controller class for Helix operations."""
 
     def getForm(self):
-        """getForm() ... return UI"""
-        return FreeCADGui.PySideUic.loadUi(":/panels/PageOpHelixEdit.ui")
+        '''getForm() ... return UI'''
+        form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpHelixEdit.ui")
+        form.startSide.clear()
+        form.startSide.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Inside"), "Inside")
+        form.startSide.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Outside"), "Outside")
+
+        form.direction.clear()
+        form.direction.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "CW"), "CW")
+        form.direction.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "CCW"), "CCW")
+
+
+        return form
 
     def getFields(self, obj):
         """getFields(obj) ... transfers values from UI to obj's proprties"""
         PathLog.track()
-        if obj.Direction != str(self.form.direction.currentText()):
-            obj.Direction = str(self.form.direction.currentText())
-        if obj.StartSide != str(self.form.startSide.currentText()):
-            obj.StartSide = str(self.form.startSide.currentText())
+        if obj.Direction != str(self.form.direction.currentData()):
+            obj.Direction = str(self.form.direction.currentData())
+        if obj.StartSide != str(self.form.startSide.currentData()):
+            obj.StartSide = str(self.form.startSide.currentData())
         if obj.StepOver != self.form.stepOverPercent.value():
             obj.StepOver = self.form.stepOverPercent.value()
 
