@@ -43,6 +43,23 @@ class JobPreferencesPage:
         self.form = FreeCADGui.PySideUic.loadUi(":preferences/PathJob.ui")
         self.form.toolBox.setCurrentIndex(0)  # Take that qt designer!
 
+        self.form.cboOutputPolicy.clear()
+        self.form.cboOutputPolicy.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Open File Dialog"), "Open File Dialog"
+        )
+        self.form.cboOutputPolicy.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Open File Dialog on conflict"),
+            "Open File Dialog on conflict",
+        )
+        self.form.cboOutputPolicy.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Overwrite existing file"),
+            "Overwrite existing file",
+        )
+        self.form.cboOutputPolicy.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Append Unique ID on conflict"),
+            "Append Unique ID on conflict",
+        )
+
         self.postProcessorDefaultTooltip = self.form.defaultPostProcessor.toolTip()
         self.postProcessorArgsDefaultTooltip = (
             self.form.defaultPostProcessorArgs.toolTip()
@@ -71,7 +88,7 @@ class JobPreferencesPage:
         PathPreferences.setPostProcessorDefaults(processor, args, blacklist)
 
         path = str(self.form.leOutputFile.text())
-        policy = str(self.form.cboOutputPolicy.currentText())
+        policy = str(self.form.cboOutputPolicy.currentData())
         PathPreferences.setOutputFileDefaults(path, policy)
         self.saveStockSettings()
         self.saveToolsSettings()
