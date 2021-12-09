@@ -62,6 +62,39 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         """getForm() ... returns UI, adapted to the results from pocketFeatures()"""
         form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpPocketFullEdit.ui")
 
+        form.boundaryShape.clear()
+        form.boundaryShape.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Boundbox"), "Boundbox"
+        )
+        form.boundaryShape.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Face Region"), "Face Region"
+        )
+        form.boundaryShape.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Perimeter"), "Perimeter"
+        )
+        form.boundaryShape.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Stock"), "Stock")
+
+        form.cutMode.clear()
+        form.cutMode.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Climb"), "Climb")
+        form.cutMode.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Conventional"), "Conventional"
+        )
+
+        form.offsetPattern.clear()
+        form.offsetPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "ZigZag"), "ZigZag")
+        form.offsetPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Offset"), "Offset")
+        form.offsetPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Spiral"), "Spiral")
+        form.offsetPattern.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "ZigZagOffset"), "ZigZagOffset"
+        )
+        form.offsetPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Line"), "Line")
+        form.offsetPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Grid"), "Grid")
+        form.offsetPattern.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Triangle"), "Triangle"
+        )
+
+        form.extraOffset.clear()
+
         if not FeatureFacing & self.pocketFeatures():
             form.facingWidget.hide()
             form.clearEdges.hide()
@@ -105,12 +138,12 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
 
     def getFields(self, obj):
         """getFields(obj) ... transfers values from UI to obj's proprties"""
-        if obj.CutMode != str(self.form.cutMode.currentText()):
-            obj.CutMode = str(self.form.cutMode.currentText())
+        if obj.CutMode != str(self.form.cutMode.currentData()):
+            obj.CutMode = str(self.form.cutMode.currentData())
         if obj.StepOver != self.form.stepOverPercent.value():
             obj.StepOver = self.form.stepOverPercent.value()
-        if obj.OffsetPattern != str(self.form.offsetPattern.currentText()):
-            obj.OffsetPattern = str(self.form.offsetPattern.currentText())
+        if obj.OffsetPattern != str(self.form.offsetPattern.currentData()):
+            obj.OffsetPattern = str(self.form.offsetPattern.currentData())
 
         PathGui.updateInputField(obj, "ExtraOffset", self.form.extraOffset)
         self.updateToolController(obj, self.form.toolController)
@@ -127,8 +160,8 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.updateMinTravel(obj)
 
         if FeatureFacing & self.pocketFeatures():
-            if obj.BoundaryShape != str(self.form.boundaryShape.currentText()):
-                obj.BoundaryShape = str(self.form.boundaryShape.currentText())
+            if obj.BoundaryShape != str(self.form.boundaryShape.currentData()):
+                obj.BoundaryShape = str(self.form.boundaryShape.currentData())
             if obj.ClearEdges != self.form.clearEdges.isChecked():
                 obj.ClearEdges = self.form.clearEdges.isChecked()
 
