@@ -1141,6 +1141,38 @@ class TaskPanel(object):
         self.viewProvider = viewProvider
         self.obj = obj
         self.form = FreeCADGui.PySideUic.loadUi(":/panels/DogboneEdit.ui")
+        self.form.styleCombo.clear()
+        self.form.styleCombo.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "Dogbone"), "Dogbone"
+        )
+        self.form.styleCombo.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "T-bone horizontal"), "T-bone horizontal"
+        )
+        self.form.styleCombo.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "T-bone vertical"), "T-bone vertical"
+        )
+        self.form.styleCombo.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "T-bone long edge"), "T-bone long edge"
+        )
+        self.form.styleCombo.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "T-bone short edge"), "T-bone short edge"
+        )
+
+        self.form.sideCombo.clear()
+        self.form.sideCombo.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Left"), "Left")
+        self.form.sideCombo.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Right"), "Right")
+
+        self.form.incisionCombo.clear()
+        self.form.incisionCombo.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "adaptive"), "adaptive"
+        )
+        self.form.incisionCombo.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "custom"), "custom"
+        )
+        self.form.incisionCombo.addItem(
+            QtCore.QT_TRANSLATE_NOOP("Path", "fixed"), "fixed"
+        )
+
         self.s = None
         FreeCAD.ActiveDocument.openTransaction(
             translate("Path_DressupDogbone", "Edit Dogbone Dress-up")
@@ -1172,9 +1204,9 @@ class TaskPanel(object):
         self.markers = []
 
     def getFields(self):
-        self.obj.Style = str(self.form.styleCombo.currentText())
-        self.obj.Side = str(self.form.sideCombo.currentText())
-        self.obj.Incision = str(self.form.incisionCombo.currentText())
+        self.obj.Style = str(self.form.styleCombo.currentData())
+        self.obj.Side = str(self.form.sideCombo.currentData())
+        self.obj.Incision = str(self.form.incisionCombo.currentData())
         self.obj.Custom = self.form.custom.value()
         blacklist = []
         for i in range(0, self.form.bones.count()):
