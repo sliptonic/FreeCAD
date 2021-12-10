@@ -42,51 +42,20 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.setTitle("3D Surface - " + obj.Label)
         # self.updateVisibility()
         # retrieve property enumerations
-        self.propEnums = PathSurface.ObjectSurface.opPropertyEnumerations(False)
+        self.propEnums = PathSurface.ObjectSurface.opPropertyEnumerations()
 
     def getForm(self):
-        """getForm() ... returns UI"""
+        '''getForm() ... returns UI'''
         form = FreeCADGui.PySideUic.loadUi(":/panels/PageOpSurfaceEdit.ui")
-
-        form.boundBoxSelect.clear()
-        form.boundBoxSelect.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Stock"), "Stock")
-        form.boundBoxSelect.addItem(
-            QtCore.QT_TRANSLATE_NOOP("Path", "BaseBoundBox"), "BaseBoundBox"
-        )
-
-        form.ScanType.clear()
-        form.ScanType.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Planar"), "Planar")
-        form.ScanType.addItem(
-            QtCore.QT_TRANSLATE_NOOP("Path", "Rotational"), "Rotational"
-        )
-
-        form.LayerMode.clear()
-        form.LayerMode.addItem(
-            QtCore.QT_TRANSLATE_NOOP("Path", "Single-pass"), "Single-pass"
-        )
-        form.LayerMode.addItem(
-            QtCore.QT_TRANSLATE_NOOP("Path", "Multi-pass"), "Multi-pass"
-        )
-
-        form.cutPattern.clear()
-        form.cutPattern.addItem(
-            QtCore.QT_TRANSLATE_NOOP("Path", "Circular"), "Circular"
-        )
-        form.cutPattern.addItem(
-            QtCore.QT_TRANSLATE_NOOP("Path", "CircularZigZag"), "CircularZigZag"
-        )
-        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Line"), "Line")
-        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Offset"), "Offset")
-        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Spiral"), "Spiral")
-        form.cutPattern.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "ZigZag"), "ZigZag")
-
-        form.profileEdges.clear()
-        form.profileEdges.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "None"), "None")
-        form.profileEdges.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Only"), "Only")
-        form.profileEdges.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "First"), "First")
-        form.profileEdges.addItem(QtCore.QT_TRANSLATE_NOOP("Path", "Last"), "Last")
+        # Map UI comboboxes to op properties
+        # Really, a strict protocol should be used in UI files, like combobox name should be same as property name, but lowercase first letter.
+        # Using the strict protocol would allow us to eliminate this mapping list.
+        comboBoxesPropertyMap = [("boundBoxSelect", "BoundBox"), ("scanType", "ScanType"), ("layerMode", "LayerMode"), ("cutPattern", "CutPattern"), ("profileEdges", "ProfileEdges")]
+        # Retreive enumeration tuples containing translated string and data
+        enumTups = PathSurface.ObjectSurface.opPropertyEnumerations(dataType="raw")
+        self.populateCombobox(form, enumTups, comboBoxesPropertyMap)
         return form
-
+        
     def getFields(self, obj):
         """getFields(obj) ... transfers values from UI to obj's proprties"""
         self.updateToolController(obj, self.form.toolController)

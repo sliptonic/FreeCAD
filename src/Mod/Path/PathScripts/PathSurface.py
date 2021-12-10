@@ -199,20 +199,43 @@ class ObjectSurface(PathOp.ObjectOp):
                 QtCore.QT_TRANSLATE_NOOP("App::Property", "Make True, if specifying a Start Point"))
         ]
 
-    def opPropertyEnumerations(self):
+    @classmethod
+    def opPropertyEnumerations(cls, dataType="data"):
+        """opPropertyEnumerations(dataType="data")... return property enumeration lists of specified dataType.
+        Args:
+            dataType = 'data', 'raw', 'translated'
+        Notes:
+        'data' is list of internal string literals used in code
+        'raw' is list of (translated_text, data_string) tuples
+        'translated' is list of translated string literals
+        """
         # Enumeration lists for App::PropertyEnumeration properties
-        return {
-            'BoundBox': ['BaseBoundBox', 'Stock'],
-            'PatternCenterAt': ['CenterOfMass', 'CenterOfBoundBox', 'XminYmin', 'Custom'],
-            'CutMode': ['Conventional', 'Climb'],
-            'CutPattern': ['Circular', 'CircularZigZag', 'Line', 'Offset', 'Spiral', 'ZigZag'],  # Additional goals ['Offset', 'ZigZagOffset', 'Grid', 'Triangle']
-            'DropCutterDir': ['X', 'Y'],
-            'HandleMultipleFeatures': ['Collectively', 'Individually'],
-            'LayerMode': ['Single-pass', 'Multi-pass'],
-            'ProfileEdges': ['None', 'Only', 'First', 'Last'],
-            'RotationAxis': ['X', 'Y'],
-            'ScanType': ['Planar', 'Rotational']
+
+        enums = {
+            'BoundBox': [(translate('PathSurface', 'BaseBoundBox'), 'BaseBoundBox'), (translate('PathSurface', 'Stock'), 'Stock')],
+            'PatternCenterAt': [(translate('PathSurface', 'CenterOfMass'), 'CenterOfMass'), (translate('PathSurface', 'CenterOfBoundBox'), 'CenterOfBoundBox'), (translate('PathSurface', 'XminYmin'), 'XminYmin'), (translate('PathSurface', 'Custom'), 'Custom')],
+            'CutMode': [(translate('PathSurface', 'Conventional'), 'Conventional'), (translate('PathSurface', 'Climb'), 'Climb')],
+            'CutPattern': [(translate('PathSurface', 'Circular'), 'Circular'), (translate('PathSurface', 'CircularZigZag'), 'CircularZigZag'), (translate('PathSurface', 'Line'), 'Line'), (translate('PathSurface', 'Offset'), 'Offset'), (translate('PathSurface', 'Spiral'), 'Spiral'), (translate('PathSurface', 'ZigZag'), 'ZigZag')],
+            'DropCutterDir': [(translate('PathSurface', 'X'), 'X'), (translate('PathSurface', 'Y'), 'Y')],
+            'HandleMultipleFeatures': [(translate('PathSurface', 'Collectively'), 'Collectively'), (translate('PathSurface', 'Individually'), 'Individually')],
+            'LayerMode': [(translate('PathSurface', 'Single-pass'), 'Single-pass'), (translate('PathSurface', 'Multi-pass'), 'Multi-pass')],
+            'ProfileEdges': [(translate('PathSurface', 'None'), 'None'), (translate('PathSurface', 'Only'), 'Only'), (translate('PathSurface', 'First'), 'First'), (translate('PathSurface', 'Last'), 'Last')],
+            'RotationAxis': [(translate('PathSurface', 'X'), 'X'), (translate('PathSurface', 'Y'), 'Y')],
+            'ScanType': [(translate('PathSurface', 'Planar'), 'Planar'), (translate('PathSurface', 'Rotational'), 'Rotational')]
         }
+
+        if dataType == "raw":
+            return enums
+
+        data = list()
+        idx = 1
+        if dataType == "translated":
+            idx = 0
+
+        for k, v in enums:
+            data[k] = [tup[idx] for tup in v]
+
+        return data
 
     def opPropertyDefaults(self, obj, job):
         '''opPropertyDefaults(obj, job) ... returns a dictionary of default values
