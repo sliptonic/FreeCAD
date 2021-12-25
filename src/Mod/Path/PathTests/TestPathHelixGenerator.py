@@ -96,7 +96,7 @@ class TestPathHelixGenerator(PathTestUtils.PathTestBase):
         # FreeCAD.Console.PrintMessage("TestPathAdaptive.tearDownClass()\n")
 
         # Close geometry document without saving
-        # FreeCAD.closeDocument(FreeCAD.ActiveDocument.Name)
+        FreeCAD.closeDocument(FreeCAD.ActiveDocument.Name)
         pass
 
     # Setup and tear down methods called before and after each unit test
@@ -148,7 +148,7 @@ class TestPathHelixGenerator(PathTestUtils.PathTestBase):
         _addViewProvider(op)
 
     def test01(self):
-        """Test Basic Helix Generator argument types and requirements"""
+        """Test Basic Helix Generator argument types and value limits"""
 
         args = resetArgs()
 
@@ -206,6 +206,26 @@ class TestPathHelixGenerator(PathTestUtils.PathTestBase):
         v2 = FreeCAD.Vector(5, 5, 10)
         edg = Part.makeLine(v1, v2)
         args["edge"] = edg
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test02(self):
+        """Test Helix Generator with horizontal edge"""
+        v1 = FreeCAD.Vector(10, 5, 5)
+        v2 = FreeCAD.Vector(20, 5, 5)
+
+        edg = Part.makeLine(v1, v2)
+
+        args = {
+            "edge": edg,
+            "hole_radius": 10.0,
+            "step_down": 1.0,
+            "step_over": 5.0,
+            "tool_diameter": 5.0,
+            "inner_radius": 0.0,
+            "direction": "CW",
+            "startAt": "Inside",
+        }
+
         self.assertRaises(ValueError, generator.generate, **args)
 
 
