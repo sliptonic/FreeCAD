@@ -20,216 +20,19 @@
 # *                                                                         *
 # ***************************************************************************
 
-import Path
 import FreeCAD
-import Generators.helix_generator as generator
-import PathScripts.PathLog as PathLog
-import PathTests.PathTestUtils as PathTestUtils
 import Part
-
-
-import PathScripts.PathJob as PathJob
-import PathScripts.PathCustom as PathCustom
-
-if FreeCAD.GuiUp:
-    import PathScripts.PathCustomGui as PathCustomGui
-    import PathScripts.PathJobGui as PathJobGui
+import Path
+import PathScripts.PathLog as PathLog
+import Generators.helix_generator as generator
+import PathTests.PathTestUtils as PathTestUtils
 
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 PathLog.trackModule(PathLog.thisModule())
 
 
-def _addViewProvider(op):
-    if FreeCAD.GuiUp:
-        PathOpGui = PathCustomGui.PathOpGui
-        cmdRes = PathCustomGui.Command.res
-        op.ViewObject.Proxy = PathOpGui.ViewProvider(op.ViewObject, cmdRes)
-        op.ViewObject.Proxy.deleteOnReject = False
-        op.ViewObject.Visibility = False
-
-
-class TestPathHelixGenerator(PathTestUtils.PathTestBase):
-    @classmethod
-    def setUpClass(cls):
-        """setUpClass()...
-        This method is called upon instantiation of this test class.  Add code and objects here
-        that are needed for the duration of the test() methods in this class.  In other words,
-        set up the 'global' test environment here; use the `setUp()` method to set up a 'local'
-        test environment.
-        This method does not have access to the class `self` reference, but it
-        is able to call static methods within this same class.
-        """
-
-        # Open existing FreeCAD document with test geometry
-        # doc = FreeCAD.open(
-        #     FreeCAD.getHomePath() + "Mod/Path/PathTests/test_adaptive.fcstd"
-        # )
-
-        doc = FreeCAD.ActiveDocument
-        box = doc.addObject("Part::Box", "Box")
-        box.Shape = Part.makeBox(30, 20, 10)
-
-        # Create Job object, adding geometry objects from file opened above
-        job = PathJob.Create("Job", [doc.Box], None)
-        job.GeometryTolerance.Value = 0.001
-        if FreeCAD.GuiUp:
-            job.ViewObject.Proxy = PathJobGui.ViewProvider(job.ViewObject)
-            job.ViewObject.Proxy.showOriginAxis(True)
-            job.ViewObject.Proxy.deleteOnReject = False
-
-        # Instantiate an Adaptive operation for querying available properties
-        prototype = PathCustom.Create("Custom")
-        prototype.Label = "Prototype"
-        _addViewProvider(prototype)
-
-        doc.recompute()
-
-    @classmethod
-    def tearDownClass(cls):
-        """tearDownClass()...
-        This method is called prior to destruction of this test class.  Add code and objects here
-        that cleanup the test environment after the test() methods in this class have been executed.
-        This method does not have access to the class `self` reference.  This method
-        is able to call static methods within this same class.
-        """
-        # FreeCAD.Console.PrintMessage("TestPathAdaptive.tearDownClass()\n")
-
-        # Close geometry document without saving
-        FreeCAD.closeDocument(FreeCAD.ActiveDocument.Name)
-        pass
-
-    # Setup and tear down methods called before and after each unit test
-    def setUp(self):
-        """setUp()...
-        This method is called prior to each `test()` method.  Add code and objects here
-        that are needed for multiple `test()` methods.
-        """
-        self.doc = FreeCAD.ActiveDocument
-        self.con = FreeCAD.Console
-
-    def tearDown(self):
-        """tearDown()...
-        This method is called after each test() method. Add cleanup instructions here.
-        Such cleanup instructions will likely undo those in the setUp() method.
-        """
-        pass
-
-    def test00(self):
-        """Test Basic Helix Generator Return"""
-        v1 = FreeCAD.Vector(5, 5, 20)
-        v2 = FreeCAD.Vector(5, 5, 10)
-
-        edg = Part.makeLine(v1, v2)
-
-        args = {
-            "edge": edg,
-            "hole_radius": 10.0,
-            "step_down": 1.0,
-            "step_over": 5.0,
-            "tool_diameter": 5.0,
-            "inner_radius": 0.0,
-            "direction": "CW",
-            "startAt": "Inside",
-        }
-
-        result = generator.generate(**args)
-
-        self.assertTrue(type(result) is list)
-        self.assertTrue(type(result[0]) is Path.Command)
-
-        # for c in result:
-        #    print("cmd: {}".format(c))
-
-        # Instantiate an Adaptive operation for querying available properties
-        op = PathCustom.Create("Custom")
-        op.Label = "Custom_test00"
-        op.Gcode = [r.toGCode() + "\n" for r in result]
-        _addViewProvider(op)
-
-    def test01(self):
-        """Test Basic Helix Generator argument types and value limits"""
-
-        args = resetArgs()
-
-        # require hole radius > 0
-        args["hole_radius"] = -10.0
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # require hole radius is float
-        args["hole_radius"] = 10
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # require inner radius is float
-        args = resetArgs()
-        args["inner_radius"] = 2
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # require tool diameter is float
-        args = resetArgs()
-        args["tool_diameter"] = 5
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # require tool fit 1: radius diff less than tool diam
-        args["hole_radius"] = 10.0
-        args["inner_radius"] = 6.0
-        args["tool_diameter"] = 5.0
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # require tool fit 2: hole radius less than tool diam with zero inner radius
-        args["hole_radius"] = 4.5
-        args["inner_radius"] = 0.0
-        args["tool_diameter"] = 5.0
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # validate "startAt" value
-        args = resetArgs()
-        args["startAt"] = "Other"
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # validate "direction" value
-        args = resetArgs()
-        args["direction"] = "clock"
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # verify linear edge is vertical: X
-        args = resetArgs()
-        v1 = FreeCAD.Vector(5, 5, 20)
-        v2 = FreeCAD.Vector(5.0001, 5, 10)
-        edg = Part.makeLine(v1, v2)
-        args["edge"] = edg
-        self.assertRaises(ValueError, generator.generate, **args)
-
-        # verify linear edge is vertical: Y
-        args = resetArgs()
-        v1 = FreeCAD.Vector(5, 5.0001, 20)
-        v2 = FreeCAD.Vector(5, 5, 10)
-        edg = Part.makeLine(v1, v2)
-        args["edge"] = edg
-        self.assertRaises(ValueError, generator.generate, **args)
-
-    def test02(self):
-        """Test Helix Generator with horizontal edge"""
-        v1 = FreeCAD.Vector(10, 5, 5)
-        v2 = FreeCAD.Vector(20, 5, 5)
-
-        edg = Part.makeLine(v1, v2)
-
-        args = {
-            "edge": edg,
-            "hole_radius": 10.0,
-            "step_down": 1.0,
-            "step_over": 5.0,
-            "tool_diameter": 5.0,
-            "inner_radius": 0.0,
-            "direction": "CW",
-            "startAt": "Inside",
-        }
-
-        self.assertRaises(ValueError, generator.generate, **args)
-
-
-def resetArgs():
+def _resetArgs():
     v1 = FreeCAD.Vector(5, 5, 20)
     v2 = FreeCAD.Vector(5, 5, 10)
 
@@ -245,3 +48,136 @@ def resetArgs():
         "direction": "CW",
         "startAt": "Inside",
     }
+
+
+class TestPathHelixGenerator(PathTestUtils.PathTestBase):
+    expectedHelixGCode = "G0 X12.500000 Y5.000000\
+G1 Z20.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z19.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z19.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z18.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z18.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z17.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z17.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z16.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z16.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z15.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z15.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z14.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z14.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z13.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z13.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z12.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z12.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z11.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z11.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z10.500000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z10.000000\
+G2 I-7.500000 J0.000000 X-2.500000 Y5.000000 Z10.000000\
+G2 I7.500000 J0.000000 X12.500000 Y5.000000 Z10.000000\
+G0 X5.000000 Y5.000000 Z20.000000"
+
+    def test00(self):
+        """Test Basic Helix Generator Return"""
+        args = _resetArgs()
+        result = generator.generate(**args)
+        self.assertTrue(type(result) is list)
+        self.assertTrue(type(result[0]) is Path.Command)
+
+        gcode = "".join([r.toGCode() for r in result])
+        self.assertTrue(
+            gcode == self.expectedHelixGCode, "Incorrect helix g-code generated"
+        )
+
+    def test01(self):
+        """Test Basic Helix Generator hole_radius is float > 0"""
+        args = _resetArgs()
+        args["hole_radius"] = 10
+        self.assertRaises(ValueError, generator.generate, **args)
+
+        args["hole_radius"] = -10.0
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test02(self):
+        """Test Basic Helix Generator inner_radius is float"""
+        args = _resetArgs()
+        args["inner_radius"] = 2
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test03(self):
+        """Test Basic Helix Generator tool_diameter is float"""
+        args = _resetArgs()
+        args["tool_diameter"] = 5
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test04(self):
+        """Test Basic Helix Generator tool fit with radius difference less than tool diameter"""
+        args = _resetArgs()
+        # require tool fit 1: radius diff less than tool diam
+        args["hole_radius"] = 10.0
+        args["inner_radius"] = 6.0
+        args["tool_diameter"] = 5.0
+        self.assertRaises(ValueError, generator.generate, **args)
+
+        # require tool fit 2: hole radius less than tool diam with zero inner radius
+        args["hole_radius"] = 4.5
+        args["inner_radius"] = 0.0
+        args["tool_diameter"] = 5.0
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test05(self):
+        """Test Basic Helix Generator validate the startAt enumeration value"""
+        args = _resetArgs()
+        args["startAt"] = "Other"
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test06(self):
+        """Test Basic Helix Generator validate the direction enumeration value"""
+        args = _resetArgs()
+        args["direction"] = "clock"
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test07(self):
+        """Test Basic Helix Generator verify linear edge is vertical"""
+        # verify linear edge is vertical: X
+        args = _resetArgs()
+        v1 = FreeCAD.Vector(5, 5, 20)
+        v2 = FreeCAD.Vector(5.0001, 5, 10)
+        edg = Part.makeLine(v1, v2)
+        args["edge"] = edg
+        self.assertRaises(ValueError, generator.generate, **args)
+
+        # verify linear edge is vertical: Y
+        args = _resetArgs()
+        v1 = FreeCAD.Vector(5, 5.0001, 20)
+        v2 = FreeCAD.Vector(5, 5, 10)
+        edg = Part.makeLine(v1, v2)
+        args["edge"] = edg
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test08(self):
+        """Test Helix Generator with horizontal edge"""
+        args = _resetArgs()
+        v1 = FreeCAD.Vector(10, 5, 5)
+        v2 = FreeCAD.Vector(20, 5, 5)
+        edg = Part.makeLine(v1, v2)
+        args["edge"] = edg
+        self.assertRaises(ValueError, generator.generate, **args)
+
+    def test09(self):
+        """Test Helix Generator with inverted vertical edge"""
+        args = _resetArgs()
+        v1 = FreeCAD.Vector(5, 5, 10)
+        v2 = FreeCAD.Vector(5, 5, 20)
+        edg = Part.makeLine(v1, v2)
+        args["edge"] = edg
+
+        result = generator.generate(**args)
+
+        self.assertTrue(type(result) is list)
+        self.assertTrue(type(result[0]) is Path.Command)
+
+        gcode = "".join([r.toGCode() for r in result])
+        self.assertTrue(
+            gcode == self.expectedHelixGCode, "Incorrect helix g-code generated"
+        )
