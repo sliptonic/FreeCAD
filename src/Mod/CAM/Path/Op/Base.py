@@ -40,7 +40,7 @@ __author__ = "sliptonic (Brad Collette)"
 __url__ = "https://www.freecad.org"
 __doc__ = "Base class and properties implementation for all CAM operations."
 
-if False:
+if True:
     Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
     Path.Log.trackModule(Path.Log.thisModule())
 else:
@@ -833,6 +833,105 @@ class ObjectOp(object):
         This function can safely be overwritten by subclasses."""
 
         return True
+
+
+class Compass:
+    """
+    A compass is a tool to help with direction so the Compass is a helper
+    class to manage settings that affect tool and spindle direction.
+
+    Settings managed:
+        - Spindle Direction (from tool controller): Forward / Reverse / None
+        - Cut Side: Inside / Outside
+        - Cut Mode: Climb / Conventional
+        - Path Direction: CW / CCW (derived)
+
+    This class allows the user to set and get any of these properties and the rest will update accordingly.
+
+    """
+
+    FORWARD = "Forward"
+    REVERSE = "Reverse"
+    NONE = "None"
+    CW = "CW"
+    CCW = "CCW"
+    CLIMB = "Climb"
+    CONVENTIONAL = "Conventional"
+    INSIDE = "Inside"
+    OUTSIDE = "Outside"
+
+    def __init__(self, tool_controller):
+        self._tool_controller = tool_controller
+        self._cut_side = self.OUTSIDE
+        self._cut_mode = self.CLIMB
+        self._path_dir = self._calculate_path_dir()
+
+    @property
+    def spindle_dir(self):
+        val = getattr(self._tool_controller, "SpindleDir", self.NONE)
+        if val not in (self.FORWARD, self.REVERSE, self.NONE):
+            return self.NONE
+        return val
+
+    @property
+    def cut_side(self):
+        return self._cut_side
+
+    @cut_side.setter
+    def cut_side(self, value):
+        self._cut_side = value.capitalize()
+        self._path_dir = self._calculate_path_dir()
+
+    @property
+    def cut_mode(self):
+        return self._cut_mode
+
+    @cut_mode.setter
+    def cut_mode(self, value):
+        self._cut_mode = value.capitalize()
+        self._path_dir = self._calculate_path_dir()
+
+    @property
+    def path_dir(self):
+        return self._path_dir
+
+    def _calculate_path_dir(self):
+        if self.spindle_dir == self.NONE:
+            return "UNKNOWN"
+
+        spindle_rotation = self._rotation_from_spindle(self.spindle_dir)
+
+        for candidate in (self.CW, self.CCW):
+            mode = self._expected_cut_mode(self._cut_side, spindle_rotation, candidate)
+            if mode == self._cut_mode:
+                return candidate
+
+        return "UNKNOWN"
+
+    def _rotation_from_spindle(self, direction):
+        return self.CW if direction == self.FORWARD else self.CCW
+
+    def _expected_cut_mode(self, cut_side, spindle_rotation, path_dir):
+        lookup = {
+            (self.INSIDE, self.CW, self.CCW): self.CLIMB,
+            (self.INSIDE, self.CCW, self.CW): self.CLIMB,
+            (self.OUTSIDE, self.CW, self.CW): self.CLIMB,
+            (self.OUTSIDE, self.CCW, self.CCW): self.CLIMB,
+        }
+        return lookup.get((cut_side, spindle_rotation, path_dir), self.CONVENTIONAL)
+
+    def report(self):
+        report_data = {
+            "spindle_dir": self.spindle_dir,
+            "cut_side": self.cut_side,
+            "cut_mode": self.cut_mode,
+            "path_dir": self.path_dir,
+        }
+
+        Path.Log.debug("Machining Compass config:")
+        for k, v in report_data.items():
+            Path.Log.debug(f"  {k:15s}: {v}")
+        return report_data
 
 
 def getCycleTimeEstimate(obj):
