@@ -49,6 +49,16 @@ Minimising rapids between holes gains nothing over all and leads to rather arbit
 | G83   | Peck Drilling Cycle   |  WORKS, excessive air cutting, see #22622          |
 | G73   | Chip Breaking Drill   |  WORKS, excessive air cutting, see #22622          |
 
+
+### Helix operation
+
+| Feature                                | Description                                      | Assessment                   |
+| -------------------------------------- | ------------------------------------------------ | ---------------------------- |
+| Helical clearance                      | one or more helical cuts to clear hole           | COMPLETE                     |
+| External helical profile               | external profile for cyclinder                   | NOT IMPLEMENTED              |
+| Radial feedrate correction             | adj feedrate to maintain chip load               | NOT IMPLEMENTED              |
+
+
 ### Engraving
 
 | Feature            | Description                                                                                                                                               | Assessment |
