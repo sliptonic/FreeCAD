@@ -6,7 +6,7 @@
 | Operation Grouping     | Group operations into jobs or setups                                               | COMPLETE                                    |
 | Operation Ordering     | Define the order in which operations are executed                                  | COMPLETE (Workplan)                         |
 | Intuitive Job Creation | The job setup process should help the user set up stock, tools, models, and origin | Current functionality is confusing and weak |
-
+| Operation Dirty state  | Many ops recompute on cancel. Job Edit Cancel triggers full recomp.                | Much time wasting. esp 3D                        |
 ---
 
 # 🟨 Professional Grade
