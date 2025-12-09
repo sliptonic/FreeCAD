@@ -24,12 +24,12 @@
 # ***************************************************************************
 """
 Various utilities for handling G-code.
-These utilities do NOT operate on Path.Command objects. They 
+These utilities do NOT operate on Path.Command objects. They
 operate on strings of pre-processed G-code.
 """
 
-import re
 from typing import List
+
 
 class NumberGenerator:
     """
@@ -325,4 +325,45 @@ def filter_inefficient_moves(gcode: List[str]) -> List[str]:
     
     # Flush any remaining rapid chain
     flush_chain()
+    
+    return result
+
+def deduplicate_repeated_commands(gcode: List[str]) -> List[str]:
+    """Deduplicate consecutive repeated commands from G-code.
+
+    Suppresses consecutive identical commands to reduce G-code size.
+    Note: This is a simple implementation that may not handle all modal cases.
+
+    Args:
+        gcode: List of G-code strings
+
+    Returns:
+        List of G-code strings with consecutive duplicates removed
+    """
+    result = []
+    last_cmd = None
+
+    for line in gcode:
+        stripped = line.strip()
+
+        # Keep comments and empty lines unchanged
+        if not stripped or stripped.startswith("("):
+            result.append(line)
+            continue
+
+        # Extract the primary command (first word)
+        words = stripped.split()
+        if words:
+            cmd = words[0]
+            # Check for blockdelete
+            if cmd.startswith("/"):
+                cmd = cmd[1:]
+
+            if cmd != last_cmd:
+                result.append(line)
+                last_cmd = cmd
+            # Skip consecutive duplicates
+        else:
+            result.append(line)
+
     return result
