@@ -194,6 +194,13 @@ class ObjectOp(object):
             "Path",
             QT_TRANSLATE_NOOP("App::Property", "Operations Cycle Time Estimation"),
         )
+        obj.addProperty(
+            "App::PropertyVector",
+            "Workplane",
+            "Path",
+            QT_TRANSLATE_NOOP("App::Property", "Workplane for this operation"),
+        )
+        obj.Workplane = FreeCAD.Vector(0, 0, 1)  # Default Z-up
         obj.setEditorMode("CycleTime", 1)  # read-only
 
         features = self.opFeatures(obj)

@@ -191,9 +191,80 @@ class ViewProvider(object):
         action = QtGui.QAction(translate("PathOp", "Edit"), menu)
         action.triggered.connect(self._editInContextMenuTriggered)
         menu.addAction(action)
+        
+        # Add "Set Workplane from Face" action
+        action = QtGui.QAction(translate("PathOp", "Set Workplane from Face"), menu)
+        action.triggered.connect(self._setWorkplaneFromFaceTriggered)
+        menu.addAction(action)
 
     def _editInContextMenuTriggered(self, checked):
         self.setEdit()
+    
+    def _setWorkplaneFromFaceTriggered(self, checked):
+        """Activate face selection mode to set workplane."""
+        # Store reference to the operation
+        self._workplaneOperation = self.Object
+        
+        # Create selection observer
+        class FaceSelectionObserver:
+            def __init__(self, operation, viewprovider):
+                self.operation = operation
+                self.viewprovider = viewprovider
+                self.active = True
+            
+            def addSelection(self, doc, obj, sub, pnt):
+                """Called when user selects something."""
+                if not self.active:
+                    return
+                
+                # Check if it's a face
+                if sub and sub.startswith('Face'):
+                    try:
+                        # Get the face object
+                        selected_obj = FreeCAD.ActiveDocument.getObject(obj)
+                        if selected_obj and hasattr(selected_obj, 'Shape'):
+                            # Get the face
+                            face = selected_obj.Shape.getElement(sub)
+                            
+                            # Extract the normal vector
+                            # For planar faces, use the surface axis
+                            if hasattr(face.Surface, 'Axis'):
+                                normal = face.Surface.Axis
+                            else:
+                                # For non-planar faces, use center of mass normal
+                                u_mid = (face.ParameterRange[0] + face.ParameterRange[1]) / 2.0
+                                v_mid = (face.ParameterRange[2] + face.ParameterRange[3]) / 2.0
+                                normal = face.normalAt(u_mid, v_mid)
+                            
+                            # Normalize the vector
+                            normal.normalize()
+                            
+                            # Set the workplane property
+                            self.operation.Workplane = normal
+                            FreeCAD.ActiveDocument.recompute()
+                            
+                            FreeCAD.Console.PrintMessage(
+                                f"Set {self.operation.Label} workplane to {normal}\n"
+                            )
+                            
+                            # Deactivate and remove observer
+                            self.active = False
+                            FreeCADGui.Selection.removeObserver(self)
+                            
+                    except Exception as e:
+                        FreeCAD.Console.PrintError(f"Error setting workplane: {e}\n")
+                        self.active = False
+                        FreeCADGui.Selection.removeObserver(self)
+        
+        # Create and add the observer
+        observer = FaceSelectionObserver(self._workplaneOperation, self)
+        FreeCADGui.Selection.addObserver(observer)
+        
+        # Clear current selection and provide user feedback
+        FreeCADGui.Selection.clearSelection()
+        FreeCAD.Console.PrintMessage(
+            f"Click on a face to set workplane for {self.Object.Label}\n"
+        )
 
 
 class TaskPanelPage(object):

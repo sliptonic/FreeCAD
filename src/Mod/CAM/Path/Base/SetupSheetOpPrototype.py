@@ -198,6 +198,7 @@ class OpPrototype(object):
         "App::PropertyPercent": PropertyPercent,
         "App::PropertyString": PropertyString,
         "App::PropertyStringList": Property,
+        "App::PropertyVector": Property,
         "App::PropertyVectorDistance": Property,
         "App::PropertyVectorList": Property,
         "Part::PropertyPartShape": Property,
