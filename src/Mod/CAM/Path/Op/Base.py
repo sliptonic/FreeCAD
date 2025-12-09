@@ -195,6 +195,11 @@ class ObjectOp(object):
             QT_TRANSLATE_NOOP("App::Property", "Operations Cycle Time Estimation"),
         )
         obj.setEditorMode("CycleTime", 1)  # read-only
+        
+        # Add attachment extension to enable attaching operations to geometry
+        # This allows operations to automatically position/orient based on attached faces
+        if not obj.hasExtension("Part::AttachExtension"):
+            obj.addExtension("Part::AttachExtensionPython")
 
         features = self.opFeatures(obj)
 
@@ -469,15 +474,6 @@ class ObjectOp(object):
                 QT_TRANSLATE_NOOP("App::Property", "Incremental Step Down of Tool"),
             )
             obj.StepDown = 0
-
-        if not hasattr(obj, "Workplane"):
-            obj.addProperty(
-                "App::PropertyVector",
-                "Workplane",
-                "Path",
-                QT_TRANSLATE_NOOP("App::Property", "Workplane for this operation"),
-            )
-            obj.Workplane = FreeCAD.Vector(0, 0, 1)  # Default Z-up
 
         self.setEditorModes(obj, features)
         self.opOnDocumentRestored(obj)
@@ -818,12 +814,73 @@ class ObjectOp(object):
         # in case they still have an expression referencing any op values
         obj.recompute()
 
+        # Update placement from attachment if operation is attached to geometry
+        # This must be called before path generation to ensure correct positioning
+        if hasattr(obj, 'positionBySupport'):
+            obj.positionBySupport()
+        
         self.commandlist = []
         self.commandlist.append(Path.Command("(%s)" % obj.Label))
         if obj.Comment:
             self.commandlist.append(Path.Command("(%s)" % obj.Comment))
 
-
+        """
+        # Check if operation placement rotation is needed and possible
+        # Requirements: 1) Placement not Z-aligned, 2) Job has machine, 3) Machine has rotary axes
+        if hasattr(obj, "Placement") and obj.Placement:
+            # Check if placement rotation is identity (Z-up) - compare with default placement
+            default_placement = FreeCAD.Placement()
+            if not obj.Placement.Rotation.isSame(default_placement.Rotation, 1e-6):
+                # Placement needs rotation - check if machine supports it
+                machine = self.job.Proxy.getMachine() if self.job else None
+                if machine and machine.has_rotary_axes:
+                    # Calculate rotation commands using the rotation generator
+                    try:
+                        import Path.Base.Generator.rotation as rotation
+                        
+                        # Get rotation limits from machine (default to unlimited if not specified)
+                        aMin, aMax = -360, 360
+                        cMin, cMax = -360, 360
+                        
+                        if "A" in machine.rotary_axes:
+                            aMin = machine.rotary_axes["A"].min_limit
+                            aMax = machine.rotary_axes["A"].max_limit
+                        if "C" in machine.rotary_axes:
+                            cMin = machine.rotary_axes["C"].min_limit
+                            cMax = machine.rotary_axes["C"].max_limit
+                        
+                        # Generate rotation commands to align placement with Z
+                        # Extract the Z-axis (normal vector) from the operation placement
+                        # The Z-axis of the placement is what needs to be aligned with global Z
+                        placement_z_axis = obj.Placement.Rotation.multVec(FreeCAD.Vector(0, 0, 1))
+                        
+                        # Use compound moves if machine supports it
+                        rotation_commands = rotation.generate(
+                            placement_z_axis, 
+                            aMin=aMin, 
+                            aMax=aMax, 
+                            cMin=cMin, 
+                            cMax=cMax,
+                            compound=machine.compound_moves
+                        )
+                        
+                        self.commandlist.extend(rotation_commands)
+                        
+                    except ValueError as e:
+                        # No valid rotation solution found within machine limits
+                        Path.Log.error(
+                            f"Operation {obj.Label}: Cannot find valid rotation for placement within machine limits: {e}"
+                        )
+                    except Exception as e:
+                        Path.Log.error(
+                            f"Operation {obj.Label}: Error calculating placement rotation: {e}"
+                        )
+                else:
+                    # Machine doesn't support rotation or no machine configured
+                    Path.Log.warning(
+                        f"Operation {obj.Label} requires placement rotation but machine does not have rotary axes"
+                    )
+        """
 
         result = self.opExecute(obj)
 
