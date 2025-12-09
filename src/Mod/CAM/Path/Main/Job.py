@@ -28,6 +28,7 @@ import FreeCAD
 import Path
 import Path.Base.SetupSheet as PathSetupSheet
 import Path.Base.Util as PathUtil
+from ..Machine.models.machine import MachineFactory
 import Path.Main.Stock as PathStock
 import Path.Tool.Controller as PathToolController
 import json
@@ -103,7 +104,7 @@ Notification = NotificationClass()
 
 
 class ObjectJob:
-    def __init__(self, obj, models, templateFile=None):
+    def __init__(self, obj, models, templateFile=None, machine=""):
         self.obj = obj
         self.tooltip = None
         self.tooltipArgs = None
@@ -200,6 +201,12 @@ class ObjectJob:
         )
         obj.addProperty(
             "App::PropertyEnumeration",
+            "Machine",
+            "Base",
+            QT_TRANSLATE_NOOP("App::Property", "The machine associated with this job"),
+        )
+        obj.addProperty(
+            "App::PropertyEnumeration",
             "OrderOutputBy",
             "WCS",
             QT_TRANSLATE_NOOP("App::Property", "If multiple WCS, order the output this way"),
@@ -230,6 +237,12 @@ class ObjectJob:
             obj.PostProcessor = ""
         obj.PostProcessorArgs = Path.Preferences.defaultPostProcessorArgs()
         obj.GeometryTolerance = Path.Preferences.defaultGeometryTolerance()
+        _machines = MachineFactory.list_configurations()
+        obj.Machine = _machines
+        if machine in _machines:
+            obj.Machine = machine
+        elif _machines:
+            obj.Machine = "<any>"
 
         self.setupOperations(obj)
         self.setupSetupSheet(obj)
@@ -515,6 +528,31 @@ class ObjectJob:
             )
             obj.SplitOutput = False
 
+        if not hasattr(obj, "Machine"):
+            obj.addProperty(
+                "App::PropertyEnumeration",
+                "Machine",
+                "Base",
+                QT_TRANSLATE_NOOP("App::Property", "The machine associated with this job"),
+            )
+            obj.Machine = MachineFactory.list_configurations()
+            obj.Machine = "<any>"
+        elif obj.getTypeIdOfProperty("Machine") == "App::PropertyString":
+            # Convert old string property to enumeration
+            current_machine = obj.Machine
+            obj.removeProperty("Machine")
+            obj.addProperty(
+                "App::PropertyEnumeration",
+                "Machine",
+                "Base",
+                QT_TRANSLATE_NOOP("App::Property", "The machine associated with this job"),
+            )
+            obj.Machine = MachineFactory.list_configurations()
+            if current_machine in obj.Machine:
+                obj.Machine = current_machine
+            else:
+                obj.Machine = "<any>"
+
         if not hasattr(obj, "JobType"):
             obj.addProperty(
                 "App::PropertyEnumeration",
@@ -647,7 +685,6 @@ class ObjectJob:
 
         if len(self.obj.Operations.Group):
             for op in self.obj.Operations.Group:
-
                 # Skip inactive operations
                 if PathUtil.opProperty(op, "Active") is False:
                     continue
@@ -813,8 +850,8 @@ def Instances():
     return []
 
 
-def Create(name, base, templateFile=None):
-    """Create(name, base, templateFile=None) ... creates a new job and all it's resources.
+def Create(name, base, templateFile=None, machine=""):
+    """Create(name, base, templateFile=None, machine="") ... creates a new job and all it's resources.
     If a template file is specified the new job is initialized with the values from the template."""
     if isinstance(base[0], str):
         models = []
@@ -824,5 +861,5 @@ def Create(name, base, templateFile=None):
         models = base
     obj = FreeCAD.ActiveDocument.addObject("Path::FeaturePython", name)
     obj.addExtension("App::GroupExtensionPython")
-    obj.Proxy = ObjectJob(obj, models, templateFile)
+    obj.Proxy = ObjectJob(obj, models, templateFile, machine)
     return obj
