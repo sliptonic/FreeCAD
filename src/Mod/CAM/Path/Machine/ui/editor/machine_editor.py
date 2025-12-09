@@ -148,6 +148,9 @@ class MachineEditorDialog(QtGui.QDialog):
             self.populate_from_data(data)
         else:
             self.set_defaults()
+            # Set focus and select the name field for new machines
+            self.name_edit.setFocus()
+            self.name_edit.selectAll()
 
     def normalize_text(self, edit, suffix, axis=None, field=None):
         """Normalize and validate text input for numeric fields with units.
@@ -945,6 +948,46 @@ class MachineEditorDialog(QtGui.QDialog):
 
     def accept(self):
         """Handle save and close action."""
+        # Check for duplicate machine names when creating new machines
+        if self.text_mode:
+            try:
+                json_text = self.text_editor.toPlainText()
+                data = json.loads(json_text)
+                machine_name = data.get("machine", {}).get("name", "")
+            except json.JSONDecodeError:
+                machine_name = ""
+        else:
+            machine_name = self.name_edit.text().strip()
+
+        # Check for duplicate machine names
+        if machine_name:
+            existing_machines = MachineFactory.list_configurations()
+            # Case-insensitive check to match get_machine behavior
+            machine_name_lower = machine_name.lower()
+            existing_names_lower = [name.lower() for name in existing_machines]
+
+            # For existing machines, allow keeping the same name (case-insensitive)
+            current_name_allowed = False
+            if self.filename:
+                try:
+                    current_data = MachineFactory.load_configuration(self.filename)
+                    current_name = current_data.get("machine", {}).get("name", "").lower()
+                    if machine_name_lower == current_name:
+                        current_name_allowed = True
+                except:
+                    pass
+
+            if machine_name_lower in existing_names_lower and not current_name_allowed:
+                QtGui.QMessageBox.warning(
+                    self,
+                    translate("CAM_MachineEditor", "Duplicate Machine Name"),
+                    translate(
+                        "CAM_MachineEditor",
+                        "A machine with the name '{}' already exists. Please choose a different name.",
+                    ).format(machine_name),
+                )
+                return
+
         if self.text_mode:
             # If in text mode, parse JSON before saving
             try:
