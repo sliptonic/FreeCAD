@@ -514,24 +514,27 @@ class MachineConfiguration:
                         prefer_positive,
                     )
 
-            # # Set primary/secondary based on common conventions
-            # if len(rotary_axis_names) == 1:
-            #     config.primary_rotary_axis = rotary_axis_names[0]
-            #     config.secondary_rotary_axis = None
-            # elif len(rotary_axis_names) == 2:
-            #     # Convention: C is usually primary, then A or B is secondary
-            #     if "C" in rotary_axis_names:
-            #         config.primary_rotary_axis = "C"
-            #         config.secondary_rotary_axis = (
-            #             rotary_axis_names[0]
-            #             if rotary_axis_names[0] != "C"
-            #             else rotary_axis_names[1]
-            #         )
-            #     else:
-            #         config.primary_rotary_axis = rotary_axis_names[0]
-            #         config.secondary_rotary_axis = rotary_axis_names[1]
+            # Set primary/secondary based on sequence numbers
+            if len(rotary_axis_names) >= 1:
+                # Sort rotary axes by sequence number
+                rotary_axes_by_sequence = sorted(
+                    [(name, config.rotary_axes[name].sequence) for name in rotary_axis_names],
+                    key=lambda x: x[1]
+                )
+                
+                # Primary is the one with lowest sequence number (0)
+                config.primary_rotary_axis = rotary_axes_by_sequence[0][0]
+                
+                # Secondary is the one with next sequence number (1), if it exists
+                if len(rotary_axes_by_sequence) >= 2:
+                    config.secondary_rotary_axis = rotary_axes_by_sequence[1][0]
+                else:
+                    config.secondary_rotary_axis = None
+            else:
+                config.primary_rotary_axis = None
+                config.secondary_rotary_axis = None
 
-            # config.compound_moves = True  # Default for new format
+            config.compound_moves = True  # Default for new format
 
         else:
             # Handle old format (for backward compatibility)
@@ -802,26 +805,21 @@ class MachineFactory:
         # Get list of available machine files
         machine_files = cls.list_configuration_files()
 
-        # Find the file matching the machine name
+        # Find the file matching the machine name (case-insensitive)
         target_path = None
+        machine_name_lower = machine_name.lower()
         for name, path in machine_files:
-            if name == machine_name and path is not None:
+            if name.lower() == machine_name_lower and path is not None:
                 target_path = path
                 break
 
         if target_path is None:
-            # Try adding .fcm extension and looking directly
-            config_dir = cls.get_config_directory()
-            potential_path = config_dir / f"{machine_name}.fcm"
-            if potential_path.exists():
-                target_path = potential_path
-            else:
-                available = [name for name, path in machine_files if path is not None]
-                raise FileNotFoundError(
-                    f"Machine '{machine_name}' not found. Available machines: {available}"
-                )
+            available = [name for name, path in machine_files if path is not None]
+            raise FileNotFoundError(
+                f"Machine '{machine_name}' not found. Available machines: {available}"
+            )
 
-        # Load the configuration
+        # Load the configuration using the path from list_configuration_files()
         data = cls.load_configuration(target_path)
 
         # If load_configuration returned a dict (new format), convert to MachineConfiguration
