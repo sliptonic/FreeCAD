@@ -83,7 +83,7 @@ class MachineEditorDialog(QtGui.QDialog):
         ("-Z", [0, 0, -1]),
     ]
 
-    def __init__(self, machine_path: Optional[str] = None, parent=None):
+    def __init__(self, machine_filename: Optional[str] = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle(translate("CAM_MachineEditor", "Machine Editor"))
         self.setMinimumSize(700, 900)
@@ -141,15 +141,11 @@ class MachineEditorDialog(QtGui.QDialog):
 
         self.layout.addLayout(button_layout)
         self.text_mode = False
-        self.path = machine_path
+        self.filename = machine_filename
 
-        if machine_path:
-            if os.path.exists(machine_path):
-                data = MachineFactory.load_configuration(machine_path)
-                self.populate_from_data(data)
-            else:
-                # File doesn't exist yet (new machine), use defaults
-                self.set_defaults()
+        if machine_filename:
+            data = MachineFactory.load_configuration(machine_filename)
+            self.populate_from_data(data)
         else:
             self.set_defaults()
 
@@ -645,7 +641,7 @@ class MachineEditorDialog(QtGui.QDialog):
 
         Initializes the dialog with sensible defaults for creating a new machine.
         """
-        data = create_default_machine_data()
+        data = MachineFactory.create_default_machine_data()
         self.populate_from_data(data)
 
     def populate_from_data(self, data: Dict[str, Any]):
@@ -954,8 +950,15 @@ class MachineEditorDialog(QtGui.QDialog):
             try:
                 json_text = self.text_editor.toPlainText()
                 data = json.loads(json_text)
-                if self.path:
-                    save_machine_file(data, self.path)
+                if self.filename:
+                    config = MachineConfiguration.from_dict(data)
+                    saved_path = MachineFactory.save_configuration(config, self.filename)
+                else:
+                    # New machine, create and save
+                    config = MachineConfiguration.from_dict(data)
+                    saved_path = MachineFactory.save_configuration(config)
+                    self.filename = saved_path.name
+                self.path = str(saved_path)  # Keep for compatibility
             except json.JSONDecodeError as e:
                 QtGui.QMessageBox.critical(
                     self,
@@ -972,7 +975,15 @@ class MachineEditorDialog(QtGui.QDialog):
                 return
         else:
             # Form mode - use existing save logic
-            if self.path:
+            if self.filename:
                 data = self.to_data()
-                save_machine_file(data, self.path)
+                config = MachineConfiguration.from_dict(data)
+                saved_path = MachineFactory.save_configuration(config, self.filename)
+            else:
+                # New machine, create and save
+                data = self.to_data()
+                config = MachineConfiguration.from_dict(data)
+                saved_path = MachineFactory.save_configuration(config)
+                self.filename = saved_path.name
+            self.path = str(saved_path)  # Keep for compatibility
         super().accept()

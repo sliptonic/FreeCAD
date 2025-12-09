@@ -116,11 +116,14 @@ class AssetPreferencesPage:
         self.edit_machine_btn.clicked.connect(self.edit_machine)
         self.delete_machine_btn.clicked.connect(self.delete_machine)
 
-        for name, path in MachineFactory.list_configuration_files():
-            if name == "<any>" or path is None:
+        # Connect double-click to edit
+        self.machines_list.itemDoubleClicked.connect(self.edit_machine)
+
+        for name, filename in MachineFactory.list_configuration_files():
+            if name == "<any>" or filename is None:
                 continue
             item = QtGui.QListWidgetItem(name)
-            item.setData(QtCore.Qt.UserRole, str(path))
+            item.setData(QtCore.Qt.UserRole, filename)
             self.machines_list.addItem(item)
 
     def selectAssetPath(self):
@@ -164,48 +167,33 @@ class AssetPreferencesPage:
 
     def add_machine(self):
         # Create a new machine JSON file in the user's machine asset folder
-        #try:
-        asset_base = MachineFactory.get_config_directory()
-        asset_base.mkdir(parents=True, exist_ok=True)
-        # Ask for filename to save
-        dlg_path, _ = QtGui.QFileDialog.getSaveFileName(
-            None,
-            translate("CAM_PreferencesAssets", "Create Machine File"),
-            str(asset_base / "new_machine.fcm"),
-            "Machine files (*.fcm)",
-        )
-        if not dlg_path:
-            return
-        # Open editor, let user edit, then save to chosen path
-        editor = MachineEditorDialog(dlg_path)
-        if editor.exec_() == QtGui.QDialog.Accepted:
-            # add to list
-            item = QtGui.QListWidgetItem(pathlib.Path(dlg_path).stem)
-            item.setData(QtCore.Qt.UserRole, dlg_path)
-            self.machines_list.addItem(item)
-    #except Exception as e:
-    #    Path.Log.error(f"Failed to create machine file: {e}")
+        try:
+            # Open editor for new machine, filename will be generated on save
+            editor = MachineEditorDialog()
+            if editor.exec_() == QtGui.QDialog.Accepted:
+                # add to list
+                filename = editor.filename
+                display_name = MachineFactory.get_machine_display_name(filename)
+                item = QtGui.QListWidgetItem(display_name)
+                item.setData(QtCore.Qt.UserRole, filename)  # Store filename only
+                self.machines_list.addItem(item)
+        except Exception as e:
+            Path.Log.error(f"Failed to create machine file: {e}")
 
     def edit_machine(self):
         try:
             item = self.machines_list.currentItem()
             if not item:
                 return
-            path = item.data(QtCore.Qt.UserRole)
-            if not path:
+            filename = item.data(QtCore.Qt.UserRole)
+            if not filename:
                 return
-            dlg = MachineEditorDialog(path)
+            dlg = MachineEditorDialog(filename)
             if dlg.exec_() == QtGui.QDialog.Accepted:
                 # Reload display name from file after save
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        display = data.get("machine", {}).get("name") or data.get("name")
-                        if display:
-                            item.setText(display)
-                except Exception:
-                    # Ignore errors when updating display name; not critical
-                    pass
+                display = MachineFactory.get_machine_display_name(filename)
+                if display:
+                    item.setText(display)
         except Exception as e:
             Path.Log.error(f"Failed to open machine editor: {e}")
 
@@ -214,8 +202,8 @@ class AssetPreferencesPage:
             item = self.machines_list.currentItem()
             if not item:
                 return
-            path = item.data(QtCore.Qt.UserRole)
-            if not path:
+            filename = item.data(QtCore.Qt.UserRole)
+            if not filename:
                 return
             # Confirm delete
             resp = QtGui.QMessageBox.question(
@@ -228,7 +216,7 @@ class AssetPreferencesPage:
             )
             if resp != QtGui.QMessageBox.Yes:
                 return
-            if MachineFactory.delete_configuration(pathlib.Path(path)):
+            if MachineFactory.delete_configuration(filename):
                 self.machines_list.takeItem(self.machines_list.currentRow())
             else:
                 Path.Log.error("Failed to delete machine file.")

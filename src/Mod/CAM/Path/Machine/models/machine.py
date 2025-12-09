@@ -44,93 +44,6 @@ refRotAxis = RefRotAxes(
 )
 
 
-def validate_machine_schema(data: Dict[str, Any]) -> bool:
-    """Validate machine configuration data schema.
-
-    Args:
-        data: Dictionary containing machine configuration data
-
-    Returns:
-        True if data is valid, False otherwise
-    """
-    # Minimal validation of required fields
-    if "machine" not in data:
-        return False
-    m = data["machine"]
-    if "name" not in m or "type" not in m:
-        return False
-    return True
-
-
-def load_machine_file(path: str) -> Dict[str, Any]:
-    """Load machine configuration from a JSON file.
-
-    Args:
-        path: Path to the .fcm machine file to load
-
-    Returns:
-        Dictionary containing machine configuration data
-
-    Raises:
-        FileNotFoundError: If the file does not exist
-        json.JSONDecodeError: If the file is not valid JSON
-        Exception: For other I/O errors
-    """
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        Path.Log.info(f"Loaded machine file: {path}")
-        return data
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Machine file not found: {path}")
-    except json.JSONDecodeError as e:
-        raise json.JSONDecodeError(f"Invalid JSON in machine file {path}: {e}")
-    except Exception as e:
-        raise Exception(f"Failed to load machine file {path}: {e}")
-
-
-def save_machine_file(data: Dict[str, Any], path: str):
-    """Save machine configuration to a JSON file.
-
-    Args:
-        data: Dictionary containing machine configuration data
-        path: Path to save the .fcm machine file
-
-    Raises:
-        Exception: For I/O errors
-    """
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, sort_keys=True, indent=4)
-        Path.Log.info(f"Saved machine file: {path}")
-    except Exception as e:
-        raise Exception(f"Failed to save machine file {path}: {e}")
-
-
-def create_default_machine_data() -> Dict[str, Any]:
-    """Create default machine configuration data.
-
-    Returns:
-        Dictionary with default machine configuration
-    """
-    return {
-        "machine": {
-            "name": "New Machine",
-            "manufacturer": "",
-            "description": "",
-            "units": "metric",
-            "type": "custom",
-        },
-        "post": {
-            "output_unit": "metric",
-            "comments": True,
-            "line_numbers": {"enabled": True},
-            "tool_length_offset": True,
-        },
-        "version": 1,
-    }
-
-
 class LinearAxis:
     """Represents a single linear axis in a machine configuration"""
 
@@ -519,12 +432,12 @@ class MachineConfiguration:
                 # Sort rotary axes by sequence number
                 rotary_axes_by_sequence = sorted(
                     [(name, config.rotary_axes[name].sequence) for name in rotary_axis_names],
-                    key=lambda x: x[1]
+                    key=lambda x: x[1],
                 )
-                
+
                 # Primary is the one with lowest sequence number (0)
                 config.primary_rotary_axis = rotary_axes_by_sequence[0][0]
-                
+
                 # Secondary is the one with next sequence number (1), if it exists
                 if len(rotary_axes_by_sequence) >= 2:
                     config.secondary_rotary_axis = rotary_axes_by_sequence[1][0]
@@ -573,6 +486,30 @@ class MachineFactory:
     _config_dir = None
 
     @classmethod
+    def create_default_machine_data(cls) -> Dict[str, Any]:
+        """Create default machine configuration data.
+
+        Returns:
+            Dictionary with default machine configuration
+        """
+        return {
+            "machine": {
+                "name": "New Machine",
+                "manufacturer": "",
+                "description": "",
+                "units": "metric",
+                "type": "custom",
+            },
+            "post": {
+                "output_unit": "metric",
+                "comments": True,
+                "line_numbers": {"enabled": True},
+                "tool_length_offset": True,
+            },
+            "version": 1,
+        }
+
+    @classmethod
     def set_config_directory(cls, directory):
         """Set the directory for storing machine configuration files"""
         cls._config_dir = pathlib.Path(directory)
@@ -606,7 +543,7 @@ class MachineFactory:
         """
         if filename is None:
             # Sanitize the config name for use as filename
-            filename = config.name.replace(" ", "_").replace("/", "_") + ".json"
+            filename = config.name.replace(" ", "_").replace("/", "_") + ".fcm"
 
         config_dir = cls.get_config_directory()
         filepath = config_dir / filename
@@ -681,20 +618,8 @@ class MachineFactory:
             asset_base = cls.get_config_directory()
             if asset_base.exists():
                 for p in sorted(asset_base.glob("*.fcm")):
-                    name = p.stem
-                    try:
-                        text = p.read_text(encoding="utf-8")
-                        data = json.loads(text)
-                        # Try to find display name inside JSON
-                        display = None
-                        if isinstance(data, dict):
-                            display = data.get("machine", {}).get("name") or data.get("name")
-                        if display:
-                            name = display
-                    except Exception:
-                        # fallback to filename stem
-                        pass
-                    machines.append((name, p))
+                    name = cls.get_machine_display_name(p.name)
+                    machines.append((name, p.name))
         except Exception:
             pass
         return machines
@@ -713,7 +638,7 @@ class MachineFactory:
         return [name for name, path in machines]
 
     @classmethod
-    def delete_configuration(cls, filepath):
+    def delete_configuration(cls, filename):
         """
         Delete a machine configuration file
 
@@ -723,6 +648,7 @@ class MachineFactory:
         Returns:
             True if deleted successfully, False otherwise
         """
+        filepath = cls.get_config_directory() / filename
         try:
             if filepath.exists():
                 filepath.unlink()
@@ -828,3 +754,22 @@ class MachineFactory:
         else:
             # Already a MachineConfiguration object (old format)
             return data
+
+    @classmethod
+    def get_machine_display_name(cls, filename):
+        """
+        Get the display name for a machine from its filename in the config directory.
+
+        Args:
+            filename: Name of the machine file (without path)
+
+        Returns:
+            str: Display name (machine name from JSON or filename stem)
+        """
+        filepath = cls.get_config_directory() / filename
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("machine", {}).get("name", filepath.stem)
+        except Exception:
+            return filepath.stem
