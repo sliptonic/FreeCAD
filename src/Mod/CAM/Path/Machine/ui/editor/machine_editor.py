@@ -26,8 +26,8 @@ import json
 from typing import Optional, Dict, Any
 from ...models.machine import *
 from ....Main.Gui.Editor import CodeEditor
+from Path.Post.Processor import PostProcessorFactory
 import re
-import os
 
 translate = FreeCAD.Qt.translate
 
@@ -528,7 +528,7 @@ class MachineEditorDialog(QtGui.QDialog):
                     "tool_change": edits["tool_change"].itemData(
                         edits["tool_change"].currentIndex()
                     ),
-                    "tool_axis": edits["tool_axis"].itemData(edits["tool_axis"].currentIndex()),
+                    "tool_axis": [0, 0, -1],
                 }
 
         # Clear existing spindle tabs
@@ -606,38 +606,94 @@ class MachineEditorDialog(QtGui.QDialog):
     def setup_post_tab(self):
         """Set up the post processor configuration tab.
 
-        Creates input fields for output units, comments, line numbers,
-        tool length offsets, and placeholder for additional post settings.
+        Creates input fields for post processor selection, arguments,
+        output units, comments, line numbers, and tool length offsets.
         """
         layout = QtGui.QFormLayout(self.post_tab)
 
-        self.output_unit_combo = QtGui.QComboBox()
-        self.output_unit_combo.addItem("Metric", "metric")
-        self.output_unit_combo.addItem("Imperial", "imperial")
-        layout.addRow("Output Unit:", self.output_unit_combo)
+        # Post Processor selection (at the top)
+        self.post_processor_combo = QtGui.QComboBox()
+        postProcessors = Path.Preferences.allEnabledPostProcessors([""])
+        for post in postProcessors:
+            self.post_processor_combo.addItem(post)
+        self.post_processor_combo.currentIndexChanged.connect(self.updatePostProcessorTooltip)
+        self.postProcessorDefaultTooltip = translate("CAM_MachineEditor", "Select a post processor")
+        self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
+        layout.addRow(translate("CAM_MachineEditor", "Post Processor:"), self.post_processor_combo)
 
-        self.comments_combo = QtGui.QComboBox()
-        self.comments_combo.addItem("Yes", True)
-        self.comments_combo.addItem("No", False)
-        layout.addRow("Comments:", self.comments_combo)
-
-        self.line_numbers_combo = QtGui.QComboBox()
-        self.line_numbers_combo.addItem("Yes", True)
-        self.line_numbers_combo.addItem("No", False)
-        layout.addRow("Line Numbers:", self.line_numbers_combo)
-
-        self.tool_length_offset_combo = QtGui.QComboBox()
-        self.tool_length_offset_combo.addItem("Yes", True)
-        self.tool_length_offset_combo.addItem("No", False)
-        layout.addRow("Tool Length Offset:", self.tool_length_offset_combo)
-
-        # Placeholder for other post settings
-        self.other_post_group = QtGui.QGroupBox("Other Post Settings")
-        other_layout = QtGui.QVBoxLayout(self.other_post_group)
-        other_layout.addWidget(
-            QtGui.QLabel("Additional post processor settings (to be implemented)")
+        # Post Processor Arguments (below post processor selection)
+        self.post_processor_args_edit = QtGui.QLineEdit()
+        self.postProcessorArgsDefaultTooltip = translate(
+            "CAM_MachineEditor", "Additional arguments for the post processor"
         )
-        layout.addRow(self.other_post_group)
+        self.post_processor_args_edit.setToolTip(self.postProcessorArgsDefaultTooltip)
+        layout.addRow(translate("CAM_MachineEditor", "Arguments:"), self.post_processor_args_edit)
+
+        # Separator
+        separator = QtGui.QFrame()
+        separator.setFrameShape(QtGui.QFrame.HLine)
+        separator.setFrameShadow(QtGui.QFrame.Sunken)
+        layout.addRow(separator)
+
+        # Output Unit
+        self.output_unit_combo = QtGui.QComboBox()
+        self.output_unit_combo.addItem(translate("CAM_MachineEditor", "Metric"), "metric")
+        self.output_unit_combo.addItem(translate("CAM_MachineEditor", "Imperial"), "imperial")
+        layout.addRow(translate("CAM_MachineEditor", "Output Unit:"), self.output_unit_combo)
+
+        # Comments
+        self.comments_combo = QtGui.QComboBox()
+        self.comments_combo.addItem(translate("CAM_MachineEditor", "Yes"), True)
+        self.comments_combo.addItem(translate("CAM_MachineEditor", "No"), False)
+        layout.addRow(translate("CAM_MachineEditor", "Comments:"), self.comments_combo)
+
+        # Line Numbers
+        self.line_numbers_combo = QtGui.QComboBox()
+        self.line_numbers_combo.addItem(translate("CAM_MachineEditor", "Yes"), True)
+        self.line_numbers_combo.addItem(translate("CAM_MachineEditor", "No"), False)
+        self.line_numbers_combo.setCurrentIndex(1)  # Default to "No" (False)
+        layout.addRow(translate("CAM_MachineEditor", "Line Numbers:"), self.line_numbers_combo)
+
+        # Tool Length Offset
+        self.tool_length_offset_combo = QtGui.QComboBox()
+        self.tool_length_offset_combo.addItem(translate("CAM_MachineEditor", "Yes"), True)
+        self.tool_length_offset_combo.addItem(translate("CAM_MachineEditor", "No"), False)
+        layout.addRow(
+            translate("CAM_MachineEditor", "Tool Length Offset:"),
+            self.tool_length_offset_combo,
+        )
+
+        # Cache for post processors
+        self.processor = {}
+
+    def getPostProcessor(self, name):
+        if name not in self.processor:
+            processor = PostProcessorFactory.get_post_processor(None, name)
+            self.processor[name] = processor
+            return processor
+        return self.processor[name]
+
+    def setPostProcessorTooltip(self, widget, name, default):
+        processor = self.getPostProcessor(name)
+        if processor.tooltip:
+            widget.setToolTip(processor.tooltip)
+        else:
+            widget.setToolTip(default)
+
+    def updatePostProcessorTooltip(self):
+        name = str(self.post_processor_combo.currentText())
+        if name:
+            self.setPostProcessorTooltip(
+                self.post_processor_combo, name, self.postProcessorDefaultTooltip
+            )
+            processor = self.getPostProcessor(name)
+            if processor.tooltipArgs:
+                self.post_processor_args_edit.setToolTip(processor.tooltipArgs)
+            else:
+                self.post_processor_args_edit.setToolTip(self.postProcessorArgsDefaultTooltip)
+        else:
+            self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
+            self.post_processor_args_edit.setToolTip(self.postProcessorArgsDefaultTooltip)
 
     def set_defaults(self):
         """Set default values for all form fields.
@@ -761,7 +817,7 @@ class MachineEditorDialog(QtGui.QDialog):
                 edits["max_power_kw"].setValue(spindle.get("max_power_kw", 3.0))
                 edits["max_rpm"].setValue(spindle.get("max_rpm", 24000))
                 edits["min_rpm"].setValue(spindle.get("min_rpm", 6000))
-                tool_change = spindle.get("tool_change", {}).get("type", "manual")
+                tool_change = spindle.get("tool_change", "manual")
                 index = edits["tool_change"].findData(tool_change)
                 if index >= 0:
                     edits["tool_change"].setCurrentIndex(index)
@@ -783,6 +839,22 @@ class MachineEditorDialog(QtGui.QDialog):
             )
 
         post = data.get("post", {})
+
+        # Post processor selection
+        post_processor = post.get("processor", "")
+        index = self.post_processor_combo.findText(post_processor, QtCore.Qt.MatchFixedString)
+        if index >= 0:
+            self.post_processor_combo.setCurrentIndex(index)
+        else:
+            self.post_processor_combo.setCurrentIndex(0)  # Empty selection
+
+        # Post processor arguments
+        post_processor_args = post.get("processor_args", "")
+        self.post_processor_args_edit.setText(post_processor_args)
+
+        # Update tooltips based on selection
+        self.updatePostProcessorTooltip()
+
         output_unit = post.get("output_unit", "metric")
         index = self.output_unit_combo.findData(output_unit)
         if index >= 0:
@@ -793,7 +865,7 @@ class MachineEditorDialog(QtGui.QDialog):
         if index >= 0:
             self.comments_combo.setCurrentIndex(index)
 
-        line_numbers = post.get("line_numbers", {}).get("enabled", True)
+        line_numbers = post.get("line_numbers", False)
         index = self.line_numbers_combo.findData(line_numbers)
         if index >= 0:
             self.line_numbers_combo.setCurrentIndex(index)
@@ -862,11 +934,10 @@ class MachineEditorDialog(QtGui.QDialog):
                         "max_power_kw": edits["max_power_kw"].value(),
                         "max_rpm": edits["max_rpm"].value(),
                         "min_rpm": edits["min_rpm"].value(),
-                        "tool_change": {
-                            "type": edits["tool_change"].itemData(
-                                edits["tool_change"].currentIndex()
-                            )
-                        },
+                        "tool_change": edits["tool_change"].itemData(
+                            edits["tool_change"].currentIndex()
+                        ),
+                        "tool_axis": [0, 0, -1],
                     }
                 )
 
@@ -882,15 +953,15 @@ class MachineEditorDialog(QtGui.QDialog):
                 "spindles": spindles,
             },
             "post": {
+                "processor": str(self.post_processor_combo.currentText()),
+                "processor_args": str(self.post_processor_args_edit.text()),
                 "output_unit": self.output_unit_combo.itemData(
                     self.output_unit_combo.currentIndex()
                 ),
                 "comments": self.comments_combo.itemData(self.comments_combo.currentIndex()),
-                "line_numbers": {
-                    "enabled": self.line_numbers_combo.itemData(
-                        self.line_numbers_combo.currentIndex()
-                    )
-                },
+                "line_numbers": self.line_numbers_combo.itemData(
+                    self.line_numbers_combo.currentIndex()
+                ),
                 "tool_length_offset": self.tool_length_offset_combo.itemData(
                     self.tool_length_offset_combo.currentIndex()
                 ),

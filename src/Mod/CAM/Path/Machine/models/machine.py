@@ -28,6 +28,13 @@ from typing import Dict, Any
 from collections import namedtuple
 
 
+if False:
+    Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
+    Path.Log.trackModule(Path.Log.thisModule())
+else:
+    Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
+
+
 # Reference axis vectors
 RefAxes = namedtuple("RefAxes", ["x", "y", "z"])
 refAxis = RefAxes(
@@ -150,19 +157,74 @@ class RotaryAxis:
         )
 
 
+class Spindle:
+    """Represents a single spindle in a machine configuration"""
+
+    def __init__(
+        self,
+        name,
+        id=None,
+        max_power_kw=0,
+        max_rpm=0,
+        min_rpm=0,
+        tool_change="manual",
+        tool_axis=None,
+    ):
+        self.name = name  # Spindle name (e.g., "Main Spindle")
+        self.id = id  # Optional unique spindle ID (string, e.g., "S1")
+        self.max_power_kw = max_power_kw  # Max power in kW
+        self.max_rpm = max_rpm  # Max speed in RPM
+        self.min_rpm = min_rpm  # Min speed in RPM
+        self.tool_change = tool_change  # Tool change method ("manual" or "atc")
+        self.tool_axis = (
+            tool_axis if tool_axis is not None else FreeCAD.Vector(0, 0, -1)
+        )  # Tool axis direction
+
+    def to_dict(self):
+        """Serialize to dictionary for JSON persistence"""
+        data = {
+            "name": self.name,
+            "max_power_kw": self.max_power_kw,
+            "max_rpm": self.max_rpm,
+            "min_rpm": self.min_rpm,
+            "tool_change": self.tool_change,
+            "tool_axis": [self.tool_axis.x, self.tool_axis.y, self.tool_axis.z],
+        }
+        if self.id is not None:
+            data["id"] = self.id
+        return data
+
+    @classmethod
+    def from_dict(cls, data):
+        """Deserialize from dictionary"""
+        tool_axis_data = data.get("tool_axis", [0, 0, -1])
+        tool_axis = FreeCAD.Vector(tool_axis_data[0], tool_axis_data[1], tool_axis_data[2])
+        return cls(
+            data["name"],
+            data.get("id"),
+            data.get("max_power_kw", 0),
+            data.get("max_rpm", 0),
+            data.get("min_rpm", 0),
+            data.get("tool_change", "manual"),
+            tool_axis,
+        )
+
+
 class MachineConfiguration:
     """Stores configuration data for rotation generation"""
 
     def __init__(self, name="Default Machine"):
         self.name = name
+        self.manufacturer = ""  # Manufacturer name
         self.rotary_axes = {}  # Dictionary of RotaryAxis objects
         self.linear_axes = {}  # Dictionary of LinearAxis objects
+        self.spindles = []  # List of Spindle objects
         self.reference_system = {  # Reference coordinate system vectors
             "X": FreeCAD.Vector(1, 0, 0),
             "Y": FreeCAD.Vector(0, 1, 0),
             "Z": FreeCAD.Vector(0, 0, 1),
         }
-        self.tool_axis = FreeCAD.Vector(0, 0, 1)  # Default tool axis direction
+        self.tool_axis = FreeCAD.Vector(0, 0, -1)  # Default tool axis direction
         self.primary_rotary_axis = None  # Primary axis for alignment (e.g., "C")
         self.secondary_rotary_axis = None  # Secondary axis for alignment (e.g., "A")
         self.compound_moves = (
@@ -176,6 +238,12 @@ class MachineConfiguration:
         self.units = "metric"  # Machine units (metric or imperial)
         self.version = 1  # Machine configuration schema version
         self.freecad_version = ".".join(FreeCAD.Version()[0:3])  # FreeCAD version
+        self.post_processor = ""  # Default post processor
+        self.post_processor_args = ""  # Default post processor arguments
+        self.post_output_unit = "metric"  # Post processor output unit
+        self.post_comments = True  # Include comments in output
+        self.post_line_numbers = False  # Include line numbers in output
+        self.post_tool_length_offset = True  # Include tool length offset
 
     def add_linear_axis(
         self, name, direction_vector, min_limit=0, max_limit=1000, max_velocity=10000
@@ -195,6 +263,24 @@ class MachineConfiguration:
         )
         return self
 
+    def add_spindle(
+        self,
+        name,
+        id=None,
+        max_power_kw=0,
+        max_rpm=0,
+        min_rpm=0,
+        tool_change="manual",
+        tool_axis=None,
+    ):
+        """Add a spindle to the configuration"""
+        if tool_axis is None:
+            tool_axis = FreeCAD.Vector(0, 0, -1)
+        self.spindles.append(
+            Spindle(name, id, max_power_kw, max_rpm, min_rpm, tool_change, tool_axis)
+        )
+        return self
+
     def save(self, filepath):
         """Save this configuration to a file
 
@@ -210,7 +296,7 @@ class MachineConfiguration:
         try:
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
-            Path.Log.info(f"Saved machine configuration to {filepath}")
+            Path.Log.debug(f"Saved machine configuration to {filepath}")
             return filepath
         except Exception as e:
             Path.Log.error(f"Failed to save configuration: {e}")
@@ -235,6 +321,29 @@ class MachineConfiguration:
     def get_axis_by_name(self, name):
         """Get a rotary axis by name"""
         return self.rotary_axes.get(name)
+
+    def get_spindle_by_index(self, index):
+        """Get a spindle by its index in the list"""
+        if 0 <= index < len(self.spindles):
+            return self.spindles[index]
+        raise ValueError(f"Spindle index {index} out of range")
+
+    def get_spindle_by_name(self, name):
+        """Get a spindle by name (case-insensitive)"""
+        name_lower = name.lower()
+        for spindle in self.spindles:
+            if spindle.name.lower() == name_lower:
+                return spindle
+        raise ValueError(f"Spindle with name '{name}' not found")
+
+    def get_spindle_by_id(self, id):
+        """Get a spindle by ID (if present)"""
+        if id is None:
+            raise ValueError("ID cannot be None")
+        for spindle in self.spindles:
+            if spindle.id == id:
+                return spindle
+        raise ValueError(f"Spindle with ID '{id}' not found")
 
     @classmethod
     def create_AC_table_config(cls, a_limits=(-120, 120), c_limits=(-360, 360)):
@@ -351,17 +460,20 @@ class MachineConfiguration:
             "freecad_version": self.freecad_version,
             "machine": {
                 "name": self.name,
+                "manufacturer": self.manufacturer,
                 "description": self.description,
                 "type": self.machine_type,
                 "units": self.units,
                 "axes": axes,
-                "spindles": [],  # Default empty spindles
+                "spindles": [spindle.to_dict() for spindle in self.spindles],
             },
             "post": {
-                "output_unit": "metric",
-                "comments": True,
-                "line_numbers": {"enabled": True},
-                "tool_length_offset": True,
+                "output_unit": self.post_output_unit,
+                "comments": self.post_comments,
+                "line_numbers": self.post_line_numbers,
+                "tool_length_offset": self.post_tool_length_offset,
+                "processor": self.post_processor,
+                "processor_args": self.post_processor_args,
             },
             "version": self.version,
         }
@@ -373,6 +485,7 @@ class MachineConfiguration:
         if "machine" in data:
             machine = data["machine"]
             config = cls(machine.get("name", "Loaded Machine"))
+            config.manufacturer = machine.get("manufacturer", "")
             config.description = machine.get("description", "")
             config.machine_type = machine.get("type", "custom")
             config.units = machine.get("units", "metric")
@@ -449,7 +562,20 @@ class MachineConfiguration:
 
             config.compound_moves = True  # Default for new format
 
+            # Deserialize spindles
+            spindles_data = machine.get("spindles", [])
+            config.spindles = [Spindle.from_dict(spindle_data) for spindle_data in spindles_data]
+
+            # Load post processor settings
+            post_data = data.get("post", {})
+            config.post_processor = post_data.get("processor", "")
+            config.post_processor_args = post_data.get("processor_args", "")
+            config.post_output_unit = post_data.get("output_unit", "metric")
+            config.post_comments = post_data.get("comments", True)
+            config.post_line_numbers = post_data.get("line_numbers", False)
+            config.post_tool_length_offset = post_data.get("tool_length_offset", True)
         else:
+            # I think we can loose this.
             # Handle old format (for backward compatibility)
             config = cls(data["name"])
             config.description = data.get("description", "")
@@ -475,6 +601,9 @@ class MachineConfiguration:
             for axis_name, axis_data in data.get("rotary_axes", {}).items():
                 axis = RotaryAxis.from_dict(axis_data)
                 config.rotary_axes[axis_name] = axis
+
+            # Initialize spindles for old format
+            config.spindles = []
 
         return config
 
@@ -503,8 +632,10 @@ class MachineFactory:
             "post": {
                 "output_unit": "metric",
                 "comments": True,
-                "line_numbers": {"enabled": True},
+                "line_numbers": False,
                 "tool_length_offset": True,
+                "processor": "",
+                "processor_args": "",
             },
             "version": 1,
         }
@@ -552,7 +683,7 @@ class MachineFactory:
             data = config.to_dict()
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(data, f, sort_keys=True, indent=4)
-            Path.Log.info(f"Saved machine file: {filepath}")
+            Path.Log.debug(f"Saved machine file: {filepath}")
             return filepath
         except Exception as e:
             Path.Log.error(f"Failed to save configuration: {e}")
@@ -584,7 +715,7 @@ class MachineFactory:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            Path.Log.info(f"Loaded machine file: {filepath}")
+            Path.Log.debug(f"Loaded machine file: {filepath}")
 
             # Return the raw dict for new format (has "machine" key)
             # This allows the editor to work with the full structure
@@ -593,7 +724,7 @@ class MachineFactory:
             else:
                 # Old format - convert to MachineConfiguration object
                 config = MachineConfiguration.from_dict(data)
-                Path.Log.info(f"Loaded machine configuration from {filepath}")
+                Path.Log.debug(f"Loaded machine configuration from {filepath}")
                 return config
 
         except FileNotFoundError:
@@ -652,7 +783,7 @@ class MachineFactory:
         try:
             if filepath.exists():
                 filepath.unlink()
-                Path.Log.info(f"Deleted machine: {filepath}")
+                Path.Log.debug(f"Deleted machine: {filepath}")
                 return True
             else:
                 Path.Log.warning(f"Machine file not found: {filepath}")
