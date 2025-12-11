@@ -23,7 +23,20 @@
 # ***************************************************************************
 
 from Path.Post.Command import DlgSelectPostProcessor
-from Path.Post.Processor import PostProcessor, PostProcessorFactory
+from Path.Post.Processor import (
+    PostProcessor,
+    PostProcessorFactory,
+    PostProcessorState,
+    StateConverter,
+    MachineUnits,
+    MotionMode,
+    OutputOptions,
+    PrecisionSettings,
+    LineFormatting,
+    MachineSettings,
+    GCodeBlocks,
+    ProcessingOptions,
+)
 from unittest.mock import patch, MagicMock
 import FreeCAD
 import Path
@@ -684,3 +697,345 @@ class TestBuildPostList(unittest.TestCase):
         firstoplist = firstoutputitem[1]
         self.assertEqual(len(firstoplist), 6)
         self.assertTrue(firstoutputitem[0] == "G54")
+
+
+class TestPostProcessorState(unittest.TestCase):
+    """Test the typed PostProcessorState dataclass."""
+
+    def test010_default_initialization(self):
+        """Test that PostProcessorState initializes with correct defaults."""
+        state = PostProcessorState()
+        
+        # Check default values
+        self.assertEqual(state.postprocessor_file_name, "")
+        self.assertTrue(state.output.comments)
+        self.assertEqual(state.precision.axis_precision, 3)
+        self.assertEqual(state.formatting.command_space, " ")
+        self.assertEqual(state.machine.name, "unknown machine")
+        self.assertEqual(state.machine.units, MachineUnits.METRIC)
+        self.assertEqual(state.machine.motion_mode, MotionMode.ABSOLUTE)
+        self.assertEqual(state.blocks.finish_label, "Finish")
+        self.assertFalse(state.processing.modal)
+
+    def test020_computed_properties(self):
+        """Test computed properties work correctly."""
+        state = PostProcessorState()
+        
+        # Test metric properties
+        state.machine.units = MachineUnits.METRIC
+        self.assertEqual(state.unit_format, "mm")
+        self.assertEqual(state.unit_speed_format, "mm/min")
+        
+        # Test imperial properties
+        state.machine.units = MachineUnits.IMPERIAL
+        self.assertEqual(state.unit_format, "in")
+        self.assertEqual(state.unit_speed_format, "in/min")
+        
+        # Test command lists
+        self.assertIn("G0", state.rapid_moves)
+        self.assertIn("G1", state.motion_commands)
+        self.assertEqual(len(state.motion_commands), 8)
+
+    def test030_line_formatting_state(self):
+        """Test LineFormatting mutable state for line numbering."""
+        formatting = LineFormatting()
+        formatting.line_number_start = 100
+        formatting.line_increment = 10
+        
+        # Test line number progression
+        self.assertEqual(formatting.next_line_number(), 100)
+        self.assertEqual(formatting.next_line_number(), 110)
+        self.assertEqual(formatting.next_line_number(), 120)
+        
+        # Test reset
+        formatting.reset_line_numbers()
+        self.assertEqual(formatting.next_line_number(), 100)
+
+    def test040_enum_values(self):
+        """Test enum values are correct."""
+        self.assertEqual(MachineUnits.METRIC.value, "G21")
+        self.assertEqual(MachineUnits.IMPERIAL.value, "G20")
+        self.assertEqual(MotionMode.ABSOLUTE.value, "G90")
+        self.assertEqual(MotionMode.RELATIVE.value, "G91")
+
+    def test050_nested_dataclass_modification(self):
+        """Test that nested dataclasses can be modified independently."""
+        state = PostProcessorState()
+        
+        # Modify output options
+        state.output.comments = False
+        state.output.line_numbers = True
+        self.assertFalse(state.output.comments)
+        self.assertTrue(state.output.line_numbers)
+        
+        # Modify precision
+        state.precision.axis_precision = 5
+        self.assertEqual(state.precision.axis_precision, 5)
+        
+        # Modify machine settings
+        state.machine.units = MachineUnits.IMPERIAL
+        state.machine.motion_mode = MotionMode.RELATIVE
+        self.assertEqual(state.machine.units, MachineUnits.IMPERIAL)
+        self.assertEqual(state.machine.motion_mode, MotionMode.RELATIVE)
+
+
+class TestStateConverter(unittest.TestCase):
+    """Test bidirectional conversion between dict and typed state."""
+
+    def test010_from_dict_basic(self):
+        """Test converting a basic dictionary to typed state."""
+        values = {
+            "OUTPUT_COMMENTS": False,
+            "OUTPUT_LINE_NUMBERS": True,
+            "AXIS_PRECISION": 4,
+            "MACHINE_NAME": "Test Machine",
+            "UNITS": "G20",
+            "MOTION_MODE": "G91",
+        }
+        
+        state = StateConverter.from_dict(values)
+        
+        self.assertFalse(state.output.comments)
+        self.assertTrue(state.output.line_numbers)
+        self.assertEqual(state.precision.axis_precision, 4)
+        self.assertEqual(state.machine.name, "Test Machine")
+        self.assertEqual(state.machine.units, MachineUnits.IMPERIAL)
+        self.assertEqual(state.machine.motion_mode, MotionMode.RELATIVE)
+
+    def test020_from_dict_complete(self):
+        """Test converting a complete dictionary with all fields."""
+        values = {
+            "POSTPROCESSOR_FILE_NAME": "test_post",
+            "OUTPUT_COMMENTS": True,
+            "OUTPUT_BLANK_LINES": False,
+            "OUTPUT_HEADER": True,
+            "OUTPUT_LINE_NUMBERS": True,
+            "OUTPUT_BCNC": True,
+            "OUTPUT_PATH_LABELS": True,
+            "OUTPUT_MACHINE_NAME": True,
+            "OUTPUT_TOOL_CHANGE": False,
+            "OUTPUT_DOUBLES": False,
+            "OUTPUT_ADAPTIVE": True,
+            "AXIS_PRECISION": 5,
+            "FEED_PRECISION": 4,
+            "SPINDLE_DECIMALS": 2,
+            "COMMAND_SPACE": "",
+            "COMMENT_SYMBOL": ";",
+            "LINE_INCREMENT": 5,
+            "line_number": 200,
+            "END_OF_LINE_CHARACTERS": "\r\n",
+            "MACHINE_NAME": "CNC Router",
+            "UNITS": "G21",
+            "MOTION_MODE": "G90",
+            "USE_TLO": False,
+            "STOP_SPINDLE_FOR_TOOL_CHANGE": False,
+            "ENABLE_COOLANT": True,
+            "ENABLE_MACHINE_SPECIFIC_COMMANDS": True,
+            "PREAMBLE": "G17 G54",
+            "POSTAMBLE": "M30",
+            "SAFETYBLOCK": "G40 G49",
+            "PRE_OPERATION": "M8",
+            "POST_OPERATION": "M9",
+            "TOOL_CHANGE": "M6",
+            "TOOLRETURN": "G53 G0 Z0",
+            "FINISH_LABEL": "End",
+            "MODAL": True,
+            "TRANSLATE_DRILL_CYCLES": True,
+            "SPLIT_ARCS": True,
+            "SHOW_EDITOR": False,
+            "LIST_TOOLS_IN_PREAMBLE": True,
+            "SHOW_MACHINE_UNITS": False,
+            "SHOW_OPERATION_LABELS": False,
+            "SUPPRESS_COMMANDS": ["G43", "G49"],
+            "SPINDLE_WAIT": 2.5,
+            "RETURN_TO": (0.0, 0.0, 10.0),
+        }
+        
+        state = StateConverter.from_dict(values)
+        
+        # Verify all conversions
+        self.assertEqual(state.postprocessor_file_name, "test_post")
+        self.assertTrue(state.output.comments)
+        self.assertFalse(state.output.blank_lines)
+        self.assertTrue(state.output.adaptive)
+        self.assertEqual(state.precision.axis_precision, 5)
+        self.assertEqual(state.precision.feed_precision, 4)
+        self.assertEqual(state.formatting.command_space, "")
+        self.assertEqual(state.formatting.comment_symbol, ";")
+        self.assertEqual(state.formatting.line_increment, 5)
+        self.assertEqual(state.formatting.end_of_line_chars, "\r\n")
+        self.assertEqual(state.machine.name, "CNC Router")
+        self.assertEqual(state.machine.units, MachineUnits.METRIC)
+        self.assertTrue(state.machine.enable_coolant)
+        self.assertEqual(state.blocks.preamble, "G17 G54")
+        self.assertEqual(state.blocks.postamble, "M30")
+        self.assertEqual(state.blocks.finish_label, "End")
+        self.assertTrue(state.processing.modal)
+        self.assertTrue(state.processing.translate_drill_cycles)
+        self.assertEqual(state.processing.spindle_wait, 2.5)
+        self.assertEqual(state.processing.return_to, (0.0, 0.0, 10.0))
+        self.assertIn("G43", state.processing.suppress_commands)
+
+    def test030_to_dict_basic(self):
+        """Test converting typed state back to dictionary."""
+        state = PostProcessorState()
+        state.output.comments = False
+        state.precision.axis_precision = 6
+        state.machine.name = "My Machine"
+        state.machine.units = MachineUnits.IMPERIAL
+        
+        values = StateConverter.to_dict(state)
+        
+        self.assertFalse(values["OUTPUT_COMMENTS"])
+        self.assertEqual(values["AXIS_PRECISION"], 6)
+        self.assertEqual(values["MACHINE_NAME"], "My Machine")
+        self.assertEqual(values["UNITS"], "G20")
+        self.assertEqual(values["UNIT_FORMAT"], "in")
+
+    def test040_roundtrip_conversion(self):
+        """Test that dict -> state -> dict preserves values."""
+        original_values = {
+            "OUTPUT_COMMENTS": False,
+            "AXIS_PRECISION": 4,
+            "MACHINE_NAME": "Test",
+            "UNITS": "G20",
+            "MOTION_MODE": "G91",
+            "PREAMBLE": "G17",
+            "MODAL": True,
+            "SPINDLE_WAIT": 1.5,
+        }
+        
+        # Convert to state and back
+        state = StateConverter.from_dict(original_values)
+        result_values = StateConverter.to_dict(state)
+        
+        # Check key values are preserved
+        self.assertEqual(result_values["OUTPUT_COMMENTS"], False)
+        self.assertEqual(result_values["AXIS_PRECISION"], 4)
+        self.assertEqual(result_values["MACHINE_NAME"], "Test")
+        self.assertEqual(result_values["UNITS"], "G20")
+        self.assertEqual(result_values["MOTION_MODE"], "G91")
+        self.assertEqual(result_values["PREAMBLE"], "G17")
+        self.assertEqual(result_values["MODAL"], True)
+        self.assertEqual(result_values["SPINDLE_WAIT"], 1.5)
+
+    def test050_default_values_handling(self):
+        """Test that missing dictionary keys use defaults."""
+        values = {}  # Empty dictionary
+        
+        state = StateConverter.from_dict(values)
+        
+        # Should have all defaults
+        self.assertTrue(state.output.comments)
+        self.assertEqual(state.precision.axis_precision, 3)
+        self.assertEqual(state.machine.units, MachineUnits.METRIC)
+        self.assertEqual(state.formatting.command_space, " ")
+
+    def test060_computed_properties_in_dict(self):
+        """Test that computed properties are included in to_dict output."""
+        state = PostProcessorState()
+        state.machine.units = MachineUnits.METRIC
+        
+        values = StateConverter.to_dict(state)
+        
+        # Check computed properties
+        self.assertIn("UNIT_FORMAT", values)
+        self.assertIn("UNIT_SPEED_FORMAT", values)
+        self.assertIn("MOTION_COMMANDS", values)
+        self.assertIn("RAPID_MOVES", values)
+        self.assertEqual(values["UNIT_FORMAT"], "mm")
+        self.assertEqual(values["UNIT_SPEED_FORMAT"], "mm/min")
+
+
+class TestStateConverterEdgeCases(unittest.TestCase):
+    """Test edge cases and error handling in state conversion."""
+
+    def test010_partial_dict_conversion(self):
+        """Test conversion with only some fields populated."""
+        values = {
+            "MACHINE_NAME": "Partial Machine",
+            "AXIS_PRECISION": 7,
+        }
+        
+        state = StateConverter.from_dict(values)
+        
+        # Specified values should be set
+        self.assertEqual(state.machine.name, "Partial Machine")
+        self.assertEqual(state.precision.axis_precision, 7)
+        
+        # Unspecified values should have defaults
+        self.assertTrue(state.output.comments)
+        self.assertEqual(state.machine.units, MachineUnits.METRIC)
+
+    def test020_list_fields_conversion(self):
+        """Test conversion of list fields."""
+        values = {
+            "SUPPRESS_COMMANDS": ["G98", "G99", "G80"],
+            "DRILL_CYCLES_TO_TRANSLATE": ["G81", "G82"],
+            "PARAMETER_ORDER": ["X", "Y", "Z", "F"],
+        }
+        
+        state = StateConverter.from_dict(values)
+        
+        self.assertEqual(state.processing.suppress_commands, ["G98", "G99", "G80"])
+        self.assertEqual(state.processing.drill_cycles_to_translate, ["G81", "G82"])
+        self.assertEqual(state.parameter_order, ["X", "Y", "Z", "F"])
+
+    def test030_none_values_handling(self):
+        """Test handling of None values in dictionary."""
+        values = {
+            "RETURN_TO": None,
+            "MACHINE_NAME": "Test",
+        }
+        
+        state = StateConverter.from_dict(values)
+        
+        self.assertIsNone(state.processing.return_to)
+        self.assertEqual(state.machine.name, "Test")
+
+    def test040_line_number_state_preservation(self):
+        """Test that line number state is preserved in conversion."""
+        values = {"line_number": 500}
+        
+        state = StateConverter.from_dict(values)
+        
+        # Line number should be set correctly
+        self.assertEqual(state.formatting.current_line_number, 500)
+        
+        # Convert back
+        result = StateConverter.to_dict(state)
+        self.assertEqual(result["line_number"], 500)
+
+
+class TestTypedStateIntegration(unittest.TestCase):
+    """Integration tests for typed state with existing postprocessor code."""
+
+    def test010_state_can_replace_values_dict(self):
+        """Test that PostProcessorState can be used where values dict was used."""
+        state = PostProcessorState()
+        
+        # Set some values
+        state.output.comments = True
+        state.precision.axis_precision = 4
+        state.machine.name = "Integration Test"
+        
+        # Convert to dict for legacy code
+        values = StateConverter.to_dict(state)
+        
+        # Verify legacy code can access values
+        self.assertTrue(values["OUTPUT_COMMENTS"])
+        self.assertEqual(values["AXIS_PRECISION"], 4)
+        self.assertEqual(values["MACHINE_NAME"], "Integration Test")
+
+    def test020_state_modification_isolation(self):
+        """Test that modifying one state doesn't affect another."""
+        state1 = PostProcessorState()
+        state2 = PostProcessorState()
+        
+        # Modify state1
+        state1.output.comments = False
+        state1.precision.axis_precision = 10
+        
+        # state2 should be unchanged
+        self.assertTrue(state2.output.comments)
+        self.assertEqual(state2.precision.axis_precision, 3)

@@ -57,6 +57,12 @@ from CAMTests.TestPathPost import TestPostProcessorFactory
 from CAMTests.TestPathPost import TestResolvingPostProcessorName
 from CAMTests.TestPathPost import TestFileNameGenerator
 
+# Typed state system tests
+from CAMTests.TestPathPost import TestPostProcessorState
+from CAMTests.TestPathPost import TestStateConverter
+from CAMTests.TestPathPost import TestStateConverterEdgeCases
+from CAMTests.TestPathPost import TestTypedStateIntegration
+
 from CAMTests.TestPathPreferences import TestPathPreferences
 from CAMTests.TestPathProfile import TestPathProfile
 from CAMTests.TestPathPropertyBag import TestPathPropertyBag

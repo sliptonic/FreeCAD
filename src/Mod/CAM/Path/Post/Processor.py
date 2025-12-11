@@ -29,14 +29,17 @@
 The base classes for post processors in the CAM workbench.
 """
 import argparse
+from dataclasses import dataclass, field
+from enum import Enum
 import importlib.util
 import os
 from PySide import QtCore, QtGui
 import re
 import sys
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import Path.Base.Util as PathUtil
+import Path.Geom as PathGeom
 import Path.Post.UtilsArguments as PostUtilsArguments
 import Path.Post.UtilsExport as PostUtilsExport
 
@@ -62,9 +65,422 @@ class _TempObject:
     Label = "Fixture"
 
 
-#
-# Define some types that are used throughout this file.
-#
+# ============================================================================
+# Typed State Classes - Modern replacement for dictionary-based configuration
+# ============================================================================
+
+
+class MachineUnits(Enum):
+    """Machine unit system."""
+    METRIC = "G21"
+    IMPERIAL = "G20"
+
+
+class MotionMode(Enum):
+    """Motion mode for machine movements."""
+    ABSOLUTE = "G90"
+    RELATIVE = "G91"
+
+
+@dataclass
+class OutputOptions:
+    """Controls what gets included in the G-code output."""
+    comments: bool = True
+    blank_lines: bool = True
+    header: bool = True
+    line_numbers: bool = False
+    bcnc_blocks: bool = False
+    path_labels: bool = False
+    machine_name: bool = False
+    tool_change: bool = True
+    doubles: bool = True  # Output duplicate axis values
+    adaptive: bool = False
+
+
+@dataclass
+class PrecisionSettings:
+    """Numeric precision and formatting settings."""
+    axis_precision: int = 3
+    feed_precision: int = 3
+    spindle_decimals: int = 0
+    
+    # Defaults by unit system
+    default_metric_axis: int = 3
+    default_metric_feed: int = 3
+    default_imperial_axis: int = 4
+    default_imperial_feed: int = 4
+
+
+@dataclass
+class LineFormatting:
+    """Line formatting and numbering options."""
+    command_space: str = " "
+    comment_symbol: str = "("
+    line_increment: int = 10
+    line_number_start: int = 100
+    end_of_line_chars: str = "\n"
+    
+    # Mutable state for line numbering
+    _current_line: int = field(default=100, init=False, repr=False)
+    
+    def __post_init__(self):
+        """Initialize mutable line number."""
+        self._current_line = self.line_number_start
+    
+    @property
+    def current_line_number(self) -> int:
+        """Get current line number."""
+        return self._current_line
+    
+    def next_line_number(self) -> int:
+        """Get current line number and increment for next call."""
+        current = self._current_line
+        self._current_line += self.line_increment
+        return current
+    
+    def reset_line_numbers(self) -> None:
+        """Reset line numbering to start value."""
+        self._current_line = self.line_number_start
+
+
+@dataclass
+class MachineSettings:
+    """Machine-specific configuration."""
+    name: str = "unknown machine"
+    units: MachineUnits = MachineUnits.METRIC
+    motion_mode: MotionMode = MotionMode.ABSOLUTE
+    use_tlo: bool = True  # Tool length offset
+    stop_spindle_for_tool_change: bool = True
+    enable_coolant: bool = False
+    enable_machine_specific_commands: bool = False
+
+
+@dataclass
+class GCodeBlocks:
+    """
+    G-code block templates for various lifecycle hooks.
+    
+    These templates are inserted at specific points during postprocessing
+    to provide customization points for machine-specific behavior.
+    """
+    # Job lifecycle
+    pre_job: str = ""
+    post_job: str = ""
+    
+    # Legacy aliases (maintained for compatibility)
+    preamble: str = ""  # Typically inserted at start of job
+    postamble: str = ""  # Typically inserted at end of job
+    safetyblock: str = ""  # Safety commands (G40, G49, etc.)
+    
+    # Operation lifecycle
+    pre_operation: str = ""
+    post_operation: str = ""
+    
+    # Tool change lifecycle
+    pre_tool_change: str = ""
+    post_tool_change: str = ""
+    tool_return: str = ""  # Return to tool change position
+    
+    # Fixture/WCS change lifecycle
+    pre_fixture_change: str = ""
+    post_fixture_change: str = ""
+    
+    # Rotary axis lifecycle
+    pre_rotary_move: str = ""
+    post_rotary_move: str = ""
+    
+    # Spindle lifecycle
+    pre_spindle_change: str = ""
+    post_spindle_change: str = ""
+    
+    # Miscellaneous
+    finish_label: str = "Finish"
+
+
+@dataclass
+class ProcessingOptions:
+    """Processing and transformation options."""
+    modal: bool = False  # Suppress repeated commands
+    translate_drill_cycles: bool = False
+    split_arcs: bool = False
+    show_editor: bool = True
+    list_tools_in_preamble: bool = False
+    show_machine_units: bool = True
+    show_operation_labels: bool = True
+    
+    # Lists of commands
+    drill_cycles_to_translate: List[str] = field(
+        default_factory=lambda: ["G73", "G81", "G82", "G83"]
+    )
+    suppress_commands: List[str] = field(default_factory=list)
+    
+    # Numeric settings
+    chipbreaking_amount: float = 0.25  # mm
+    spindle_wait: float = 0.0  # seconds
+    return_to: Optional[Tuple[float, float, float]] = None  # (x, y, z) or None
+
+
+@dataclass
+class PostProcessorState:
+    """
+    Complete typed state for postprocessor configuration.
+    
+    This replaces the legacy dictionary-based 'values' parameter with a
+    strongly-typed, self-documenting structure. All configuration is organized
+    into logical groups for clarity.
+    """
+    # Identification
+    postprocessor_file_name: str = ""
+    
+    # Configuration groups
+    output: OutputOptions = field(default_factory=OutputOptions)
+    precision: PrecisionSettings = field(default_factory=PrecisionSettings)
+    formatting: LineFormatting = field(default_factory=LineFormatting)
+    machine: MachineSettings = field(default_factory=MachineSettings)
+    blocks: GCodeBlocks = field(default_factory=GCodeBlocks)
+    processing: ProcessingOptions = field(default_factory=ProcessingOptions)
+    
+    # Dynamic state (functions and ordering)
+    parameter_functions: Dict[str, Callable] = field(default_factory=dict)
+    parameter_order: List[str] = field(default_factory=lambda: [
+        "D", "H", "L", "X", "Y", "Z", "A", "B", "C",
+        "U", "V", "W", "I", "J", "K", "R", "P", "E", "Q", "F", "S", "T"
+    ])
+    
+    # Computed properties
+    @property
+    def unit_format(self) -> str:
+        """Get unit format string (mm or in)."""
+        return "mm" if self.machine.units == MachineUnits.METRIC else "in"
+    
+    @property
+    def unit_speed_format(self) -> str:
+        """Get unit speed format string (mm/min or in/min)."""
+        return "mm/min" if self.machine.units == MachineUnits.METRIC else "in/min"
+    
+    @property
+    def motion_commands(self) -> List[str]:
+        """Get list of motion commands that change position (from Path.Geom)."""
+        return PathGeom.CmdMoveAll
+    
+    @property
+    def rapid_moves(self) -> List[str]:
+        """Get list of rapid move commands (from Path.Geom)."""
+        return PathGeom.CmdMoveRapid
+
+
+class StateConverter:
+    """
+    Bidirectional converter between legacy dictionary state and typed state.
+    
+    This enables gradual migration by allowing both formats to coexist.
+    Legacy code can continue using dictionaries while new code uses typed state.
+    """
+    
+    @staticmethod
+    def from_dict(values: Dict[str, Any]) -> PostProcessorState:
+        """
+        Convert legacy dictionary to typed state.
+        
+        Args:
+            values: Legacy dictionary with string keys
+            
+        Returns:
+            PostProcessorState with all values populated
+        """
+        state = PostProcessorState()
+        
+        # Output options
+        state.output.comments = values.get("OUTPUT_COMMENTS", True)
+        state.output.blank_lines = values.get("OUTPUT_BLANK_LINES", True)
+        state.output.header = values.get("OUTPUT_HEADER", True)
+        state.output.line_numbers = values.get("OUTPUT_LINE_NUMBERS", False)
+        state.output.bcnc_blocks = values.get("OUTPUT_BCNC", False)
+        state.output.path_labels = values.get("OUTPUT_PATH_LABELS", False)
+        state.output.machine_name = values.get("OUTPUT_MACHINE_NAME", False)
+        state.output.tool_change = values.get("OUTPUT_TOOL_CHANGE", True)
+        state.output.doubles = values.get("OUTPUT_DOUBLES", True)
+        state.output.adaptive = values.get("OUTPUT_ADAPTIVE", False)
+        
+        # Precision
+        state.precision.axis_precision = values.get("AXIS_PRECISION", 3)
+        state.precision.feed_precision = values.get("FEED_PRECISION", 3)
+        state.precision.spindle_decimals = values.get("SPINDLE_DECIMALS", 0)
+        state.precision.default_metric_axis = values.get("DEFAULT_AXIS_PRECISION", 3)
+        state.precision.default_metric_feed = values.get("DEFAULT_FEED_PRECISION", 3)
+        state.precision.default_imperial_axis = values.get("DEFAULT_INCH_AXIS_PRECISION", 4)
+        state.precision.default_imperial_feed = values.get("DEFAULT_INCH_FEED_PRECISION", 4)
+        
+        # Formatting
+        state.formatting.command_space = values.get("COMMAND_SPACE", " ")
+        state.formatting.comment_symbol = values.get("COMMENT_SYMBOL", "(")
+        state.formatting.line_increment = values.get("LINE_INCREMENT", 10)
+        state.formatting.line_number_start = values.get("line_number", 100)
+        state.formatting.end_of_line_chars = values.get("END_OF_LINE_CHARACTERS", "\n")
+        state.formatting._current_line = values.get("line_number", 100)
+        
+        # Machine
+        state.machine.name = values.get("MACHINE_NAME", "unknown machine")
+        units_str = values.get("UNITS", "G21")
+        state.machine.units = (
+            MachineUnits.METRIC if units_str == "G21" else MachineUnits.IMPERIAL
+        )
+        motion_str = values.get("MOTION_MODE", "G90")
+        state.machine.motion_mode = (
+            MotionMode.ABSOLUTE if motion_str == "G90" else MotionMode.RELATIVE
+        )
+        state.machine.use_tlo = values.get("USE_TLO", True)
+        state.machine.stop_spindle_for_tool_change = values.get(
+            "STOP_SPINDLE_FOR_TOOL_CHANGE", True
+        )
+        state.machine.enable_coolant = values.get("ENABLE_COOLANT", False)
+        state.machine.enable_machine_specific_commands = values.get(
+            "ENABLE_MACHINE_SPECIFIC_COMMANDS", False
+        )
+        
+        # Blocks
+        state.blocks.pre_job = values.get("PRE_JOB", "")
+        state.blocks.post_job = values.get("POST_JOB", "")
+        state.blocks.preamble = values.get("PREAMBLE", "")
+        state.blocks.postamble = values.get("POSTAMBLE", "")
+        state.blocks.safetyblock = values.get("SAFETYBLOCK", "")
+        state.blocks.pre_operation = values.get("PRE_OPERATION", "")
+        state.blocks.post_operation = values.get("POST_OPERATION", "")
+        state.blocks.pre_tool_change = values.get("PRE_TOOL_CHANGE", "")
+        state.blocks.post_tool_change = values.get("POST_TOOL_CHANGE", "")
+        state.blocks.tool_return = values.get("TOOLRETURN", "")
+        state.blocks.pre_fixture_change = values.get("PRE_FIXTURE_CHANGE", "")
+        state.blocks.post_fixture_change = values.get("POST_FIXTURE_CHANGE", "")
+        state.blocks.pre_rotary_move = values.get("PRE_ROTARY_MOVE", "")
+        state.blocks.post_rotary_move = values.get("POST_ROTARY_MOVE", "")
+        state.blocks.pre_spindle_change = values.get("PRE_SPINDLE_CHANGE", "")
+        state.blocks.post_spindle_change = values.get("POST_SPINDLE_CHANGE", "")
+        state.blocks.finish_label = values.get("FINISH_LABEL", "Finish")
+        
+        # Processing
+        state.processing.modal = values.get("MODAL", False)
+        state.processing.translate_drill_cycles = values.get("TRANSLATE_DRILL_CYCLES", False)
+        state.processing.split_arcs = values.get("SPLIT_ARCS", False)
+        state.processing.show_editor = values.get("SHOW_EDITOR", True)
+        state.processing.list_tools_in_preamble = values.get("LIST_TOOLS_IN_PREAMBLE", False)
+        state.processing.show_machine_units = values.get("SHOW_MACHINE_UNITS", True)
+        state.processing.show_operation_labels = values.get("SHOW_OPERATION_LABELS", True)
+        state.processing.drill_cycles_to_translate = values.get(
+            "DRILL_CYCLES_TO_TRANSLATE", ["G73", "G81", "G82", "G83"]
+        )
+        state.processing.suppress_commands = values.get("SUPPRESS_COMMANDS", [])
+        state.processing.chipbreaking_amount = values.get("CHIPBREAKING_AMOUNT", 0.25)
+        state.processing.spindle_wait = values.get("SPINDLE_WAIT", 0.0)
+        state.processing.return_to = values.get("RETURN_TO")
+        
+        # Dynamic state
+        state.postprocessor_file_name = values.get("POSTPROCESSOR_FILE_NAME", "")
+        state.parameter_functions = values.get("PARAMETER_FUNCTIONS", {})
+        if "PARAMETER_ORDER" in values:
+            state.parameter_order = values["PARAMETER_ORDER"]
+        
+        return state
+    
+    @staticmethod
+    def to_dict(state: PostProcessorState) -> Dict[str, Any]:
+        """
+        Convert typed state back to legacy dictionary format.
+        
+        This maintains backward compatibility with existing code that expects
+        the dictionary format.
+        
+        Args:
+            state: Typed PostProcessorState
+            
+        Returns:
+            Dictionary with all values in legacy format
+        """
+        return {
+            # Output
+            "OUTPUT_COMMENTS": state.output.comments,
+            "OUTPUT_BLANK_LINES": state.output.blank_lines,
+            "OUTPUT_HEADER": state.output.header,
+            "OUTPUT_LINE_NUMBERS": state.output.line_numbers,
+            "OUTPUT_BCNC": state.output.bcnc_blocks,
+            "OUTPUT_PATH_LABELS": state.output.path_labels,
+            "OUTPUT_MACHINE_NAME": state.output.machine_name,
+            "OUTPUT_TOOL_CHANGE": state.output.tool_change,
+            "OUTPUT_DOUBLES": state.output.doubles,
+            "OUTPUT_ADAPTIVE": state.output.adaptive,
+            
+            # Precision
+            "AXIS_PRECISION": state.precision.axis_precision,
+            "FEED_PRECISION": state.precision.feed_precision,
+            "SPINDLE_DECIMALS": state.precision.spindle_decimals,
+            "DEFAULT_AXIS_PRECISION": state.precision.default_metric_axis,
+            "DEFAULT_FEED_PRECISION": state.precision.default_metric_feed,
+            "DEFAULT_INCH_AXIS_PRECISION": state.precision.default_imperial_axis,
+            "DEFAULT_INCH_FEED_PRECISION": state.precision.default_imperial_feed,
+            
+            # Formatting
+            "COMMAND_SPACE": state.formatting.command_space,
+            "COMMENT_SYMBOL": state.formatting.comment_symbol,
+            "LINE_INCREMENT": state.formatting.line_increment,
+            "line_number": state.formatting.current_line_number,
+            "END_OF_LINE_CHARACTERS": state.formatting.end_of_line_chars,
+            
+            # Machine
+            "MACHINE_NAME": state.machine.name,
+            "UNITS": state.machine.units.value,
+            "UNIT_FORMAT": state.unit_format,
+            "UNIT_SPEED_FORMAT": state.unit_speed_format,
+            "MOTION_MODE": state.machine.motion_mode.value,
+            "USE_TLO": state.machine.use_tlo,
+            "STOP_SPINDLE_FOR_TOOL_CHANGE": state.machine.stop_spindle_for_tool_change,
+            "ENABLE_COOLANT": state.machine.enable_coolant,
+            "ENABLE_MACHINE_SPECIFIC_COMMANDS": state.machine.enable_machine_specific_commands,
+            
+            # Blocks
+            "PRE_JOB": state.blocks.pre_job,
+            "POST_JOB": state.blocks.post_job,
+            "PREAMBLE": state.blocks.preamble,
+            "POSTAMBLE": state.blocks.postamble,
+            "SAFETYBLOCK": state.blocks.safetyblock,
+            "PRE_OPERATION": state.blocks.pre_operation,
+            "POST_OPERATION": state.blocks.post_operation,
+            "PRE_TOOL_CHANGE": state.blocks.pre_tool_change,
+            "POST_TOOL_CHANGE": state.blocks.post_tool_change,
+            "TOOLRETURN": state.blocks.tool_return,
+            "PRE_FIXTURE_CHANGE": state.blocks.pre_fixture_change,
+            "POST_FIXTURE_CHANGE": state.blocks.post_fixture_change,
+            "PRE_ROTARY_MOVE": state.blocks.pre_rotary_move,
+            "POST_ROTARY_MOVE": state.blocks.post_rotary_move,
+            "PRE_SPINDLE_CHANGE": state.blocks.pre_spindle_change,
+            "POST_SPINDLE_CHANGE": state.blocks.post_spindle_change,
+            "FINISH_LABEL": state.blocks.finish_label,
+            
+            # Processing
+            "MODAL": state.processing.modal,
+            "TRANSLATE_DRILL_CYCLES": state.processing.translate_drill_cycles,
+            "SPLIT_ARCS": state.processing.split_arcs,
+            "SHOW_EDITOR": state.processing.show_editor,
+            "LIST_TOOLS_IN_PREAMBLE": state.processing.list_tools_in_preamble,
+            "SHOW_MACHINE_UNITS": state.processing.show_machine_units,
+            "SHOW_OPERATION_LABELS": state.processing.show_operation_labels,
+            "DRILL_CYCLES_TO_TRANSLATE": state.processing.drill_cycles_to_translate,
+            "SUPPRESS_COMMANDS": state.processing.suppress_commands,
+            "CHIPBREAKING_AMOUNT": state.processing.chipbreaking_amount,
+            "SPINDLE_WAIT": state.processing.spindle_wait,
+            "RETURN_TO": state.processing.return_to,
+            
+            # Dynamic
+            "POSTPROCESSOR_FILE_NAME": state.postprocessor_file_name,
+            "PARAMETER_FUNCTIONS": state.parameter_functions,
+            "PARAMETER_ORDER": state.parameter_order,
+            "MOTION_COMMANDS": state.motion_commands,
+            "RAPID_MOVES": state.rapid_moves,
+        }
+
+
+# ============================================================================
+# Legacy Type Definitions - Maintained for backward compatibility
+# ============================================================================
+
 Defaults = Dict[str, bool]
 FormatHelp = str
 GCodeOrNone = Optional[str]
