@@ -238,12 +238,18 @@ class MachineConfiguration:
         self.units = "metric"  # Machine units (metric or imperial)
         self.version = 1  # Machine configuration schema version
         self.freecad_version = ".".join(FreeCAD.Version()[0:3])  # FreeCAD version
-        self.post_processor = ""  # Default post processor
-        self.post_processor_args = ""  # Default post processor arguments
-        self.post_output_unit = "metric"  # Post processor output unit
-        self.post_comments = True  # Include comments in output
-        self.post_line_numbers = False  # Include line numbers in output
-        self.post_tool_length_offset = True  # Include tool length offset
+
+        # Check experimental flag for machine post processor
+        param = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
+        self.enable_machine_postprocessor = param.GetBool("EnableMachinePostprocessor", False)
+
+        if self.enable_machine_postprocessor:
+            self.post_processor = ""  # Default post processor
+            self.post_processor_args = ""  # Default post processor arguments
+            self.post_output_unit = "metric"  # Post processor output unit
+            self.post_comments = True  # Include comments in output
+            self.post_line_numbers = False  # Include line numbers in output
+            self.post_tool_length_offset = True  # Include tool length offset
 
     def add_linear_axis(
         self, name, direction_vector, min_limit=0, max_limit=1000, max_velocity=10000
@@ -456,7 +462,7 @@ class MachineConfiguration:
                 "prefer_positive": axis_obj.prefer_positive,
             }
 
-        return {
+        data = {
             "freecad_version": self.freecad_version,
             "machine": {
                 "name": self.name,
@@ -467,16 +473,20 @@ class MachineConfiguration:
                 "axes": axes,
                 "spindles": [spindle.to_dict() for spindle in self.spindles],
             },
-            "post": {
+            "version": self.version,
+        }
+
+        if self.enable_machine_postprocessor:
+            data["post"] = {
                 "output_unit": self.post_output_unit,
                 "comments": self.post_comments,
                 "line_numbers": self.post_line_numbers,
                 "tool_length_offset": self.post_tool_length_offset,
                 "processor": self.post_processor,
                 "processor_args": self.post_processor_args,
-            },
-            "version": self.version,
-        }
+            }
+
+        return data
 
     @classmethod
     def from_dict(cls, data):
@@ -566,14 +576,15 @@ class MachineConfiguration:
             spindles_data = machine.get("spindles", [])
             config.spindles = [Spindle.from_dict(spindle_data) for spindle_data in spindles_data]
 
-            # Load post processor settings
-            post_data = data.get("post", {})
-            config.post_processor = post_data.get("processor", "")
-            config.post_processor_args = post_data.get("processor_args", "")
-            config.post_output_unit = post_data.get("output_unit", "metric")
-            config.post_comments = post_data.get("comments", True)
-            config.post_line_numbers = post_data.get("line_numbers", False)
-            config.post_tool_length_offset = post_data.get("tool_length_offset", True)
+            # Load post processor settings if enabled
+            if config.enable_machine_postprocessor:
+                post_data = data.get("post", {})
+                config.post_processor = post_data.get("processor", "")
+                config.post_processor_args = post_data.get("processor_args", "")
+                config.post_output_unit = post_data.get("output_unit", "metric")
+                config.post_comments = post_data.get("comments", True)
+                config.post_line_numbers = post_data.get("line_numbers", False)
+                config.post_tool_length_offset = post_data.get("tool_length_offset", True)
         else:
             # I think we can loose this.
             # Handle old format (for backward compatibility)
@@ -621,7 +632,10 @@ class MachineFactory:
         Returns:
             Dictionary with default machine configuration
         """
-        return {
+        param = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
+        enable_machine_postprocessor = param.GetBool("EnableMachinePostprocessor", False)
+
+        data = {
             "machine": {
                 "name": "New Machine",
                 "manufacturer": "",
@@ -629,16 +643,20 @@ class MachineFactory:
                 "units": "metric",
                 "type": "custom",
             },
-            "post": {
+            "version": 1,
+        }
+
+        if enable_machine_postprocessor:
+            data["post"] = {
                 "output_unit": "metric",
                 "comments": True,
                 "line_numbers": False,
                 "tool_length_offset": True,
                 "processor": "",
                 "processor_args": "",
-            },
-            "version": 1,
-        }
+            }
+
+        return data
 
     @classmethod
     def set_config_directory(cls, directory):

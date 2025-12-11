@@ -106,6 +106,11 @@ class MachineEditorDialog(QtGui.QDialog):
         self.post_tab = QtGui.QWidget()
         self.tabs.addTab(self.post_tab, translate("CAM_MachineEditor", "Post Processor"))
         self.setup_post_tab()
+
+        # Check experimental flag for machine post processor
+        param = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
+        self.enable_machine_postprocessor = param.GetBool("EnableMachinePostprocessor", False)
+        self.tabs.setTabVisible(self.tabs.indexOf(self.post_tab), self.enable_machine_postprocessor)
         # Text editor (initially hidden)
         self.text_editor = CodeEditor()
 
@@ -952,7 +957,11 @@ class MachineEditorDialog(QtGui.QDialog):
                 "axes": axes,
                 "spindles": spindles,
             },
-            "post": {
+            "version": 1,
+        }
+
+        if self.enable_machine_postprocessor:
+            data["post"] = {
                 "processor": str(self.post_processor_combo.currentText()),
                 "processor_args": str(self.post_processor_args_edit.text()),
                 "output_unit": self.output_unit_combo.itemData(
@@ -965,9 +974,8 @@ class MachineEditorDialog(QtGui.QDialog):
                 "tool_length_offset": self.tool_length_offset_combo.itemData(
                     self.tool_length_offset_combo.currentIndex()
                 ),
-            },
-            "version": 1,
-        }
+            }
+
         return data
 
     def toggle_editor_mode(self):

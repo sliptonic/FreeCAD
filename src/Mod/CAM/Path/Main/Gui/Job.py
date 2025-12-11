@@ -787,7 +787,6 @@ class TaskPanel:
         self.form.machineComboBox.clear()
         self.form.machineComboBox.addItems(display_machines)
         if hasattr(self.obj, "Machine"):
-            print("Job Machine:", self.obj.Machine)
             # Map "" to "<any>" for display
             display_value = "<any>" if self.obj.Machine == "" else self.obj.Machine
             self.selectComboBoxText(self.form.machineComboBox, display_value)
@@ -908,7 +907,7 @@ class TaskPanel:
             if hasattr(self.obj, "Machine"):
                 machine = str(self.form.machineComboBox.currentText())
                 # Map "<any>" back to "" for storage
-                self.obj.Machine = "" if machine == "<any>" else machine
+                self.obj.Machine = machine
 
             self.obj.Label = str(self.form.jobLabel.text())
             self.obj.Description = str(self.form.jobDescription.toPlainText())
