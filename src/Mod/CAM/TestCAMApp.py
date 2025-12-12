@@ -62,6 +62,8 @@ from CAMTests.TestPathPost import TestBuildPostList
 from CAMTests.TestPathPost import TestPostProcessorFactory
 from CAMTests.TestPathPost import TestResolvingPostProcessorName
 from CAMTests.TestPathPost import TestFileNameGenerator
+from CAMTests.TestPathPost import TestHeaderBuilder
+
 
 from CAMTests.TestPathPreferences import TestPathPreferences
 from CAMTests.TestPathProfile import TestPathProfile
