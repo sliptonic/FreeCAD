@@ -36,8 +36,9 @@ import FreeCAD
 import Path.Base.Util as PathUtil
 import Path.Post.Utils as PostUtils
 import Path.Post.UtilsParse as PostUtilsParse
+import Path.Post.StateAccessors as SA
 import Path.Tool.Controller as PathToolController
-from Path.Post.UtilsParse import State, ensure_dict
+from Path.Post.UtilsParse import State
 
 # Define some types that are used throughout this file
 Gcode = List[str]
@@ -46,21 +47,24 @@ Values = Dict[str, Any]
 
 def check_canned_cycles(values: State) -> None:
     """Check canned cycles for drilling."""
-    values = ensure_dict(values)
-    if values["TRANSLATE_DRILL_CYCLES"]:
-        if len(values["SUPPRESS_COMMANDS"]) == 0:
-            values["SUPPRESS_COMMANDS"] = ["G99", "G98", "G80"]
+    if SA.get_translate_drill_cycles(values):
+        suppress_commands = SA.get_suppress_commands(values)
+        if len(suppress_commands) == 0:
+            SA.append_suppress_command(values, "G99")
+            SA.append_suppress_command(values, "G98")
+            SA.append_suppress_command(values, "G80")
         else:
-            values["SUPPRESS_COMMANDS"] += ["G99", "G98", "G80"]
+            SA.append_suppress_command(values, "G99")
+            SA.append_suppress_command(values, "G98")
+            SA.append_suppress_command(values, "G80")
 
 
 def output_coolant_off(values: State, gcode: Gcode, coolant_mode: str) -> None:
     """Output the commands to turn coolant off if necessary."""
-    values = ensure_dict(values)
     comment: str
 
-    if values["ENABLE_COOLANT"] and coolant_mode != "None":
-        if values["OUTPUT_COMMENTS"]:
+    if SA.get_enable_coolant(values) and coolant_mode != "None":
+        if SA.get_output_comments(values):
             comment = PostUtilsParse.create_comment(values, f"Coolant Off: {coolant_mode}")
             gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
         gcode.append(f"{PostUtilsParse.linenumber(values)}M9")
@@ -68,11 +72,10 @@ def output_coolant_off(values: State, gcode: Gcode, coolant_mode: str) -> None:
 
 def output_coolant_on(values: State, gcode: Gcode, coolant_mode: str) -> None:
     """Output the commands to turn coolant on if necessary."""
-    values = ensure_dict(values)
     comment: str
 
-    if values["ENABLE_COOLANT"]:
-        if values["OUTPUT_COMMENTS"] and coolant_mode != "None":
+    if SA.get_enable_coolant(values):
+        if SA.get_output_comments(values) and coolant_mode != "None":
             comment = PostUtilsParse.create_comment(values, f"Coolant On: {coolant_mode}")
             gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
         if coolant_mode == "Flood":
@@ -83,10 +86,9 @@ def output_coolant_on(values: State, gcode: Gcode, coolant_mode: str) -> None:
 
 def output_end_bcnc(values: State, gcode: Gcode) -> None:
     """Output the ending BCNC header."""
-    values = ensure_dict(values)
     comment: str
 
-    if values["OUTPUT_BCNC"]:
+    if SA.get_output_bcnc(values):
         comment = PostUtilsParse.create_comment(values, "Block-name: post_amble")
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
         comment = PostUtilsParse.create_comment(values, "Block-expand: 0")
@@ -97,16 +99,15 @@ def output_end_bcnc(values: State, gcode: Gcode) -> None:
 
 def output_header(values: State, gcode: Gcode) -> None:
     """Output the header."""
-    values = ensure_dict(values)
     cam_file: str
     comment: str
 
-    if not values["OUTPUT_HEADER"]:
+    if not SA.get_output_header(values):
         return
     comment = PostUtilsParse.create_comment(values, "Exported by FreeCAD")
     gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
     comment = PostUtilsParse.create_comment(
-        values, f'Post Processor: {values["POSTPROCESSOR_FILE_NAME"]}'
+        values, f'Post Processor: {SA.get_postprocessor_file_name(values)}'
     )
     gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
     if FreeCAD.ActiveDocument:
@@ -121,105 +122,102 @@ def output_header(values: State, gcode: Gcode) -> None:
 
 def output_motion_mode(values: State, gcode: Gcode) -> None:
     """Verify if PREAMBLE or SAFETYBLOCK have changed MOTION_MODE."""
-    values = ensure_dict(values)
-
-    if "G90" in values["PREAMBLE"] or "G90" in values["SAFETYBLOCK"]:
-        values["MOTION_MODE"] = "G90"
-    elif "G91" in values["PREAMBLE"] or "G91" in values["SAFETYBLOCK"]:
-        values["MOTION_MODE"] = "G91"
+    preamble = SA.get_preamble(values)
+    safetyblock = SA.get_safetyblock(values)
+    
+    if "G90" in preamble or "G90" in safetyblock:
+        SA.set_motion_mode(values, "G90")
+    elif "G91" in preamble or "G91" in safetyblock:
+        SA.set_motion_mode(values, "G91")
     else:
-        gcode.append(f'{PostUtilsParse.linenumber(values)}{values["MOTION_MODE"]}')
+        gcode.append(f'{PostUtilsParse.linenumber(values)}{SA.get_motion_mode(values)}')
 
 
 def output_postamble_header(values: State, gcode: Gcode) -> None:
     """Output the postamble header."""
-    values = ensure_dict(values)
     comment: str = ""
 
-    if values["OUTPUT_COMMENTS"]:
+    if SA.get_output_comments(values):
         comment = PostUtilsParse.create_comment(values, "Begin postamble")
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
 
 
 def output_postamble(values: State, gcode: Gcode) -> None:
     """Output the postamble."""
-    values = ensure_dict(values)
     line: str
 
-    for line in values["POSTAMBLE"].splitlines(False):
+    for line in SA.get_postamble(values).splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
 def output_postop(values: State, gcode: Gcode, obj) -> None:
     """Output the post-operation information."""
-    values = ensure_dict(values)
     comment: str
     line: str
 
-    if values["OUTPUT_COMMENTS"]:
-        if values["SHOW_OPERATION_LABELS"]:
+    if SA.get_output_comments(values):
+        if SA.get_show_operation_labels(values):
             comment = PostUtilsParse.create_comment(
-                values, f'{values["FINISH_LABEL"]} operation: {obj.Label}'
+                values, f'{SA.get_finish_label(values)} operation: {obj.Label}'
             )
         else:
-            comment = PostUtilsParse.create_comment(values, f'{values["FINISH_LABEL"]} operation')
+            comment = PostUtilsParse.create_comment(values, f'{SA.get_finish_label(values)} operation')
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
-    for line in values["POST_OPERATION"].splitlines(False):
+    for line in SA.get_post_operation(values).splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
 def output_preamble(values: State, gcode: Gcode) -> None:
     """Output the preamble."""
-    values = ensure_dict(values)
     comment: str
     line: str
 
-    if values["OUTPUT_COMMENTS"]:
+    if SA.get_output_comments(values):
         comment = PostUtilsParse.create_comment(values, "Begin preamble")
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
-    for line in values["PREAMBLE"].splitlines(False):
+    for line in SA.get_preamble(values).splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
 def output_preop(values: State, gcode: Gcode, obj) -> None:
     """Output the pre-operation information."""
-    values = ensure_dict(values)
     comment: str
     line: str
 
-    if values["OUTPUT_COMMENTS"]:
-        if values["SHOW_OPERATION_LABELS"]:
+    if SA.get_output_comments(values):
+        if SA.get_show_operation_labels(values):
             comment = PostUtilsParse.create_comment(values, f"Begin operation: {obj.Label}")
         else:
             comment = PostUtilsParse.create_comment(values, "Begin operation")
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
-        if values["SHOW_MACHINE_UNITS"]:
+        if SA.get_show_machine_units(values):
             comment = PostUtilsParse.create_comment(
-                values, f'Machine units: {values["UNIT_SPEED_FORMAT"]}'
+                values, f'Machine units: {SA.get_unit_speed_format(values)}'
             )
             gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
-        if values["OUTPUT_MACHINE_NAME"]:
+        if SA.get_output_machine_name(values):
             comment = PostUtilsParse.create_comment(
                 values,
-                f'Machine: {values["MACHINE_NAME"]}, {values["UNIT_SPEED_FORMAT"]}',
+                f'Machine: {SA.get_machine_name(values)}, {SA.get_unit_speed_format(values)}',
             )
             gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
-    for line in values["PRE_OPERATION"].splitlines(False):
+    for line in SA.get_pre_operation(values).splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
 def output_return_to(values: State, gcode: Gcode) -> None:
     """Output the RETURN_TO command."""
-    values = ensure_dict(values)
     cmd: str
     num_x: str
     num_y: str
     num_z: str
 
-    if values["RETURN_TO"]:
-        num_x = values["RETURN_TO"][0]
-        num_y = values["RETURN_TO"][1]
-        num_z = values["RETURN_TO"][2]
+    return_to = SA.get_return_to(values)
+    
+    if return_to:
+        num_x = return_to[0]
+        num_y = return_to[1]
+        num_z = return_to[2]
         cmd = PostUtilsParse.format_command_line(
             values, ["G0", f"X{num_x}", f"Y{num_y}", f"Z{num_z}"]
         )
@@ -228,19 +226,17 @@ def output_return_to(values: State, gcode: Gcode) -> None:
 
 def output_safetyblock(values: State, gcode: Gcode) -> None:
     """Output the safety block."""
-    values = ensure_dict(values)
     line: str
 
-    for line in values["SAFETYBLOCK"].splitlines(False):
+    for line in SA.get_safetyblock(values).splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
 def output_start_bcnc(values: State, gcode: Gcode, obj) -> None:
     """Output the starting BCNC header."""
-    values = ensure_dict(values)
     comment: str
 
-    if values["OUTPUT_BCNC"]:
+    if SA.get_output_bcnc(values):
         comment = PostUtilsParse.create_comment(values, f"Block-name: {obj.Label}")
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
         comment = PostUtilsParse.create_comment(values, "Block-expand: 0")
@@ -251,10 +247,9 @@ def output_start_bcnc(values: State, gcode: Gcode, obj) -> None:
 
 def output_tool_list(values: State, gcode: Gcode, objectslist) -> None:
     """Output a list of the tools used in the objects."""
-    values = ensure_dict(values)
     comment: str
 
-    if values["OUTPUT_COMMENTS"] and values["LIST_TOOLS_IN_PREAMBLE"]:
+    if SA.get_output_comments(values) and SA.get_list_tools_in_preamble(values):
         for item in objectslist:
             if hasattr(item, "Proxy") and isinstance(item.Proxy, PathToolController.ToolController):
                 comment = PostUtilsParse.create_comment(values, f"T{item.ToolNumber}={item.Name}")
@@ -263,32 +258,31 @@ def output_tool_list(values: State, gcode: Gcode, objectslist) -> None:
 
 def output_tool_return(values: State, gcode: Gcode) -> None:
     """Output the tool return block."""
-    values = ensure_dict(values)
     line: str
 
-    for line in values["TOOLRETURN"].splitlines(False):
+    for line in SA.get_toolreturn(values).splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
 def output_units(values: State, gcode: Gcode) -> None:
     """Verify if PREAMBLE or SAFETYBLOCK have changed UNITS."""
-    values = ensure_dict(values)
+    preamble = SA.get_preamble(values)
+    safetyblock = SA.get_safetyblock(values)
 
-    if "G21" in values["PREAMBLE"] or "G21" in values["SAFETYBLOCK"]:
-        values["UNITS"] = "G21"
-        values["UNIT_FORMAT"] = "mm"
-        values["UNIT_SPEED_FORMAT"] = "mm/min"
-    elif "G20" in values["PREAMBLE"] or "G20" in values["SAFETYBLOCK"]:
-        values["UNITS"] = "G20"
-        values["UNIT_FORMAT"] = "in"
-        values["UNIT_SPEED_FORMAT"] = "in/min"
+    if "G21" in preamble or "G21" in safetyblock:
+        SA.set_units(values, "G21")
+        SA.set_unit_format(values, "mm")
+        SA.set_unit_speed_format(values, "mm/min")
+    elif "G20" in preamble or "G20" in safetyblock:
+        SA.set_units(values, "G20")
+        SA.set_unit_format(values, "in")
+        SA.set_unit_speed_format(values, "in/min")
     else:
-        gcode.append(f'{PostUtilsParse.linenumber(values)}{values["UNITS"]}')
+        gcode.append(f'{PostUtilsParse.linenumber(values)}{SA.get_units(values)}')
 
 
 def export_common(values: State, objectslist, filename: str) -> str:
     """Do the common parts of postprocessing the objects in objectslist to filename."""
-    values = ensure_dict(values)
     coolant_mode: str
     dia: PostUtils.GCodeEditorDialog
     final: str
@@ -302,7 +296,7 @@ def export_common(values: State, objectslist, filename: str) -> str:
             print("Please select only path and Compounds.")
             return ""
 
-    print(f'PostProcessor:  {values["POSTPROCESSOR_FILE_NAME"]} postprocessing...')
+    print(f'PostProcessor:  {SA.get_postprocessor_file_name(values)} postprocessing...')
 
     check_canned_cycles(values)
     output_header(values, gcode)

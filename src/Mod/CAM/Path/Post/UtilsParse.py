@@ -37,7 +37,9 @@ import FreeCAD
 from FreeCAD import Units
 
 import Path
+import Path.Geom as PathGeom
 import Path.Post.Utils as PostUtils
+import Path.Post.StateAccessors as SA
 
 # Define some types that are used throughout this file
 CommandLine = List[str]
@@ -56,27 +58,6 @@ State = Union[Values, "PostProcessorState"]
 ParameterFunction = Callable[[State, str, str, PathParameter, PathParameters], str]
 
 
-def ensure_dict(state: State) -> Values:
-    """
-    Ensure state is in dictionary format.
-    
-    Converts typed state to dict if necessary. This helper enables
-    gradual migration by allowing functions to accept both formats.
-    
-    Args:
-        state: Either Values dict or PostProcessorState
-        
-    Returns:
-        Dictionary representation of state
-    """
-    # Import here to avoid circular dependency
-    from Path.Post.Processor import PostProcessorState, StateConverter
-    
-    if isinstance(state, PostProcessorState):
-        return StateConverter.to_dict(state)
-    return state
-
-
 def check_for_an_adaptive_op(
     values: State,
     command: str,
@@ -84,13 +65,12 @@ def check_for_an_adaptive_op(
     adaptive_op_variables: Tuple[bool, float, float],
 ) -> str:
     """Check to see if the current command is an adaptive op."""
-    values = ensure_dict(values)
     adaptiveOp: bool
     opHorizRapid: float
     opVertRapid: float
 
     (adaptiveOp, opHorizRapid, opVertRapid) = adaptive_op_variables
-    if values["OUTPUT_ADAPTIVE"] and adaptiveOp and command in values["RAPID_MOVES"]:
+    if SA.get_output_adaptive(values) and adaptiveOp and command in SA.get_rapid_moves(values):
         if opHorizRapid and opVertRapid:
             return "G1"
         command_line.append(f"(Tool Controller Rapid Values are unset)")
@@ -109,11 +89,11 @@ def check_for_drill_translate(
     """Check for drill commands to translate."""
     comment: str
 
-    if values["TRANSLATE_DRILL_CYCLES"] and command in values["DRILL_CYCLES_TO_TRANSLATE"]:
-        if values["OUTPUT_COMMENTS"]:  # Comment the original command
+    if SA.get_translate_drill_cycles(values) and command in SA.get_drill_cycles_to_translate(values):
+        if SA.get_output_comments(values):  # Comment the original command
             comment = create_comment(values, format_command_line(values, command_line))
             gcode.append(f"{linenumber(values)}{comment}")
-        # wrap this block to ensure that the value of values["MOTION_MODE"]
+        # wrap this block to ensure that the value of MOTION_MODE
         # is restored in case of error
         try:
             drill_translate(
@@ -128,7 +108,7 @@ def check_for_drill_translate(
             print("exception occurred", err)
         # drill_translate uses G90 mode internally, so need to
         # switch back to G91 mode if it was that way originally
-        if values["MOTION_MODE"] == "G91":
+        if SA.get_motion_mode(values) == "G91":
             gcode.append(f"{linenumber(values)}G91")
         return True
     return False
@@ -136,11 +116,10 @@ def check_for_drill_translate(
 
 def check_for_machine_specific_commands(values: State, gcode: Gcode, command: str) -> None:
     """Check for comments containing machine-specific commands."""
-    values = ensure_dict(values)
     m: object
     raw_command: str
 
-    if values["ENABLE_MACHINE_SPECIFIC_COMMANDS"]:
+    if SA.get_enable_machine_specific_commands(values):
         m = re.match(r"^\(MC_RUN_COMMAND: ([^)]+)\)$", command)
         if m:
             raw_command = m.group(1)
@@ -154,9 +133,10 @@ def check_for_spindle_wait(
     """Check for commands that might need a wait command after them."""
     cmd: str
 
-    if values["SPINDLE_WAIT"] > 0 and command in ("M3", "M03", "M4", "M04"):
+    spindle_wait = SA.get_spindle_wait(values)
+    if spindle_wait > 0 and command in ("M3", "M03", "M4", "M04"):
         gcode.append(f"{linenumber(values)}{format_command_line(values, command_line)}")
-        cmd = format_command_line(values, ["G4", f'P{values["SPINDLE_WAIT"]}'])
+        cmd = format_command_line(values, ["G4", f'P{spindle_wait}'])
         gcode.append(f"{linenumber(values)}{cmd}")
 
 
@@ -166,8 +146,8 @@ def check_for_suppressed_commands(
     """Check for commands that will be suppressed."""
     comment: str
 
-    if command in values["SUPPRESS_COMMANDS"]:
-        if values["OUTPUT_COMMENTS"]:
+    if command in SA.get_suppress_commands(values):
+        if SA.get_output_comments(values):
             # convert the command to a comment
             comment = create_comment(values, format_command_line(values, command_line))
             gcode.append(f"{linenumber(values)}{comment}")
@@ -178,9 +158,7 @@ def check_for_suppressed_commands(
 
 def check_for_tlo(values: State, gcode: Gcode, command: str, params: PathParameters) -> None:
     """Output a tool length command if USE_TLO is True."""
-    values = ensure_dict(values)
-
-    if command in ("M6", "M06") and values["USE_TLO"]:
+    if command in ("M6", "M06") and SA.get_use_tlo(values):
         cmd = format_command_line(values, ["G43", f'H{str(int(params["T"]))}'])
         gcode.append(f"{linenumber(values)}{cmd}")
 
@@ -191,30 +169,40 @@ def check_for_tool_change(
     """Check for a tool change."""
 
     if command in ("M6", "M06"):
-        if values["OUTPUT_COMMENTS"]:
+        if not SA.get_output_tool_change(values):
+            # Tool change output is disabled - convert to comment if comments enabled
+            if SA.get_output_comments(values):
+                # Output "Begin toolchange" comment
+                comment = create_comment(values, "Begin toolchange")
+                gcode.append(f"{linenumber(values)}{comment}")
+                # Convert the M6 command to a comment
+                comment = create_comment(values, format_command_line(values, command_line))
+                gcode.append(f"{linenumber(values)}{comment}")
+            return True
+        # Tool change output is enabled
+        if SA.get_output_comments(values):
+            # Output "Begin toolchange" comment FIRST
             comment = create_comment(values, "Begin toolchange")
             gcode.append(f"{linenumber(values)}{comment}")
-        if values["OUTPUT_TOOL_CHANGE"]:
-            if values["STOP_SPINDLE_FOR_TOOL_CHANGE"]:
-                # stop the spindle
-                gcode.append(f"{linenumber(values)}M5")
-            for line in values["TOOL_CHANGE"].splitlines(False):
+        if SA.get_stop_spindle_for_tool_change(values):
+            # Then output M5 spindle stop
+            gcode.append(f"{linenumber(values)}M5")
+        # Output TOOL_CHANGE block commands BEFORE M6
+        tool_change_block = SA.get_tool_change_block(values)
+        if tool_change_block:
+            for line in tool_change_block.splitlines(False):
                 gcode.append(f"{linenumber(values)}{line}")
-            return False
-        if values["OUTPUT_COMMENTS"]:
-            # convert the tool change to a comment
-            comment = create_comment(values, format_command_line(values, command_line))
-            gcode.append(f"{linenumber(values)}{comment}")
-        return True
+        # Don't suppress the command - let it be output normally
+        return False
     return False
 
 
 def create_comment(values: State, comment_string: str) -> str:
     """Create a comment from a string using the correct comment symbol."""
-    values = ensure_dict(values)
-    if values["COMMENT_SYMBOL"] == "(":
+    comment_symbol = SA.get_comment_symbol(values)
+    if comment_symbol == "(":
         return f"({comment_string})"
-    return values["COMMENT_SYMBOL"] + comment_string
+    return comment_symbol + comment_string
 
 
 def default_axis_parameter(
@@ -232,7 +220,7 @@ def default_axis_parameter(
     epsilon: float = 0.00001
 
     if (
-        not values["OUTPUT_DOUBLES"]
+        not SA.get_output_doubles(values)
         and param in current_location
         and math.fabs(current_location[param] - param_value) < epsilon
     ):
@@ -275,7 +263,7 @@ def default_F_parameter(
     found: bool
 
     if (
-        not values["OUTPUT_DOUBLES"]
+        not SA.get_output_doubles(values)
         and param in current_location
         and math.fabs(current_location[param] - param_value) < epsilon
     ):
@@ -284,10 +272,10 @@ def default_F_parameter(
     # there will be refactored posts that do, so this
     # "if statement" is being kept separate to make it
     # more obvious where to put that check.
-    if command in values["RAPID_MOVES"]:
+    if command in SA.get_rapid_moves(values):
         return ""
     feed = Units.Quantity(param_value, Units.Velocity)
-    if feed.getValueAs(values["UNIT_SPEED_FORMAT"]) <= 0.0:
+    if feed.getValueAs(SA.get_unit_speed_format(values)) <= 0.0:
         return ""
     # if any of X, Y, Z, U, V, or W are in the parameters
     # and any of their values is different than where the device currently should be
@@ -306,7 +294,7 @@ def default_F_parameter(
             found = True
     if found:
         # converting from degrees per second to degrees per minute as well
-        return format(float(feed * 60.0), f'.{str(values["FEED_PRECISION"])}f')
+        return format(float(feed * 60.0), f'.{str(SA.get_feed_precision(values))}f')
     # which leaves none of X, Y, Z, U, V, W, A, B, C,
     # which should not be valid but return a converted value just in case
     return format_for_feed(values, feed)
@@ -386,14 +374,14 @@ def default_rotary_parameter(
     epsilon: float = 0.00001
 
     if (
-        not values["OUTPUT_DOUBLES"]
+        not SA.get_output_doubles(values)
         and param in current_location
         and math.fabs(current_location[param] - param_value) < epsilon
     ):
         return ""
     #  unlike other axis, rotary axis such as A, B, and C are always in degrees
     #  and should not be converted when in --inches mode
-    return str(format(float(param_value), f'.{str(values["AXIS_PRECISION"])}f'))
+    return str(format(float(param_value), f'.{str(SA.get_axis_precision(values))}f'))
 
 
 def default_S_parameter(
@@ -410,13 +398,12 @@ def default_S_parameter(
 
 def determine_adaptive_op(values: State, pathobj) -> Tuple[bool, float, float]:
     """Determine if the pathobj contains an Adaptive operation."""
-    values = ensure_dict(values)
     nl = "\n"
     adaptiveOp: bool = False
     opHorizRapid: float = 0.0
     opVertRapid: float = 0.0
 
-    if values["OUTPUT_ADAPTIVE"] and "Adaptive" in pathobj.Name:
+    if SA.get_output_adaptive(values) and "Adaptive" in pathobj.Name:
         adaptiveOp = True
         if hasattr(pathobj, "ToolController"):
             tc = pathobj.ToolController
@@ -457,7 +444,8 @@ def drill_translate(
     F_feedrate: str
     G0_retract_z: str
 
-    if values["MOTION_MODE"] == "G91":
+    motion_mode = SA.get_motion_mode(values)
+    if motion_mode == "G91":
         # force absolute coordinates during cycles
         gcode.append(f"{linenumber(values)}G90")
 
@@ -470,7 +458,7 @@ def drill_translate(
         gcode.append(f"{linenumber(values)}{comment}")
         return
     motion_z = Units.Quantity(motion_location["Z"], Units.Length)
-    if values["MOTION_MODE"] == "G91":  # relative movements
+    if motion_mode == "G91":  # relative movements
         drill_x += Units.Quantity(motion_location["X"], Units.Length)
         drill_y += Units.Quantity(motion_location["Y"], Units.Length)
         drill_z += motion_z
@@ -481,7 +469,7 @@ def drill_translate(
     cmd = format_command_line(values, ["G0", f"Z{format_for_axis(values, retract_z)}"])
     G0_retract_z = f"{cmd}"
     cmd = format_for_feed(values, Units.Quantity(params["F"], Units.Velocity))
-    F_feedrate = f'{values["COMMAND_SPACE"]}F{cmd}'
+    F_feedrate = f'{SA.get_command_space(values)}F{cmd}'
 
     # preliminary movement(s)
     if motion_z < retract_z:
@@ -514,36 +502,32 @@ def drill_translate(
 
 def format_command_line(values: State, command_line: CommandLine) -> str:
     """Construct the command line for the final output."""
-    values = ensure_dict(values)
-    return values["COMMAND_SPACE"].join(command_line)
+    return SA.get_command_space(values).join(command_line)
 
 
 def format_for_axis(values: State, number) -> str:
     """Format a number using the precision for an axis value."""
-    values = ensure_dict(values)
     return str(
         format(
-            float(number.getValueAs(values["UNIT_FORMAT"])),
-            f'.{str(values["AXIS_PRECISION"])}f',
+            float(number.getValueAs(SA.get_unit_format(values))),
+            f'.{str(SA.get_axis_precision(values))}f',
         )
     )
 
 
 def format_for_feed(values: State, number) -> str:
     """Format a number using the precision for a feed rate."""
-    values = ensure_dict(values)
     return str(
         format(
-            float(number.getValueAs(values["UNIT_SPEED_FORMAT"])),
-            f'.{str(values["FEED_PRECISION"])}f',
+            float(number.getValueAs(SA.get_unit_speed_format(values))),
+            f'.{str(SA.get_feed_precision(values))}f',
         )
     )
 
 
 def format_for_spindle(values: State, number) -> str:
     """Format a number using the precision for a spindle speed."""
-    values = ensure_dict(values)
-    return str(format(float(number), f'.{str(values["SPINDLE_DECIMALS"])}f'))
+    return str(format(float(number), f'.{str(SA.get_spindle_decimals(values))}f'))
 
 
 def init_parameter_functions(parameter_functions: Dict[str, ParameterFunction]) -> None:
@@ -590,15 +574,21 @@ def init_parameter_functions(parameter_functions: Dict[str, ParameterFunction]) 
 
 def linenumber(values: State, space: Union[str, None] = None) -> str:
     """Output the next line number if appropriate."""
-    values = ensure_dict(values)
-    line_num: str
-
-    if not values["OUTPUT_LINE_NUMBERS"]:
+    from Path.Post.Processor import PostProcessorState
+    
+    if not SA.get_output_line_numbers(values):
         return ""
     if space is None:
-        space = values["COMMAND_SPACE"]
-    line_num = str(values["line_number"])
-    values["line_number"] += values["LINE_INCREMENT"]
+        space = SA.get_command_space(values)
+    
+    # Handle mutable state: for dict, mutate directly; for typed state, use method
+    if isinstance(values, PostProcessorState):
+        line_num = str(values.formatting.current_line_number)
+        values.formatting.next_line_number()  # Increments internally
+    else:
+        line_num = str(values["line_number"])
+        values["line_number"] += SA.get_line_increment(values)
+    
     return f"N{line_num}{space}"
 
 
@@ -686,11 +676,10 @@ def output_G81_G82_drill_moves(
 
 def parse_a_group(values: State, gcode: Gcode, pathobj) -> None:
     """Parse a Group (compound, project, or simple path)."""
-    values = ensure_dict(values)
     comment: str
 
     if hasattr(pathobj, "Group"):  # We have a compound or project.
-        if values["OUTPUT_COMMENTS"]:
+        if SA.get_output_comments(values):
             comment = create_comment(values, f"Compound: {pathobj.Label}")
             gcode.append(f"{linenumber(values)}{comment}")
         for p in pathobj.Group:
@@ -699,33 +688,29 @@ def parse_a_group(values: State, gcode: Gcode, pathobj) -> None:
         # groups might contain non-path things like stock.
         if not hasattr(pathobj, "Path"):
             return
-        if values["OUTPUT_PATH_LABELS"] and values["OUTPUT_COMMENTS"]:
+        if SA.get_output_path_labels(values) and SA.get_output_comments(values):
             comment = create_comment(values, f"Path: {pathobj.Label}")
             gcode.append(f"{linenumber(values)}{comment}")
         parse_a_path(values, gcode, pathobj)
 
 
-def parse_a_path(values: State, gcode: Gcode, pathobj) -> None:
-    """Parse a simple Path."""
-    values = ensure_dict(values)
-    adaptive_op_variables: Tuple[bool, float, float]
-    cmd: str
-    command: str
-    command_line: CommandLine
-    current_location: PathParameters = {}  # keep track for no doubles
-    drill_retract_mode: str = "G98"
-    lastcommand: str = ""
-    motion_location: PathParameters = {}  # keep track of last motion location
-    parameter: str
-    parameter_value: str
-
-    # Check to see if values["TOOL_BEFORE_CHANGE"] is set and value is true
-    # doing it here to reduce the number of times it is checked
+def _initialize_parse_state(values: State, pathobj) -> Tuple[bool, PathParameters, PathParameters, Tuple[bool, float, float]]:
+    """Initialize state for parsing a path.
+    
+    Returns:
+        Tuple of (swap_tool_change_order, current_location, motion_location, adaptive_op_variables)
+    """
+    from Path.Post.Processor import PostProcessorState
+    
+    # Check if tool change order should be swapped
     swap_tool_change_order = False
-    if "TOOL_BEFORE_CHANGE" in values and values["TOOL_BEFORE_CHANGE"]:
+    if isinstance(values, PostProcessorState):
+        swap_tool_change_order = values.processing.tool_before_change
+    elif "TOOL_BEFORE_CHANGE" in values and values["TOOL_BEFORE_CHANGE"]:
         swap_tool_change_order = True
     
-    # Initialize current_location with default values
+    # Initialize current_location with sentinel values
+    current_location: PathParameters = {}
     current_location.update(
         Path.Command(
             "G0",
@@ -743,103 +728,207 @@ def parse_a_path(values: State, gcode: Gcode, pathobj) -> None:
             },
         ).Parameters
     )
-    # Initialize motion_location with Z at a safe height (above typical retract heights)
-    # This ensures first drill cycle will move down to retract height, not up
-    motion_location.update({"X": 0.0, "Y": 0.0, "Z": 0.0})
+    
+    # Initialize motion_location for drill cycles
+    motion_location: PathParameters = {"X": 0.0, "Y": 0.0, "Z": 0.0}
+    
+    # Determine if this is an adaptive operation
     adaptive_op_variables = determine_adaptive_op(values, pathobj)
+    
+    return swap_tool_change_order, current_location, motion_location, adaptive_op_variables
+
+
+def _filter_and_prepare_command(values: State, command: str) -> tuple[str, bool]:
+    """Filter and prepare a command for processing.
+    
+    Returns:
+        Tuple of (modified command string, should_skip)
+    """
+    # Handle blank lines
+    if not command:
+        if not SA.get_output_blank_lines(values):
+            return "", True  # Skip this command
+        return command, False  # Keep blank line
+    
+    # Handle comment commands
+    if command.startswith("("):
+        if not SA.get_output_comments(values):
+            return "", True  # Skip this command
+        if SA.get_comment_symbol(values) != "(" and len(command) > 2:
+            return create_comment(values, command[1:-1]), False
+    
+    return command, False
+
+
+def _format_command_parameters(
+    values: State,
+    command: str,
+    params: PathParameters,
+    current_location: PathParameters,
+) -> CommandLine:
+    """Format command parameters according to parameter order.
+    
+    Returns:
+        List of formatted parameter strings
+    """
+    command_line: CommandLine = []
+    parameter_order = SA.get_parameter_order(values)
+    parameter_functions = SA.get_parameter_functions(values)
+    
+    for parameter in parameter_order:
+        if parameter in params:
+            parameter_value = parameter_functions[parameter](
+                values,
+                command,
+                parameter,
+                params[parameter],
+                params,
+                current_location,
+            )
+            if parameter_value:
+                command_line.append(f"{parameter}{parameter_value}")
+    
+    return command_line
+
+
+def _update_runtime_state(
+    values: State,
+    command: str,
+    params: PathParameters,
+    current_location: PathParameters,
+    motion_location: PathParameters,
+    current_drill_retract_mode: str,
+) -> str:
+    """Update runtime state based on command.
+    
+    Args:
+        current_drill_retract_mode: Current drill retract mode to update
+    
+    Returns:
+        Updated drill_retract_mode ("G98" or "G99")
+    """
+    from Path.Post.Processor import PostProcessorState
+    
+    # Update current location
+    current_location.update(params)
+    
+    # Track motion mode
+    if command in ("G90", "G91"):
+        if not isinstance(values, PostProcessorState):
+            values["MOTION_MODE"] = command
+    
+    # Track drill retract mode
+    if command in ("G98", "G99"):
+        current_drill_retract_mode = command
+    
+    # Track motion location (but not for drill cycles)
+    motion_commands = SA.get_motion_commands(values)
+    if command in motion_commands and command not in PathGeom.CmdMoveDrill:
+        motion_location.update(params)
+    
+    return current_drill_retract_mode
+
+
+def _output_command(
+    values: State,
+    gcode: Gcode,
+    command: str,
+    command_line: CommandLine,
+    params: PathParameters,
+    swap_tool_change_order: bool,
+) -> None:
+    """Output the formatted command to gcode."""
+    if not command_line:
+        return
+    
+    # Special handling for tool change order swap
+    if command in ("M6", "M06") and swap_tool_change_order and len(command_line) >= 2:
+        swapped_command_line = [command_line[1], command_line[0]]
+        gcode.append(
+            f"{linenumber(values)}{format_command_line(values, swapped_command_line)}"
+        )
+    else:
+        gcode.append(f"{linenumber(values)}{format_command_line(values, command_line)}")
+    
+    # Post-command processing
+    check_for_tlo(values, gcode, command, params)
+    check_for_machine_specific_commands(values, gcode, command)
+
+
+def parse_a_path(values: State, gcode: Gcode, pathobj) -> None:
+    """Parse a simple Path.
+    
+    This is the main entry point for parsing Path commands into G-code.
+    The function has been refactored into smaller helper functions for clarity.
+    """
+    # Initialize parsing state
+    swap_tool_change_order, current_location, motion_location, adaptive_op_variables = \
+        _initialize_parse_state(values, pathobj)
 
     # Apply arc splitting if requested
     path_to_process = pathobj.Path
-    if values["SPLIT_ARCS"]:
+    if SA.get_split_arcs(values):
         path_to_process = PostUtils.splitArcs(path_to_process)
-
+    
+    # Process each command
+    lastcommand = ""
+    drill_retract_mode = "G98"
+    
     for c in path_to_process.Commands:
         command = c.Name
-        command_line = []
-
-        # Skip blank lines if requested
-        if not command:
-            if not values["OUTPUT_BLANK_LINES"]:
-                continue
-
-        # Modify the command name if necessary
-        if command.startswith("("):
-            if not values["OUTPUT_COMMENTS"]:
-                continue
-            if values["COMMENT_SYMBOL"] != "(" and len(command) > 2:
-                command = create_comment(values, command[1:-1])
-
+        
+        # Filter and prepare command
+        command, should_skip = _filter_and_prepare_command(values, command)
+        if should_skip:
+            continue
+        
+        # Check for adaptive operation
+        command_line: CommandLine = []
         cmd = check_for_an_adaptive_op(values, command, command_line, adaptive_op_variables)
         if cmd:
             command = cmd
-        # Add the command name to the command line
+        
+        # Build command line
         command_line.append(command)
-        # if modal: suppress the command if it is the same as the last one
-        if values["MODAL"] and command == lastcommand:
+        
+        # Apply modal suppression
+        if SA.get_modal(values) and command == lastcommand:
             command_line.pop(0)
-
-        # Now add the remaining parameters in order
-        for parameter in values["PARAMETER_ORDER"]:
-            if parameter in c.Parameters:
-                parameter_value = values["PARAMETER_FUNCTIONS"][parameter](
-                    values,
-                    command,
-                    parameter,
-                    c.Parameters[parameter],
-                    c.Parameters,
-                    current_location,
-                )
-                if parameter_value:
-                    command_line.append(f"{parameter}{parameter_value}")
-
+        
+        # Format parameters
+        formatted_params = _format_command_parameters(
+            values, command, c.Parameters, current_location
+        )
+        command_line.extend(formatted_params)
+        
+        # Set adaptive operation speed
         set_adaptive_op_speed(values, command, command_line, c.Parameters, adaptive_op_variables)
-        # Remember the current command
-        lastcommand = command
-        # Remember the current location
-        current_location.update(c.Parameters)
-        if command in ("G90", "G91"):
-            # Remember the motion mode
-            values["MOTION_MODE"] = command
-        elif command in ("G98", "G99"):
-            # Remember the drill retract mode for drill_translate
-            drill_retract_mode = command
-        # Track location for motion commands, but NOT for drill cycles
-        # (drill cycles will be translated and shouldn't update motion_location)
-        if command in values["MOTION_COMMANDS"] and command not in PathGeom.CmdMoveDrill:
-            # Remember the current location for drill_translate
-            motion_location.update(c.Parameters)
+        
+        # Update runtime state
+        drill_retract_mode = _update_runtime_state(
+            values, command, c.Parameters, current_location, motion_location, drill_retract_mode
+        )
+        
+        # Check for special command handling (may suppress output)
         if check_for_drill_translate(
-            values,
-            gcode,
-            command,
-            command_line,
-            c.Parameters,
-            motion_location,
-            drill_retract_mode,
+            values, gcode, command, command_line, c.Parameters,
+            motion_location, drill_retract_mode
         ):
             command_line = []
+        
         check_for_spindle_wait(values, gcode, command, command_line)
+        
         if check_for_tool_change(values, gcode, command, command_line):
             command_line = []
+        
         if check_for_suppressed_commands(values, gcode, command, command_line):
             command_line = []
-
-        if command_line:
-            if command in ("M6", "M06") and swap_tool_change_order:
-                swapped_command_line = [
-                    command_line[1],
-                    command_line[0],
-                ]  # swap the order of the commands
-                # Add a line number to the front of the command line
-                gcode.append(
-                    f"{linenumber(values)}{format_command_line(values, swapped_command_line)}"
-                )
-            else:
-                # Add a line number to the front of the command line
-                gcode.append(f"{linenumber(values)}{format_command_line(values, command_line)}")
-
-        check_for_tlo(values, gcode, command, c.Parameters)
-        check_for_machine_specific_commands(values, gcode, command)
+        
+        # Output the command
+        _output_command(values, gcode, command, command_line, c.Parameters, swap_tool_change_order)
+        
+        # Remember last command for modal suppression
+        lastcommand = command
 
 
 def set_adaptive_op_speed(
@@ -857,9 +946,9 @@ def set_adaptive_op_speed(
 
     (adaptiveOp, opHorizRapid, opVertRapid) = adaptive_op_variables
     if (
-        values["OUTPUT_ADAPTIVE"]
+        SA.get_output_adaptive(values)
         and adaptiveOp
-        and command in values["RAPID_MOVES"]
+        and command in SA.get_rapid_moves(values)
         and opHorizRapid
         and opVertRapid
     ):

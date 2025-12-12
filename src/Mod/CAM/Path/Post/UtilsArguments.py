@@ -39,7 +39,7 @@ from typing import Any, Callable, Dict, Tuple, Union
 from FreeCAD import Units
 
 import Path.Post.UtilsParse as PostUtilsParse
-from Path.Post.UtilsParse import State, ensure_dict
+from Path.Post.UtilsParse import State
 
 # Define some types that are used throughout this file
 PathParameter = float
@@ -485,8 +485,8 @@ def init_shared_arguments(
 
 def init_shared_values(values: State) -> None:
     """Initialize the default values in postprocessors."""
-    # Ensure we have a dict to work with
-    values = ensure_dict(values)
+    # Note: This function only works with dict-based state (legacy postprocessors)
+    # New typed postprocessors should use init_values() method instead
     #
     # The starting axis precision is 3 digits after the decimal point.
     #
