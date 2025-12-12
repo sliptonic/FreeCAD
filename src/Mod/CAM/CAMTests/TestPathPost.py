@@ -26,14 +26,14 @@ from Path.Post.Command import DlgSelectPostProcessor
 from Path.Post.Processor import (
     PostProcessor,
     PostProcessorFactory,
-    PostProcessorState,
+    MachineConfiguration,
     StateConverter,
     MachineUnits,
     MotionMode,
     OutputOptions,
     PrecisionSettings,
     LineFormatting,
-    MachineSettings,
+    MachineOptions,
     GCodeBlocks,
     ProcessingOptions,
 )
@@ -699,12 +699,12 @@ class TestBuildPostList(unittest.TestCase):
         self.assertTrue(firstoutputitem[0] == "G54")
 
 
-class TestPostProcessorState(unittest.TestCase):
-    """Test the typed PostProcessorState dataclass."""
+class TestMachineConfiguration(unittest.TestCase):
+    """Test the typed MachineConfiguration dataclass."""
 
     def test010_default_initialization(self):
-        """Test that PostProcessorState initializes with correct defaults."""
-        state = PostProcessorState()
+        """Test that MachineConfiguration initializes with correct defaults."""
+        state = MachineConfiguration()
         
         # Check default values
         self.assertEqual(state.postprocessor_file_name, "")
@@ -719,7 +719,7 @@ class TestPostProcessorState(unittest.TestCase):
 
     def test020_computed_properties(self):
         """Test computed properties work correctly."""
-        state = PostProcessorState()
+        state = MachineConfiguration()
         
         # Test metric properties
         state.machine.units = MachineUnits.METRIC
@@ -763,7 +763,7 @@ class TestPostProcessorState(unittest.TestCase):
 
     def test050_nested_dataclass_modification(self):
         """Test that nested dataclasses can be modified independently."""
-        state = PostProcessorState()
+        state = MachineConfiguration()
         
         # Modify output options
         state.output.comments = False
@@ -881,7 +881,7 @@ class TestStateConverter(unittest.TestCase):
 
     def test030_to_dict_basic(self):
         """Test converting typed state back to dictionary."""
-        state = PostProcessorState()
+        state = MachineConfiguration()
         state.output.comments = False
         state.precision.axis_precision = 6
         state.machine.name = "My Machine"
@@ -936,7 +936,7 @@ class TestStateConverter(unittest.TestCase):
 
     def test060_computed_properties_in_dict(self):
         """Test that computed properties are included in to_dict output."""
-        state = PostProcessorState()
+        state = MachineConfiguration()
         state.machine.units = MachineUnits.METRIC
         
         values = StateConverter.to_dict(state)
@@ -1014,8 +1014,8 @@ class TestTypedStateIntegration(unittest.TestCase):
     """Integration tests for typed state with existing postprocessor code."""
 
     def test010_state_can_replace_values_dict(self):
-        """Test that PostProcessorState can be used where values dict was used."""
-        state = PostProcessorState()
+        """Test that MachineConfiguration can be used where values dict was used."""
+        state = MachineConfiguration()
         
         # Set some values
         state.output.comments = True
@@ -1032,8 +1032,8 @@ class TestTypedStateIntegration(unittest.TestCase):
 
     def test020_state_modification_isolation(self):
         """Test that modifying one state doesn't affect another."""
-        state1 = PostProcessorState()
-        state2 = PostProcessorState()
+        state1 = MachineConfiguration()
+        state2 = MachineConfiguration()
         
         # Modify state1
         state1.output.comments = False

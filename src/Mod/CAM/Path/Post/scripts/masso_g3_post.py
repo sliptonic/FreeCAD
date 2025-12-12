@@ -28,7 +28,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor, PostProcessorState
+from Path.Post.Processor import PostProcessor, MachineConfiguration
 
 import Path
 import FreeCAD
@@ -49,7 +49,17 @@ Values = Dict[str, Any]
 
 
 class Masso_G3(PostProcessor):
-    """The Masso G3 post processor class."""
+    """
+    The Masso G3 post processor class.
+    
+    This post processor is configured for Masso G3 CNC controllers with
+    the following specific characteristics:
+    - Tool number output before tool change command (T1 M6 instead of M6 T1)
+    - Coolant commands (M7/M8/M9) enabled
+    - Standard preamble: G17 G54 G40 G49 G80 G90
+    - Postamble includes M05, mode resets, and M2 program end
+    
+    """
 
     def __init__(
         self,
@@ -66,7 +76,7 @@ class Masso_G3(PostProcessor):
         )
         Path.Log.debug("Masso G3 post processor initialized.")
 
-    def init_values(self, state: PostProcessorState) -> None:
+    def init_values(self, state: MachineConfiguration) -> None:
         """Initialize values that are used throughout the postprocessor."""
         super().init_values(state)
         

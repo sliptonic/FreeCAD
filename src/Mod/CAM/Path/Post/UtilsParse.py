@@ -50,10 +50,10 @@ Values = Dict[str, Any]
 
 # Forward declaration for type checking to avoid circular imports
 if TYPE_CHECKING:
-    from Path.Post.Processor import PostProcessorState
+    from Path.Post.Processor import MachineConfiguration
 
 # State type alias - can be either dict or typed state
-State = Union[Values, "PostProcessorState"]
+State = Union[Values, "MachineConfiguration"]
 
 ParameterFunction = Callable[[State, str, str, PathParameter, PathParameters], str]
 
@@ -574,7 +574,7 @@ def init_parameter_functions(parameter_functions: Dict[str, ParameterFunction]) 
 
 def linenumber(values: State, space: Union[str, None] = None) -> str:
     """Output the next line number if appropriate."""
-    from Path.Post.Processor import PostProcessorState
+    from Path.Post.Processor import MachineConfiguration
     
     if not SA.get_output_line_numbers(values):
         return ""
@@ -582,7 +582,7 @@ def linenumber(values: State, space: Union[str, None] = None) -> str:
         space = SA.get_command_space(values)
     
     # Handle mutable state: for dict, mutate directly; for typed state, use method
-    if isinstance(values, PostProcessorState):
+    if isinstance(values, MachineConfiguration):
         line_num = str(values.formatting.current_line_number)
         values.formatting.next_line_number()  # Increments internally
     else:
@@ -700,11 +700,11 @@ def _initialize_parse_state(values: State, pathobj) -> Tuple[bool, PathParameter
     Returns:
         Tuple of (swap_tool_change_order, current_location, motion_location, adaptive_op_variables)
     """
-    from Path.Post.Processor import PostProcessorState
+    from Path.Post.Processor import MachineConfiguration
     
     # Check if tool change order should be swapped
     swap_tool_change_order = False
-    if isinstance(values, PostProcessorState):
+    if isinstance(values, MachineConfiguration):
         swap_tool_change_order = values.processing.tool_before_change
     elif "TOOL_BEFORE_CHANGE" in values and values["TOOL_BEFORE_CHANGE"]:
         swap_tool_change_order = True
@@ -807,14 +807,14 @@ def _update_runtime_state(
     Returns:
         Updated drill_retract_mode ("G98" or "G99")
     """
-    from Path.Post.Processor import PostProcessorState
+    from Path.Post.Processor import MachineConfiguration
     
     # Update current location
     current_location.update(params)
     
     # Track motion mode
     if command in ("G90", "G91"):
-        if not isinstance(values, PostProcessorState):
+        if not isinstance(values, MachineConfiguration):
             values["MOTION_MODE"] = command
     
     # Track drill retract mode

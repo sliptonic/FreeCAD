@@ -27,7 +27,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor, PostProcessorState
+from Path.Post.Processor import PostProcessor, MachineConfiguration
 
 import Path
 import FreeCAD
@@ -66,7 +66,7 @@ class Test(PostProcessor):
         )
         Path.Log.debug("Test post processor initialized")
 
-    def init_values(self, state: PostProcessorState) -> None:
+    def init_values(self, state: MachineConfiguration) -> None:
         """Initialize values that are used throughout the postprocessor."""
         super().init_values(state)
         

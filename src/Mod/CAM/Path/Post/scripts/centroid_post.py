@@ -27,7 +27,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor, PostProcessorState
+from Path.Post.Processor import PostProcessor, MachineConfiguration
 
 import Path
 import FreeCAD
@@ -49,7 +49,19 @@ Visible = Dict[str, bool]
 
 
 class Centroid(PostProcessor):
-    """The Centroid post processor class."""
+    """
+    The Centroid post processor class.
+    
+    This post processor is configured for Centroid 3-axis mill controllers with
+    the following specific characteristics:
+    - Uses 4 decimal places for axis coordinates and 1 for feed rates
+    - Excludes K parameter from parameter order (not needed for XY plane arcs)
+    - Uses M25 command for spindle retraction (Centroid-specific)
+    - Tool length offset (G43) disabled by default
+    - Semicolon (;) for comments
+    - Custom machine blocks: G53 G00 G17 preamble, M99 postamble
+    
+    """
 
     def __init__(
         self,
@@ -66,7 +78,7 @@ class Centroid(PostProcessor):
         )
         Path.Log.debug("Centroid post processor initialized.")
 
-    def init_values(self, state: PostProcessorState) -> None:
+    def init_values(self, state: MachineConfiguration) -> None:
         """Initialize values that are used throughout the postprocessor."""
         super().init_values(state)
         

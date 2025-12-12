@@ -144,8 +144,8 @@ class LineFormatting:
 
 
 @dataclass
-class MachineSettings:
-    """Machine-specific configuration."""
+class MachineOptions:
+    """Machine-specific options that users frequently adjust."""
     name: str = "unknown machine"
     units: MachineUnits = MachineUnits.METRIC
     motion_mode: MotionMode = MotionMode.ABSOLUTE
@@ -222,9 +222,9 @@ class ProcessingOptions:
 
 
 @dataclass
-class PostProcessorState:
+class MachineConfiguration:
     """
-    Complete typed state for postprocessor configuration.
+    Complete typed configuration for a machine.
     
     This replaces the legacy dictionary-based 'values' parameter with a
     strongly-typed, self-documenting structure. All configuration is organized
@@ -237,7 +237,7 @@ class PostProcessorState:
     output: OutputOptions = field(default_factory=OutputOptions)
     precision: PrecisionSettings = field(default_factory=PrecisionSettings)
     formatting: LineFormatting = field(default_factory=LineFormatting)
-    machine: MachineSettings = field(default_factory=MachineSettings)
+    machine: MachineOptions = field(default_factory=MachineOptions)
     blocks: GCodeBlocks = field(default_factory=GCodeBlocks)
     processing: ProcessingOptions = field(default_factory=ProcessingOptions)
     
@@ -272,24 +272,24 @@ class PostProcessorState:
 
 class StateConverter:
     """
-    Bidirectional converter between legacy dictionary state and typed state.
+    Bidirectional converter between legacy dictionary state and typed configuration.
     
     This enables gradual migration by allowing both formats to coexist.
-    Legacy code can continue using dictionaries while new code uses typed state.
+    Legacy code can continue using dictionaries while new code uses typed configuration.
     """
     
     @staticmethod
-    def from_dict(values: Dict[str, Any]) -> PostProcessorState:
+    def from_dict(values: Dict[str, Any]) -> MachineConfiguration:
         """
-        Convert legacy dictionary to typed state.
+        Convert legacy dictionary to typed configuration.
         
         Args:
             values: Legacy dictionary with string keys
             
         Returns:
-            PostProcessorState with all values populated
+            MachineConfiguration with all values populated
         """
-        state = PostProcessorState()
+        state = MachineConfiguration()
         
         # Output options
         state.output.comments = values.get("OUTPUT_COMMENTS", True)
@@ -384,15 +384,15 @@ class StateConverter:
         return state
     
     @staticmethod
-    def to_dict(state: PostProcessorState) -> Dict[str, Any]:
+    def to_dict(state: MachineConfiguration) -> Dict[str, Any]:
         """
-        Convert typed state back to legacy dictionary format.
+        Convert typed configuration back to legacy dictionary format.
         
         This maintains backward compatibility with existing code that expects
         the dictionary format.
         
         Args:
-            state: Typed PostProcessorState
+            state: Typed MachineConfiguration
             
         Returns:
             Dictionary with all values in legacy format
@@ -859,11 +859,11 @@ class PostProcessor:
         # Modify the visibility of any arguments from the defaults here.
         #
 
-    def init_values(self, values: Union[Values, PostProcessorState]) -> None:
+    def init_values(self, values: Union[Values, MachineConfiguration]) -> None:
         """Initialize values that are used throughout the postprocessor.
         
         Args:
-            values: Either a dict (legacy) or PostProcessorState (modern)
+            values: Either a dict (legacy) or MachineConfiguration (modern)
         """
         # Handle both dict and typed state for backward compatibility
         if isinstance(values, dict):
@@ -977,7 +977,7 @@ class PostProcessor:
         # This is also used to reinitialize the data structures between tests.
         #
         # Initialize typed state
-        self.state = PostProcessorState()
+        self.state = MachineConfiguration()
         self.init_values(self.state)
         
         # Create dict representation for backward compatibility

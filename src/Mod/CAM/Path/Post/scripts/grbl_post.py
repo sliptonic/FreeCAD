@@ -29,7 +29,7 @@ import argparse
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor, PostProcessorState
+from Path.Post.Processor import PostProcessor, MachineConfiguration
 
 import Path
 import FreeCAD
@@ -52,7 +52,20 @@ Visible = Dict[str, bool]
 
 
 class Grbl(PostProcessor):
-    """The Grbl post processor class."""
+    """
+    The Grbl post processor class.
+    
+    This post processor is configured for Grbl CNC controllers (typically 3-axis mills)
+    with the following specific characteristics:
+    - Arc commands (G2/G3) may only work reliably on the XY plane
+    - Tool change commands disabled (manual tool changes assumed)
+    - Tool length offset (G43) not supported
+    - Coolant commands (M7/M8/M9) enabled
+    - Path labels included in output for operation tracking
+    - Machine-specific commands enabled for Grbl features
+    - Special options for bCNC compatibility, spindle wait, and drill translation
+    
+    """
 
     def __init__(
         self,
@@ -69,7 +82,7 @@ class Grbl(PostProcessor):
         )
         Path.Log.debug("Grbl post processor initialized.")
 
-    def init_values(self, state: PostProcessorState) -> None:
+    def init_values(self, state: MachineConfiguration) -> None:
         """Initialize values that are used throughout the postprocessor."""
         super().init_values(state)
         

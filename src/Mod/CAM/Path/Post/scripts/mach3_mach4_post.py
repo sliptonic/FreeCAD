@@ -27,7 +27,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor, PostProcessorState
+from Path.Post.Processor import PostProcessor, MachineConfiguration
 
 import Path
 import FreeCAD
@@ -49,7 +49,20 @@ Visible = Dict[str, bool]
 
 
 class Mach3_Mach4(PostProcessor):
-    """The Mach3_Mach4 post processor class."""
+    """
+    The Mach3_Mach4 post processor class.
+    
+    This post processor is configured for Mach3 and Mach4 CNC controllers with
+    the following specific characteristics:
+    - Excludes K parameter from parameter order (not needed for XY plane arcs)
+    - Coolant commands (M7/M8/M9) enabled
+    - Adaptive clearing output enabled
+    - Machine name included in output header
+    - Axis modal mode option available
+    - Standard preamble: G17 G54 G40 G49 G80 G90
+    - Postamble includes M05, mode resets, and M2 program end
+    
+    """
 
     def __init__(
         self,
@@ -66,7 +79,7 @@ class Mach3_Mach4(PostProcessor):
         )
         Path.Log.debug("Mach3_Mach4 post processor initialized.")
 
-    def init_values(self, state: PostProcessorState) -> None:
+    def init_values(self, state: MachineConfiguration) -> None:
         """Initialize values that are used throughout the postprocessor."""
         super().init_values(state)
         
