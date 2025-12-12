@@ -28,7 +28,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor
+from Path.Post.Processor import PostProcessor, PostProcessorState
 
 import Path
 import FreeCAD
@@ -77,63 +77,34 @@ class Linuxcnc(PostProcessor):
         )
         Path.Log.debug("LinuxCNC post processor initialized.")
 
-    def init_values(self, values: Values) -> None:
+    def init_values(self, state: PostProcessorState) -> None:
         """Initialize values that are used throughout the postprocessor."""
-        #
-        super().init_values(values)
-        #
-        # Set any values here that need to override the default values set
-        # in the parent routine.
-        #
-        values["ENABLE_COOLANT"] = True
-        #
-        # The order of parameters.
-        #
-        # linuxcnc doesn't want K properties on XY plane; Arcs need work.
-        #
-        values["PARAMETER_ORDER"] = [
-            "X",
-            "Y",
-            "Z",
-            "A",
-            "B",
-            "C",
-            "I",
-            "J",
-            "F",
-            "S",
-            "T",
-            "Q",
-            "R",
-            "L",
-            "H",
-            "D",
-            "P",
+        super().init_values(state)
+        
+        # Machine configuration
+        state.machine.name = "LinuxCNC"
+        state.machine.enable_coolant = True
+        
+        # Parameter order - linuxcnc doesn't want K properties on XY plane
+        state.parameter_order = [
+            "X", "Y", "Z", "A", "B", "C",
+            "I", "J", "F", "S", "T", "Q",
+            "R", "L", "H", "D", "P",
         ]
-        #
-        # Used in the argparser code as the "name" of the postprocessor program.
-        #
-        values["MACHINE_NAME"] = "LinuxCNC"
-        #
-        # Any commands in this value will be output as the last commands
-        # in the G-code file.
-        #
-        values[
-            "POSTAMBLE"
-        ] = """M05
+        
+        # G-code blocks
+        state.blocks.preamble = "G17 G54 G40 G49 G80 G90"
+        state.blocks.postamble = """M05
 G17 G54 G90 G80 G40
 M2"""
-        values["POSTPROCESSOR_FILE_NAME"] = __name__
-        #
-        # Path blending mode configuration (LinuxCNC-specific)
-        #
-        values["BLEND_MODE"] = "BLEND"  # Options: EXACT_PATH, EXACT_STOP, BLEND
-        values["BLEND_TOLERANCE"] = 0.0  # P value for BLEND mode (0 = G64, >0 = G64 P-)
-        #
-        # Any commands in this value will be output after the header and
-        # safety block at the beginning of the G-code file.
-        #
-        values["PREAMBLE"] = """G17 G54 G40 G49 G80 G90 """
+        
+        # Postprocessor identification
+        state.postprocessor_file_name = __name__
+        
+        # LinuxCNC-specific: Path blending mode configuration
+        # Store as custom attributes (will be in dict conversion)
+        self._blend_mode = "BLEND"  # Options: EXACT_PATH, EXACT_STOP, BLEND
+        self._blend_tolerance = 0.0  # P value for BLEND mode
 
     def init_arguments(self, values, argument_defaults, arguments_visible):
         """Initialize command-line arguments, including LinuxCNC-specific options."""
@@ -160,34 +131,35 @@ M2"""
         return parser
 
     def process_arguments(self):
-        """Process arguments and update values, including blend mode handling."""
+        """Process arguments and update state, including blend mode handling."""
         flag, args = super().process_arguments()
 
         if flag and args:
-            # Update blend mode values from parsed arguments
+            # Update blend mode from parsed arguments
             if hasattr(args, "blend_mode"):
-                self.values["BLEND_MODE"] = args.blend_mode
+                self._blend_mode = args.blend_mode
             if hasattr(args, "blend_tolerance"):
-                self.values["BLEND_TOLERANCE"] = args.blend_tolerance
+                self._blend_tolerance = args.blend_tolerance
 
-            # Update PREAMBLE with blend command
+            # Append blend command to preamble (which may have been overridden by --preamble arg)
+            # Base class _sync_dict_to_state() has already synced command-line args to self.state
             blend_cmd = self._get_blend_command()
-            self.values["PREAMBLE"] += f"\n{blend_cmd}"
+            self.state.blocks.preamble += f"\n{blend_cmd}"
+            
+            # Sync back to dict for backward compatibility
+            self.values["PREAMBLE"] = self.state.blocks.preamble
 
         return flag, args
 
     def _get_blend_command(self) -> str:
         """Generate the path blending G-code command based on current settings."""
-        mode = self.values.get("BLEND_MODE", "BLEND")
-
-        if mode == "EXACT_PATH":
+        if self._blend_mode == "EXACT_PATH":
             return "G61"
-        elif mode == "EXACT_STOP":
+        elif self._blend_mode == "EXACT_STOP":
             return "G61.1"
         else:  # BLEND
-            tolerance = self.values.get("BLEND_TOLERANCE", 0.0)
-            if tolerance > 0:
-                return f"G64 P{tolerance:.4f}"
+            if self._blend_tolerance > 0:
+                return f"G64 P{self._blend_tolerance:.4f}"
             else:
                 return "G64"
 

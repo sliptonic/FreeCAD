@@ -28,7 +28,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor
+from Path.Post.Processor import PostProcessor, PostProcessorState
 
 import Path
 import FreeCAD
@@ -66,38 +66,32 @@ class Masso_G3(PostProcessor):
         )
         Path.Log.debug("Masso G3 post processor initialized.")
 
-    def init_values(self, values: Values) -> None:
+    def init_values(self, state: PostProcessorState) -> None:
         """Initialize values that are used throughout the postprocessor."""
-        super().init_values(values)
-        values["ENABLE_COOLANT"] = True
-        values["PARAMETER_ORDER"] = [
-            "X",
-            "Y",
-            "Z",
-            "A",
-            "B",
-            "C",
-            "I",
-            "J",
-            "F",
-            "S",
-            "T",
-            "Q",
-            "R",
-            "L",
-            "H",
-            "D",
-            "P",
+        super().init_values(state)
+        
+        # Machine configuration
+        state.machine.name = "Masso G3"
+        state.machine.enable_coolant = True
+        
+        # Parameter order
+        state.parameter_order = [
+            "X", "Y", "Z", "A", "B", "C",
+            "I", "J", "F", "S", "T", "Q",
+            "R", "L", "H", "D", "P",
         ]
-        values[
-            "POSTAMBLE"
-        ] = """M05
+        
+        # G-code blocks
+        state.blocks.preamble = "G17 G54 G40 G49 G80 G90"
+        state.blocks.postamble = """M05
 G17 G54 G90 G80 G40
 M2"""
-        values["PREAMBLE"] = """G17 G54 G40 G49 G80 G90"""
-        values["MACHINE_NAME"] = "Masso G3"
-        values["POSTPROCESSOR_FILE_NAME"] = __name__
-        values["TOOL_BEFORE_CHANGE"] = True
+        
+        # Postprocessor identification
+        state.postprocessor_file_name = __name__
+        
+        # Masso G3 specific: Output T before M6 (T1 M6 instead of M6 T1)
+        state.processing.tool_before_change = True
 
     @property
     def tooltip(self):

@@ -27,7 +27,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor
+from Path.Post.Processor import PostProcessor, PostProcessorState
 
 import Path
 import FreeCAD
@@ -66,51 +66,27 @@ class Test(PostProcessor):
         )
         Path.Log.debug("Test post processor initialized")
 
-    def init_values(self, values: Values) -> None:
+    def init_values(self, state: PostProcessorState) -> None:
         """Initialize values that are used throughout the postprocessor."""
-        #
-        super().init_values(values)
-        #
-        # Set any values here that need to override the default values set
-        # in the parent routine.
-        #
-        # Used in the argparser code as the "name" of the postprocessor program.
-        #
-        values["MACHINE_NAME"] = "test"
-        #
-        # Don't output comments by default.
-        #
-        values["OUTPUT_COMMENTS"] = False
-        #
-        # Don't output the header by default.
-        #
-        values["OUTPUT_HEADER"] = False
-        #
-        # Convert M56 tool change commands to comments,
-        # which are then suppressed by default.
-        #
-        values["OUTPUT_TOOL_CHANGE"] = False
-        values["POSTPROCESSOR_FILE_NAME"] = __name__
-        #
-        # Do not show the editor by default since we are testing.
-        #
-        values["SHOW_EDITOR"] = False
-        #
-        # Don't show the current machine units by default.
-        #
-        values["SHOW_MACHINE_UNITS"] = False
-        #
-        # Don't show the current operation label by default.
-        #
-        values["SHOW_OPERATION_LABELS"] = False
-        #
-        # Don't output an M5 command to stop the spindle after an M6 tool change by default.
-        #
-        values["STOP_SPINDLE_FOR_TOOL_CHANGE"] = False
-        #
-        # Don't output a G43 tool length command following tool changes by default.
-        #
-        values["USE_TLO"] = False
+        super().init_values(state)
+        
+        # Machine configuration
+        state.machine.name = "test"
+        state.machine.stop_spindle_for_tool_change = False
+        state.machine.use_tlo = False
+        
+        # Output options - minimal output for testing
+        state.output.comments = False
+        state.output.header = False
+        state.output.tool_change = False
+        
+        # Processing options - minimal output for testing
+        state.processing.show_editor = False
+        state.processing.show_machine_units = False
+        state.processing.show_operation_labels = False
+        
+        # Postprocessor identification
+        state.postprocessor_file_name = __name__
 
     def init_arguments_visible(self, arguments_visible: Visible) -> None:
         """Initialize which argument pairs are visible in TOOLTIP_ARGS."""

@@ -734,7 +734,10 @@ class TestPostProcessorState(unittest.TestCase):
         # Test command lists
         self.assertIn("G0", state.rapid_moves)
         self.assertIn("G1", state.motion_commands)
-        self.assertEqual(len(state.motion_commands), 8)
+        self.assertNotIn("G1", state.rapid_moves)
+        self.assertIn("G0", state.motion_commands)  # Now included in CmdMoveAll
+        # CmdMoveAll has 13 items: 2 rapid + 2 straight + 4 arc + 5 drill
+        self.assertEqual(len(state.motion_commands), 13)
 
     def test030_line_formatting_state(self):
         """Test LineFormatting mutable state for line numbering."""

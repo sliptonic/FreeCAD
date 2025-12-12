@@ -22,7 +22,7 @@
 # ***************************************************************************
 
 from typing import Any, Dict
-from Path.Post.Processor import PostProcessor
+from Path.Post.Processor import PostProcessor, PostProcessorState
 import Path
 import FreeCAD
 
@@ -50,25 +50,17 @@ class Generic(PostProcessor):
         )
         Path.Log.debug("Generic post processor initialized")
 
-    def init_values(self, values: Values) -> None:
+    def init_values(self, state: PostProcessorState) -> None:
         """Initialize values that are used throughout the postprocessor."""
-        #
-        super().init_values(values)
-        values["POSTPROCESSOR_FILE_NAME"] = __name__
-        values["MACHINE_NAME"] = "Generic"
-
-        # Set any values here that need to override the default values set
-        # in the parent routine.
-        #
-        # Any commands in this value will be output after the header and
-        # safety block at the beginning of the G-code file.
-        #
-        values["PREAMBLE"] = """"""
-        #
-        # Any commands in this value will be output as the last commands
-        # in the G-code file.
-        #
-        values["POSTAMBLE"] = """"""
+        super().init_values(state)
+        
+        # Machine configuration
+        state.machine.name = "Generic"
+        state.postprocessor_file_name = __name__
+        
+        # G-code blocks
+        state.blocks.preamble = ""
+        state.blocks.postamble = ""
 
     @property
     def tooltip(self):

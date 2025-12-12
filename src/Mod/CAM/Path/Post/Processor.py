@@ -207,6 +207,7 @@ class ProcessingOptions:
     list_tools_in_preamble: bool = False
     show_machine_units: bool = True
     show_operation_labels: bool = True
+    tool_before_change: bool = False  # Output T before M6 (e.g., T1 M6 instead of M6 T1)
     
     # Lists of commands
     drill_cycles_to_translate: List[str] = field(
@@ -372,6 +373,7 @@ class StateConverter:
         state.processing.chipbreaking_amount = values.get("CHIPBREAKING_AMOUNT", 0.25)
         state.processing.spindle_wait = values.get("SPINDLE_WAIT", 0.0)
         state.processing.return_to = values.get("RETURN_TO")
+        state.processing.tool_before_change = values.get("TOOL_BEFORE_CHANGE", False)
         
         # Dynamic state
         state.postprocessor_file_name = values.get("POSTPROCESSOR_FILE_NAME", "")
@@ -445,6 +447,7 @@ class StateConverter:
             "POST_OPERATION": state.blocks.post_operation,
             "PRE_TOOL_CHANGE": state.blocks.pre_tool_change,
             "POST_TOOL_CHANGE": state.blocks.post_tool_change,
+            "TOOL_CHANGE": state.blocks.pre_tool_change,  # Legacy key for backward compatibility
             "TOOLRETURN": state.blocks.tool_return,
             "PRE_FIXTURE_CHANGE": state.blocks.pre_fixture_change,
             "POST_FIXTURE_CHANGE": state.blocks.post_fixture_change,
@@ -467,6 +470,7 @@ class StateConverter:
             "CHIPBREAKING_AMOUNT": state.processing.chipbreaking_amount,
             "SPINDLE_WAIT": state.processing.spindle_wait,
             "RETURN_TO": state.processing.return_to,
+            "TOOL_BEFORE_CHANGE": state.processing.tool_before_change,
             
             # Dynamic
             "POSTPROCESSOR_FILE_NAME": state.postprocessor_file_name,
@@ -553,6 +557,7 @@ class PostProcessor:
         self._units = units
         self._args = args
         self._kwargs = kwargs
+        
         self.reinitialize()
 
         if isinstance(job, dict):
@@ -809,15 +814,43 @@ class PostProcessor:
         # Modify the visibility of any arguments from the defaults here.
         #
 
-    def init_values(self, values: Values) -> None:
-        """Initialize values that are used throughout the postprocessor."""
-        #
-        PostUtilsArguments.init_shared_values(values)
-        #
-        # Set any values here that need to override the default values set
-        # in the init_shared_values routine.
-        #
-        values["UNITS"] = self._units
+    def init_values(self, values: Union[Values, PostProcessorState]) -> None:
+        """Initialize values that are used throughout the postprocessor.
+        
+        Args:
+            values: Either a dict (legacy) or PostProcessorState (modern)
+        """
+        # Handle both dict and typed state for backward compatibility
+        if isinstance(values, dict):
+            # Legacy path: initialize dict directly
+            PostUtilsArguments.init_shared_values(values)
+            values["UNITS"] = self._units
+        else:
+            # Modern path: initialize typed state
+            state = values
+            
+            # Initialize shared defaults via dict conversion
+            temp_dict = StateConverter.to_dict(state)
+            PostUtilsArguments.init_shared_values(temp_dict)
+            
+            # Convert back to update state with initialized values
+            initialized_state = StateConverter.from_dict(temp_dict)
+            
+            # Copy initialized values back to state
+            state.output = initialized_state.output
+            state.precision = initialized_state.precision
+            state.formatting = initialized_state.formatting
+            state.machine = initialized_state.machine
+            state.blocks = initialized_state.blocks
+            state.processing = initialized_state.processing
+            state.parameter_functions = initialized_state.parameter_functions
+            state.parameter_order = initialized_state.parameter_order
+            
+            # Set units from constructor parameter
+            if self._units == "Metric":
+                state.machine.units = MachineUnits.METRIC
+            else:
+                state.machine.units = MachineUnits.IMPERIAL
 
     def process_arguments(self) -> Tuple[bool, ParserArgs]:
         """Process any arguments to the postprocessor."""
@@ -838,15 +871,36 @@ class PostProcessor:
             # Process any additional arguments here.
             #
             #
-            # Update any variables that might have been modified while processing the arguments.
+            # Sync any dict changes from argument processing back to typed state
+            # This ensures self.state and self.values stay synchronized
             #
-            self._units = self.values["UNITS"]
+            self._sync_dict_to_state()
         #
         # If the flag is False, then args is either None (indicating an error while
         # processing the arguments) or a string containing the argument list formatted
         # for output.  Either way the calling routine will need to handle the args value.
         #
         return (flag, args)
+    
+    def _sync_dict_to_state(self) -> None:
+        """Sync changes from self.values dict back to self.state after argument processing."""
+        # Sync units
+        if self.values["UNITS"] == "G21":
+            self.state.machine.units = MachineUnits.METRIC
+            self._units = "Metric"
+        else:
+            self.state.machine.units = MachineUnits.IMPERIAL
+            self._units = "Inch"
+        
+        # Sync blocks that may have been modified by command-line arguments
+        self.state.blocks.preamble = self.values.get("PREAMBLE", "")
+        self.state.blocks.postamble = self.values.get("POSTAMBLE", "")
+        self.state.blocks.safetyblock = self.values.get("SAFETYBLOCK", "")
+        
+        # Sync other commonly modified values
+        self.state.output.comments = self.values.get("OUTPUT_COMMENTS", True)
+        self.state.output.header = self.values.get("OUTPUT_HEADER", True)
+        self.state.processing.show_editor = self.values.get("SHOW_EDITOR", True)
 
     def process_postables(self) -> GCodeSections:
         """Postprocess the 'postables' in the job to g code sections."""
@@ -877,8 +931,13 @@ class PostProcessor:
         #
         # This is also used to reinitialize the data structures between tests.
         #
-        self.values: Values = {}
-        self.init_values(self.values)
+        # Initialize typed state
+        self.state = PostProcessorState()
+        self.init_values(self.state)
+        
+        # Create dict representation for backward compatibility
+        self.values: Values = StateConverter.to_dict(self.state)
+        
         self.argument_defaults: Defaults = {}
         self.init_argument_defaults(self.argument_defaults)
         self.arguments_visible: Visible = {}

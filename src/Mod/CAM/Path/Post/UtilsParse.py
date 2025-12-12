@@ -31,7 +31,7 @@
 
 import math
 import re
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union, TYPE_CHECKING
 
 import FreeCAD
 from FreeCAD import Units
@@ -46,16 +46,45 @@ PathParameter = float
 PathParameters = Dict[str, PathParameter]
 Values = Dict[str, Any]
 
-ParameterFunction = Callable[[Values, str, str, PathParameter, PathParameters], str]
+# Forward declaration for type checking to avoid circular imports
+if TYPE_CHECKING:
+    from Path.Post.Processor import PostProcessorState
+
+# State type alias - can be either dict or typed state
+State = Union[Values, "PostProcessorState"]
+
+ParameterFunction = Callable[[State, str, str, PathParameter, PathParameters], str]
+
+
+def ensure_dict(state: State) -> Values:
+    """
+    Ensure state is in dictionary format.
+    
+    Converts typed state to dict if necessary. This helper enables
+    gradual migration by allowing functions to accept both formats.
+    
+    Args:
+        state: Either Values dict or PostProcessorState
+        
+    Returns:
+        Dictionary representation of state
+    """
+    # Import here to avoid circular dependency
+    from Path.Post.Processor import PostProcessorState, StateConverter
+    
+    if isinstance(state, PostProcessorState):
+        return StateConverter.to_dict(state)
+    return state
 
 
 def check_for_an_adaptive_op(
-    values: Values,
+    values: State,
     command: str,
     command_line: CommandLine,
     adaptive_op_variables: Tuple[bool, float, float],
 ) -> str:
     """Check to see if the current command is an adaptive op."""
+    values = ensure_dict(values)
     adaptiveOp: bool
     opHorizRapid: float
     opVertRapid: float
@@ -105,8 +134,9 @@ def check_for_drill_translate(
     return False
 
 
-def check_for_machine_specific_commands(values: Values, gcode: Gcode, command: str) -> None:
+def check_for_machine_specific_commands(values: State, gcode: Gcode, command: str) -> None:
     """Check for comments containing machine-specific commands."""
+    values = ensure_dict(values)
     m: object
     raw_command: str
 
@@ -146,8 +176,9 @@ def check_for_suppressed_commands(
     return False
 
 
-def check_for_tlo(values: Values, gcode: Gcode, command: str, params: PathParameters) -> None:
+def check_for_tlo(values: State, gcode: Gcode, command: str, params: PathParameters) -> None:
     """Output a tool length command if USE_TLO is True."""
+    values = ensure_dict(values)
 
     if command in ("M6", "M06") and values["USE_TLO"]:
         cmd = format_command_line(values, ["G43", f'H{str(int(params["T"]))}'])
@@ -178,8 +209,9 @@ def check_for_tool_change(
     return False
 
 
-def create_comment(values: Values, comment_string: str) -> str:
+def create_comment(values: State, comment_string: str) -> str:
     """Create a comment from a string using the correct comment symbol."""
+    values = ensure_dict(values)
     if values["COMMENT_SYMBOL"] == "(":
         return f"({comment_string})"
     return values["COMMENT_SYMBOL"] + comment_string
@@ -376,8 +408,9 @@ def default_S_parameter(
     return format_for_spindle(values, param_value)
 
 
-def determine_adaptive_op(values: Values, pathobj) -> Tuple[bool, float, float]:
+def determine_adaptive_op(values: State, pathobj) -> Tuple[bool, float, float]:
     """Determine if the pathobj contains an Adaptive operation."""
+    values = ensure_dict(values)
     nl = "\n"
     adaptiveOp: bool = False
     opHorizRapid: float = 0.0
@@ -479,13 +512,15 @@ def drill_translate(
         )
 
 
-def format_command_line(values: Values, command_line: CommandLine) -> str:
+def format_command_line(values: State, command_line: CommandLine) -> str:
     """Construct the command line for the final output."""
+    values = ensure_dict(values)
     return values["COMMAND_SPACE"].join(command_line)
 
 
-def format_for_axis(values: Values, number) -> str:
+def format_for_axis(values: State, number) -> str:
     """Format a number using the precision for an axis value."""
+    values = ensure_dict(values)
     return str(
         format(
             float(number.getValueAs(values["UNIT_FORMAT"])),
@@ -494,8 +529,9 @@ def format_for_axis(values: Values, number) -> str:
     )
 
 
-def format_for_feed(values: Values, number) -> str:
+def format_for_feed(values: State, number) -> str:
     """Format a number using the precision for a feed rate."""
+    values = ensure_dict(values)
     return str(
         format(
             float(number.getValueAs(values["UNIT_SPEED_FORMAT"])),
@@ -504,8 +540,9 @@ def format_for_feed(values: Values, number) -> str:
     )
 
 
-def format_for_spindle(values: Values, number) -> str:
+def format_for_spindle(values: State, number) -> str:
     """Format a number using the precision for a spindle speed."""
+    values = ensure_dict(values)
     return str(format(float(number), f'.{str(values["SPINDLE_DECIMALS"])}f'))
 
 
@@ -551,8 +588,9 @@ def init_parameter_functions(parameter_functions: Dict[str, ParameterFunction]) 
         parameter_functions[parameter] = default_parameter_functions[parameter]
 
 
-def linenumber(values: Values, space: Union[str, None] = None) -> str:
+def linenumber(values: State, space: Union[str, None] = None) -> str:
     """Output the next line number if appropriate."""
+    values = ensure_dict(values)
     line_num: str
 
     if not values["OUTPUT_LINE_NUMBERS"]:
@@ -646,8 +684,9 @@ def output_G81_G82_drill_moves(
     gcode.append(f"{linenumber(values)}{G0_retract_z}")
 
 
-def parse_a_group(values: Values, gcode: Gcode, pathobj) -> None:
+def parse_a_group(values: State, gcode: Gcode, pathobj) -> None:
     """Parse a Group (compound, project, or simple path)."""
+    values = ensure_dict(values)
     comment: str
 
     if hasattr(pathobj, "Group"):  # We have a compound or project.
@@ -666,8 +705,9 @@ def parse_a_group(values: Values, gcode: Gcode, pathobj) -> None:
         parse_a_path(values, gcode, pathobj)
 
 
-def parse_a_path(values: Values, gcode: Gcode, pathobj) -> None:
+def parse_a_path(values: State, gcode: Gcode, pathobj) -> None:
     """Parse a simple Path."""
+    values = ensure_dict(values)
     adaptive_op_variables: Tuple[bool, float, float]
     cmd: str
     command: str
@@ -684,9 +724,9 @@ def parse_a_path(values: Values, gcode: Gcode, pathobj) -> None:
     swap_tool_change_order = False
     if "TOOL_BEFORE_CHANGE" in values and values["TOOL_BEFORE_CHANGE"]:
         swap_tool_change_order = True
+    
+    # Initialize current_location with default values
     current_location.update(
-        # the goal is to have initial values that aren't likely to match
-        # any "real" first parameter values
         Path.Command(
             "G0",
             {
@@ -703,6 +743,9 @@ def parse_a_path(values: Values, gcode: Gcode, pathobj) -> None:
             },
         ).Parameters
     )
+    # Initialize motion_location with Z at a safe height (above typical retract heights)
+    # This ensures first drill cycle will move down to retract height, not up
+    motion_location.update({"X": 0.0, "Y": 0.0, "Z": 0.0})
     adaptive_op_variables = determine_adaptive_op(values, pathobj)
 
     # Apply arc splitting if requested
@@ -760,7 +803,9 @@ def parse_a_path(values: Values, gcode: Gcode, pathobj) -> None:
         elif command in ("G98", "G99"):
             # Remember the drill retract mode for drill_translate
             drill_retract_mode = command
-        if command in values["MOTION_COMMANDS"]:
+        # Track location for motion commands, but NOT for drill cycles
+        # (drill cycles will be translated and shouldn't update motion_location)
+        if command in values["MOTION_COMMANDS"] and command not in PathGeom.CmdMoveDrill:
             # Remember the current location for drill_translate
             motion_location.update(c.Parameters)
         if check_for_drill_translate(

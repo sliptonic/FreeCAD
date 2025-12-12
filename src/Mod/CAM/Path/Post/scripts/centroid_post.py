@@ -27,7 +27,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor
+from Path.Post.Processor import PostProcessor, PostProcessorState
 
 import Path
 import FreeCAD
@@ -66,109 +66,57 @@ class Centroid(PostProcessor):
         )
         Path.Log.debug("Centroid post processor initialized.")
 
-    def init_values(self, values: Values) -> None:
+    def init_values(self, state: PostProcessorState) -> None:
         """Initialize values that are used throughout the postprocessor."""
-        #
-        super().init_values(values)
-        #
-        # Set any values here that need to override the default values set
-        # in the parent routine.
-        #
-        # Use 4 digits for axis precision by default.
-        #
-        values["AXIS_PRECISION"] = 4
-        values["DEFAULT_AXIS_PRECISION"] = 4
-        values["DEFAULT_INCH_AXIS_PRECISION"] = 4
-        #
-        # Use ";" as the comment symbol
-        #
-        values["COMMENT_SYMBOL"] = ";"
-        #
-        # Use 1 digit for feed precision by default.
-        #
-        values["FEED_PRECISION"] = 1
-        values["DEFAULT_FEED_PRECISION"] = 1
-        values["DEFAULT_INCH_FEED_PRECISION"] = 1
-        #
-        # This value usually shows up in the post_op comment as "Finish operation:".
-        # Change it to "End" to produce "End operation:".
-        #
-        values["FINISH_LABEL"] = "End"
-        #
-        # If this value is True, then a list of tool numbers
-        # with their labels are output just before the preamble.
-        #
-        values["LIST_TOOLS_IN_PREAMBLE"] = True
-        #
-        # Used in the argparser code as the "name" of the postprocessor program.
-        # This would normally show up in the usage message in the TOOLTIP_ARGS.
-        #
-        values["MACHINE_NAME"] = "Centroid"
-        #
-        # This list controls the order of parameters in a line during output.
-        # centroid doesn't want K properties on XY plane; Arcs need work.
-        #
-        values["PARAMETER_ORDER"] = [
-            "X",
-            "Y",
-            "Z",
-            "A",
-            "B",
-            "I",
-            "J",
-            "F",
-            "S",
-            "T",
-            "Q",
-            "R",
-            "L",
-            "H",
+        super().init_values(state)
+        
+        # Precision settings
+        state.precision.axis_precision = 4
+        state.precision.default_metric_axis = 4
+        state.precision.default_imperial_axis = 4
+        state.precision.feed_precision = 1
+        state.precision.default_metric_feed = 1
+        state.precision.default_imperial_feed = 1
+        
+        # Formatting
+        state.formatting.comment_symbol = ";"
+        
+        # Machine configuration
+        state.machine.name = "Centroid"
+        state.machine.stop_spindle_for_tool_change = False
+        
+        # Parameter order - centroid doesn't want K properties on XY plane
+        state.parameter_order = [
+            "X", "Y", "Z", "A", "B",
+            "I", "J", "F", "S", "T",
+            "Q", "R", "L", "H",
         ]
-        #
-        # Any commands in this value will be output as the last commands
-        # in the G-code file.
-        #
-        values["POSTAMBLE"] = """M99"""
-        values["POSTPROCESSOR_FILE_NAME"] = __name__
-        #
-        # Any commands in this value will be output after the header and
-        # safety block at the beginning of the G-code file.
-        #
-        values["PREAMBLE"] = """G53 G00 G17"""
-        #
-        # Output any messages.
-        #
-        values["REMOVE_MESSAGES"] = False
-        #
-        # Any commands in this value are output after the header but before the preamble,
-        # then again after the TOOLRETURN but before the POSTAMBLE.
-        #
-        values["SAFETYBLOCK"] = """G90 G80 G40 G49"""
-        #
-        # Do not show the current machine units just before the PRE_OPERATION.
-        #
-        values["SHOW_MACHINE_UNITS"] = False
-        #
-        # Do not show the current operation label just before the PRE_OPERATION.
-        #
-        values["SHOW_OPERATION_LABELS"] = False
-        #
-        # Do not output an M5 command to stop the spindle for tool changes.
-        #
-        values["STOP_SPINDLE_FOR_TOOL_CHANGE"] = False
-        #
-        # spindle off, height offset canceled, spindle retracted
+        
+        # G-code blocks
+        state.blocks.preamble = "G53 G00 G17"
+        state.blocks.postamble = "M99"
+        state.blocks.safetyblock = "G90 G80 G40 G49"
+        state.blocks.finish_label = "End"
+        
+        # Processing options
+        state.processing.list_tools_in_preamble = True
+        state.processing.show_machine_units = False
+        state.processing.show_operation_labels = False
+        
+        # Postprocessor identification
+        state.postprocessor_file_name = __name__
+        
+        # Custom Centroid setting (stored as instance attribute)
+        self._remove_messages = False
+        
+        # Tool return block - spindle off, height offset canceled, spindle retracted
         # (M25 is a centroid command to retract spindle)
-        #
-        values[
-            "TOOLRETURN"
-        ] = """M5
+        state.blocks.tool_return = """M5
 M25
 G49 H0"""
-        #
+        
         # Default to not outputting a G43 following tool changes
-        #
-        values["USE_TLO"] = False
+        state.machine.use_tlo = False
         #
         # This was in the original centroid postprocessor file
         # but does not appear to be used anywhere.

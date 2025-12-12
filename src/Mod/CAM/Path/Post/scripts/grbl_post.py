@@ -29,7 +29,7 @@ import argparse
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor
+from Path.Post.Processor import PostProcessor, PostProcessorState
 
 import Path
 import FreeCAD
@@ -69,80 +69,38 @@ class Grbl(PostProcessor):
         )
         Path.Log.debug("Grbl post processor initialized.")
 
-    def init_values(self, values: Values) -> None:
+    def init_values(self, state: PostProcessorState) -> None:
         """Initialize values that are used throughout the postprocessor."""
-        #
-        super().init_values(values)
-        #
-        # Set any values here that need to override the default values set
-        # in the parent routine.
-        #
-        values["ENABLE_COOLANT"] = True
-        #
-        # If this is set to True, then commands that are placed in
-        # comments that look like (MC_RUN_COMMAND: blah) will be output.
-        #
-        values["ENABLE_MACHINE_SPECIFIC_COMMANDS"] = True
-        #
-        # Used in the argparser code as the "name" of the postprocessor program.
-        # This would normally show up in the usage message in the TOOLTIP_ARGS.
-        #
-        values["MACHINE_NAME"] = "Grbl"
-        #
-        # Default to outputting Path labels at the beginning of each Path.
-        #
-        values["OUTPUT_PATH_LABELS"] = True
-        #
-        # Default to not outputting M6 tool changes (comment it) as grbl
-        # currently does not handle it.
-        #
-        values["OUTPUT_TOOL_CHANGE"] = False
-        #
-        # The order of the parameters.
-        # Arcs may only work on the XY plane (this needs to be verified).
-        #
-        values["PARAMETER_ORDER"] = [
-            "X",
-            "Y",
-            "Z",
-            "A",
-            "B",
-            "C",
-            "U",
-            "V",
-            "W",
-            "I",
-            "J",
-            "F",
-            "S",
-            "T",
-            "Q",
-            "R",
-            "L",
-            "P",
+        super().init_values(state)
+        
+        # Machine configuration
+        state.machine.name = "Grbl"
+        state.machine.enable_coolant = True
+        state.machine.enable_machine_specific_commands = True
+        state.machine.use_tlo = False
+        
+        # Output options
+        state.output.path_labels = True
+        state.output.tool_change = False
+        
+        # Processing options
+        state.processing.show_machine_units = False
+        
+        # Parameter order - Arcs may only work on the XY plane
+        state.parameter_order = [
+            "X", "Y", "Z", "A", "B", "C",
+            "U", "V", "W", "I", "J", "F",
+            "S", "T", "Q", "R", "L", "P",
         ]
-        #
-        # Any commands in this value will be output as the last commands in the G-code file.
-        #
-        values[
-            "POSTAMBLE"
-        ] = """M5
+        
+        # G-code blocks
+        state.blocks.preamble = "G17 G90"
+        state.blocks.postamble = """M5
 G17 G90
 M2"""
-        values["POSTPROCESSOR_FILE_NAME"] = __name__
-        #
-        # Any commands in this value will be output after the header and
-        # safety block at the beginning of the G-code file.
-        #
-        values["PREAMBLE"] = """G17 G90"""
-        #
-        # Do not show the current machine units just before the PRE_OPERATION.
-        #
-        values["SHOW_MACHINE_UNITS"] = False
-        #
-        # Default to not outputting a G43 following tool changes
-        #
-        values["USE_TLO"] = False
+        
+        # Postprocessor identification
+        state.postprocessor_file_name = __name__
 
     def init_argument_defaults(self, argument_defaults: Defaults) -> None:
         """Initialize which arguments (in a pair) are shown as the default argument."""

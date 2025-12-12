@@ -37,14 +37,16 @@ import Path.Base.Util as PathUtil
 import Path.Post.Utils as PostUtils
 import Path.Post.UtilsParse as PostUtilsParse
 import Path.Tool.Controller as PathToolController
+from Path.Post.UtilsParse import State, ensure_dict
 
 # Define some types that are used throughout this file
 Gcode = List[str]
 Values = Dict[str, Any]
 
 
-def check_canned_cycles(values: Values) -> None:
+def check_canned_cycles(values: State) -> None:
     """Check canned cycles for drilling."""
+    values = ensure_dict(values)
     if values["TRANSLATE_DRILL_CYCLES"]:
         if len(values["SUPPRESS_COMMANDS"]) == 0:
             values["SUPPRESS_COMMANDS"] = ["G99", "G98", "G80"]
@@ -52,8 +54,9 @@ def check_canned_cycles(values: Values) -> None:
             values["SUPPRESS_COMMANDS"] += ["G99", "G98", "G80"]
 
 
-def output_coolant_off(values: Values, gcode: Gcode, coolant_mode: str) -> None:
+def output_coolant_off(values: State, gcode: Gcode, coolant_mode: str) -> None:
     """Output the commands to turn coolant off if necessary."""
+    values = ensure_dict(values)
     comment: str
 
     if values["ENABLE_COOLANT"] and coolant_mode != "None":
@@ -63,8 +66,9 @@ def output_coolant_off(values: Values, gcode: Gcode, coolant_mode: str) -> None:
         gcode.append(f"{PostUtilsParse.linenumber(values)}M9")
 
 
-def output_coolant_on(values: Values, gcode: Gcode, coolant_mode: str) -> None:
+def output_coolant_on(values: State, gcode: Gcode, coolant_mode: str) -> None:
     """Output the commands to turn coolant on if necessary."""
+    values = ensure_dict(values)
     comment: str
 
     if values["ENABLE_COOLANT"]:
@@ -77,8 +81,9 @@ def output_coolant_on(values: Values, gcode: Gcode, coolant_mode: str) -> None:
             gcode.append(f"{PostUtilsParse.linenumber(values)}M7")
 
 
-def output_end_bcnc(values: Values, gcode: Gcode) -> None:
+def output_end_bcnc(values: State, gcode: Gcode) -> None:
     """Output the ending BCNC header."""
+    values = ensure_dict(values)
     comment: str
 
     if values["OUTPUT_BCNC"]:
@@ -90,8 +95,9 @@ def output_end_bcnc(values: Values, gcode: Gcode) -> None:
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
 
 
-def output_header(values: Values, gcode: Gcode) -> None:
+def output_header(values: State, gcode: Gcode) -> None:
     """Output the header."""
+    values = ensure_dict(values)
     cam_file: str
     comment: str
 
@@ -113,8 +119,9 @@ def output_header(values: Values, gcode: Gcode) -> None:
     gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
 
 
-def output_motion_mode(values: Values, gcode: Gcode) -> None:
+def output_motion_mode(values: State, gcode: Gcode) -> None:
     """Verify if PREAMBLE or SAFETYBLOCK have changed MOTION_MODE."""
+    values = ensure_dict(values)
 
     if "G90" in values["PREAMBLE"] or "G90" in values["SAFETYBLOCK"]:
         values["MOTION_MODE"] = "G90"
@@ -124,8 +131,9 @@ def output_motion_mode(values: Values, gcode: Gcode) -> None:
         gcode.append(f'{PostUtilsParse.linenumber(values)}{values["MOTION_MODE"]}')
 
 
-def output_postamble_header(values: Values, gcode: Gcode) -> None:
+def output_postamble_header(values: State, gcode: Gcode) -> None:
     """Output the postamble header."""
+    values = ensure_dict(values)
     comment: str = ""
 
     if values["OUTPUT_COMMENTS"]:
@@ -133,16 +141,18 @@ def output_postamble_header(values: Values, gcode: Gcode) -> None:
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
 
 
-def output_postamble(values: Values, gcode: Gcode) -> None:
+def output_postamble(values: State, gcode: Gcode) -> None:
     """Output the postamble."""
+    values = ensure_dict(values)
     line: str
 
     for line in values["POSTAMBLE"].splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
-def output_postop(values: Values, gcode: Gcode, obj) -> None:
+def output_postop(values: State, gcode: Gcode, obj) -> None:
     """Output the post-operation information."""
+    values = ensure_dict(values)
     comment: str
     line: str
 
@@ -158,8 +168,9 @@ def output_postop(values: Values, gcode: Gcode, obj) -> None:
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
-def output_preamble(values: Values, gcode: Gcode) -> None:
+def output_preamble(values: State, gcode: Gcode) -> None:
     """Output the preamble."""
+    values = ensure_dict(values)
     comment: str
     line: str
 
@@ -170,8 +181,9 @@ def output_preamble(values: Values, gcode: Gcode) -> None:
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
-def output_preop(values: Values, gcode: Gcode, obj) -> None:
+def output_preop(values: State, gcode: Gcode, obj) -> None:
     """Output the pre-operation information."""
+    values = ensure_dict(values)
     comment: str
     line: str
 
@@ -196,8 +208,9 @@ def output_preop(values: Values, gcode: Gcode, obj) -> None:
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
-def output_return_to(values: Values, gcode: Gcode) -> None:
+def output_return_to(values: State, gcode: Gcode) -> None:
     """Output the RETURN_TO command."""
+    values = ensure_dict(values)
     cmd: str
     num_x: str
     num_y: str
@@ -213,16 +226,18 @@ def output_return_to(values: Values, gcode: Gcode) -> None:
         gcode.append(f"{PostUtilsParse.linenumber(values)}{cmd}")
 
 
-def output_safetyblock(values: Values, gcode: Gcode) -> None:
+def output_safetyblock(values: State, gcode: Gcode) -> None:
     """Output the safety block."""
+    values = ensure_dict(values)
     line: str
 
     for line in values["SAFETYBLOCK"].splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
-def output_start_bcnc(values: Values, gcode: Gcode, obj) -> None:
+def output_start_bcnc(values: State, gcode: Gcode, obj) -> None:
     """Output the starting BCNC header."""
+    values = ensure_dict(values)
     comment: str
 
     if values["OUTPUT_BCNC"]:
@@ -234,8 +249,9 @@ def output_start_bcnc(values: Values, gcode: Gcode, obj) -> None:
         gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
 
 
-def output_tool_list(values: Values, gcode: Gcode, objectslist) -> None:
+def output_tool_list(values: State, gcode: Gcode, objectslist) -> None:
     """Output a list of the tools used in the objects."""
+    values = ensure_dict(values)
     comment: str
 
     if values["OUTPUT_COMMENTS"] and values["LIST_TOOLS_IN_PREAMBLE"]:
@@ -245,16 +261,18 @@ def output_tool_list(values: Values, gcode: Gcode, objectslist) -> None:
                 gcode.append(f"{PostUtilsParse.linenumber(values)}{comment}")
 
 
-def output_tool_return(values: Values, gcode: Gcode) -> None:
+def output_tool_return(values: State, gcode: Gcode) -> None:
     """Output the tool return block."""
+    values = ensure_dict(values)
     line: str
 
     for line in values["TOOLRETURN"].splitlines(False):
         gcode.append(f"{PostUtilsParse.linenumber(values)}{line}")
 
 
-def output_units(values: Values, gcode: Gcode) -> None:
+def output_units(values: State, gcode: Gcode) -> None:
     """Verify if PREAMBLE or SAFETYBLOCK have changed UNITS."""
+    values = ensure_dict(values)
 
     if "G21" in values["PREAMBLE"] or "G21" in values["SAFETYBLOCK"]:
         values["UNITS"] = "G21"
@@ -268,8 +286,9 @@ def output_units(values: Values, gcode: Gcode) -> None:
         gcode.append(f'{PostUtilsParse.linenumber(values)}{values["UNITS"]}')
 
 
-def export_common(values: Values, objectslist, filename: str) -> str:
+def export_common(values: State, objectslist, filename: str) -> str:
     """Do the common parts of postprocessing the objects in objectslist to filename."""
+    values = ensure_dict(values)
     coolant_mode: str
     dia: PostUtils.GCodeEditorDialog
     final: str

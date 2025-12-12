@@ -39,6 +39,7 @@ from typing import Any, Callable, Dict, Tuple, Union
 from FreeCAD import Units
 
 import Path.Post.UtilsParse as PostUtilsParse
+from Path.Post.UtilsParse import State, ensure_dict
 
 # Define some types that are used throughout this file
 PathParameter = float
@@ -46,7 +47,7 @@ PathParameters = Dict[str, PathParameter]
 Parser = argparse.ArgumentParser
 Values = Dict[str, Any]
 
-ParameterFunction = Callable[[Values, str, str, PathParameter, PathParameters], str]
+ParameterFunction = Callable[[State, str, str, PathParameter, PathParameters], str]
 
 
 def add_flag_type_arguments(
@@ -482,8 +483,10 @@ def init_shared_arguments(
     return parser
 
 
-def init_shared_values(values: Values) -> None:
+def init_shared_values(values: State) -> None:
     """Initialize the default values in postprocessors."""
+    # Ensure we have a dict to work with
+    values = ensure_dict(values)
     #
     # The starting axis precision is 3 digits after the decimal point.
     #

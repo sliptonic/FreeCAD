@@ -27,7 +27,7 @@
 
 from typing import Any, Dict
 
-from Path.Post.Processor import PostProcessor
+from Path.Post.Processor import PostProcessor, PostProcessorState
 
 import Path
 import FreeCAD
@@ -66,71 +66,36 @@ class Mach3_Mach4(PostProcessor):
         )
         Path.Log.debug("Mach3_Mach4 post processor initialized.")
 
-    def init_values(self, values: Values) -> None:
+    def init_values(self, state: PostProcessorState) -> None:
         """Initialize values that are used throughout the postprocessor."""
-        #
-        super().init_values(values)
-        #
-        # Set any values here that need to override the default values set
-        # in the parent routine.
-        #
-        values["ENABLE_COOLANT"] = True
-        #
-        # Used in the argparser code as the "name" of the postprocessor program.
-        # This would normally show up in the usage message in the TOOLTIP_ARGS.
-        #
-        values["MACHINE_NAME"] = "mach3_4"
-        #
-        # Enable special processing for operations with "Adaptive" in the name.
-        #
-        values["OUTPUT_ADAPTIVE"] = True
-        #
-        # Output the machine name for mach3_mach4 instead of the machine units alone.
-        #
-        values["OUTPUT_MACHINE_NAME"] = True
-        #
-        # The order of parameters.
-        #
-        # mach3_mach4 doesn't want K properties on XY plane; Arcs need work.
-        #
-        values["PARAMETER_ORDER"] = [
-            "X",
-            "Y",
-            "Z",
-            "A",
-            "B",
-            "C",
-            "I",
-            "J",
-            "F",
-            "S",
-            "T",
-            "Q",
-            "R",
-            "L",
-            "H",
-            "D",
-            "P",
+        super().init_values(state)
+        
+        # Machine configuration
+        state.machine.name = "mach3_4"
+        state.machine.enable_coolant = True
+        
+        # Output options
+        state.output.adaptive = True
+        state.output.machine_name = True
+        
+        # Processing options
+        state.processing.show_machine_units = False
+        
+        # Parameter order - mach3_mach4 doesn't want K properties on XY plane
+        state.parameter_order = [
+            "X", "Y", "Z", "A", "B", "C",
+            "I", "J", "F", "S", "T", "Q",
+            "R", "L", "H", "D", "P",
         ]
-        #
-        # Any commands in this value will be output as the last commands
-        # in the G-code file.
-        #
-        values[
-            "POSTAMBLE"
-        ] = """M05
+        
+        # G-code blocks
+        state.blocks.preamble = "G17 G54 G40 G49 G80 G90"
+        state.blocks.postamble = """M05
 G17 G54 G90 G80 G40
 M2"""
-        values["POSTPROCESSOR_FILE_NAME"] = __name__
-        #
-        # Any commands in this value will be output after the header and
-        # safety block at the beginning of the G-code file.
-        #
-        values["PREAMBLE"] = """G17 G54 G40 G49 G80 G90"""
-        #
-        # Output the machine name for mach3_mach4 instead of the machine units alone.
-        #
-        values["SHOW_MACHINE_UNITS"] = False
+        
+        # Postprocessor identification
+        state.postprocessor_file_name = __name__
 
     def init_arguments_visible(self, arguments_visible: Visible) -> None:
         """Initialize which argument pairs are visible in TOOLTIP_ARGS."""
