@@ -1037,6 +1037,17 @@ class MachineFactory:
             raise Exception(f"Failed to load machine file {filepath}: {e}")
 
     @classmethod
+    def create_default_machine_data(cls):
+        """
+        Create a default machine configuration dictionary for the editor.
+        
+        Returns:
+            Dictionary with default machine configuration structure
+        """
+        machine = Machine(name="New Machine")
+        return machine.to_dict()
+
+    @classmethod
     def list_configuration_files(cls) -> list[tuple[str, pathlib.Path]]:
         """Get list of available machine files from the asset directory.
 

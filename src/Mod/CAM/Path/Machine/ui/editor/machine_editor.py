@@ -109,7 +109,7 @@ class MachineEditorDialog(QtGui.QDialog):
 
         # Check experimental flag for machine post processor
         param = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
-        self.enable_machine_postprocessor = param.GetBool("EnableMachinePostprocessor", False)
+        self.enable_machine_postprocessor = param.GetBool("EnableMachinePostprocessor", True)
         self.tabs.setTabVisible(self.tabs.indexOf(self.post_tab), self.enable_machine_postprocessor)
         # Text editor (initially hidden)
         self.text_editor = CodeEditor()
@@ -147,12 +147,14 @@ class MachineEditorDialog(QtGui.QDialog):
         self.layout.addLayout(button_layout)
         self.text_mode = False
         self.filename = machine_filename
+        self.machine = None  # Store the Machine object
 
         if machine_filename:
-            data = MachineFactory.load_configuration(machine_filename)
-            self.populate_from_data(data)
+            self.machine = MachineFactory.load_configuration(machine_filename)
+            self.populate_from_machine(self.machine)
         else:
-            self.set_defaults()
+            self.machine = Machine(name="New Machine")
+            self.populate_from_machine(self.machine)
             # Set focus and select the name field for new machines
             self.name_edit.setFocus()
             self.name_edit.selectAll()
@@ -247,11 +249,162 @@ class MachineEditorDialog(QtGui.QDialog):
 
         edit.setText(f"{display_value:.2f} {suffix}")
 
-        # Update saved data (store in metric)
-        if axis and field:
+        # Update machine's axis directly (store in metric)
+        if axis and field and self.machine:
+            # Find the axis in machine.linear_axes or machine.rotary_axes (both are dicts)
+            if axis in self.machine.linear_axes:
+                ax = self.machine.linear_axes[axis]
+                if field == "min":
+                    ax.min_limit = internal_value
+                elif field == "max":
+                    ax.max_limit = internal_value
+                elif field == "max_velocity":
+                    ax.max_velocity = internal_value
+            elif axis in self.machine.rotary_axes:
+                ax = self.machine.rotary_axes[axis]
+                if field == "min":
+                    ax.min_limit = internal_value
+                elif field == "max":
+                    ax.max_limit = internal_value
+                elif field == "max_velocity":
+                    ax.max_velocity = internal_value
+            
+            # Also update saved_axes_data for backward compatibility during transition
             if axis not in self.saved_axes_data:
                 self.saved_axes_data[axis] = {}
             self.saved_axes_data[axis][field] = internal_value
+
+    # Signal handlers that update self.machine directly
+    def _on_name_changed(self, text):
+        """Update machine name when text changes."""
+        if self.machine:
+            self.machine.name = text
+    
+    def _on_rotary_sequence_changed(self, axis_name, value):
+        """Update rotary axis sequence."""
+        if self.machine and axis_name in self.machine.rotary_axes:
+            self.machine.rotary_axes[axis_name].sequence = value
+            if axis_name in self.saved_axes_data:
+                self.saved_axes_data[axis_name]["sequence"] = value
+    
+    def _on_rotary_joint_changed(self, axis_name, combo):
+        """Update rotary axis joint/rotation vector."""
+        if self.machine and axis_name in self.machine.rotary_axes:
+            import FreeCAD
+            vector = combo.itemData(combo.currentIndex())
+            self.machine.rotary_axes[axis_name].rotation_vector = FreeCAD.Vector(*vector)
+            if axis_name in self.saved_axes_data:
+                self.saved_axes_data[axis_name]["joint"] = [[0, 0, 0], vector]
+    
+    def _on_rotary_prefer_positive_changed(self, axis_name, checked):
+        """Update rotary axis prefer_positive."""
+        if self.machine and axis_name in self.machine.rotary_axes:
+            self.machine.rotary_axes[axis_name].prefer_positive = checked
+            if axis_name in self.saved_axes_data:
+                self.saved_axes_data[axis_name]["prefer_positive"] = checked
+    
+    def _on_manufacturer_changed(self, text):
+        """Update manufacturer when text changes."""
+        if self.machine:
+            self.machine.manufacturer = text
+    
+    def _on_description_changed(self, text):
+        """Update description when text changes."""
+        if self.machine:
+            self.machine.description = text
+    
+    def _on_units_changed(self, index):
+        """Update units and refresh axes display."""
+        if self.machine:
+            units = self.units_combo.itemData(index)
+            self.machine.units = units
+            self.current_units = units
+            self.update_axes()
+    
+    def _on_type_changed(self, index):
+        """Update machine type and refresh axes."""
+        if self.machine:
+            import FreeCAD
+            machine_type = self.type_combo.itemData(index)
+            self.machine.machine_type = machine_type
+            
+            # Rebuild axes in machine based on new type
+            config = self.MACHINE_TYPES.get(machine_type, {})
+            
+            # Clear and rebuild linear axes
+            self.machine.linear_axes = {}
+            for axis_name in config.get("linear", []):
+                # Preserve existing data if available
+                if axis_name in self.saved_axes_data:
+                    data = self.saved_axes_data[axis_name]
+                    self.machine.linear_axes[axis_name] = LinearAxis(
+                        name=axis_name,
+                        direction_vector=FreeCAD.Vector(1, 0, 0) if axis_name == "X" else 
+                                       FreeCAD.Vector(0, 1, 0) if axis_name == "Y" else 
+                                       FreeCAD.Vector(0, 0, 1),
+                        min_limit=data.get("min", 0),
+                        max_limit=data.get("max", 1000),
+                        max_velocity=data.get("max_velocity", 10000)
+                    )
+                else:
+                    # Create with defaults
+                    self.machine.linear_axes[axis_name] = LinearAxis(
+                        name=axis_name,
+                        direction_vector=FreeCAD.Vector(1, 0, 0) if axis_name == "X" else 
+                                       FreeCAD.Vector(0, 1, 0) if axis_name == "Y" else 
+                                       FreeCAD.Vector(0, 0, 1),
+                        min_limit=0,
+                        max_limit=1000,
+                        max_velocity=10000
+                    )
+                    # Initialize saved_axes_data
+                    self.saved_axes_data[axis_name] = {
+                        "min": 0,
+                        "max": 1000,
+                        "max_velocity": 10000,
+                        "type": "linear"
+                    }
+            
+            # Clear and rebuild rotary axes
+            self.machine.rotary_axes = {}
+            for axis_name in config.get("rotary", []):
+                # Preserve existing data if available
+                if axis_name in self.saved_axes_data:
+                    data = self.saved_axes_data[axis_name]
+                    joint = data.get("joint", [[0, 0, 0], [1, 0, 0]])
+                    self.machine.rotary_axes[axis_name] = RotaryAxis(
+                        name=axis_name,
+                        rotation_vector=FreeCAD.Vector(*joint[1]),
+                        min_limit=data.get("min", -180),
+                        max_limit=data.get("max", 180),
+                        max_velocity=data.get("max_velocity", 36000),
+                        sequence=data.get("sequence", 0),
+                        prefer_positive=data.get("prefer_positive", True)
+                    )
+                else:
+                    # Create with defaults
+                    default_vector = [1, 0, 0] if axis_name == "A" else [0, 1, 0] if axis_name == "B" else [0, 0, 1]
+                    self.machine.rotary_axes[axis_name] = RotaryAxis(
+                        name=axis_name,
+                        rotation_vector=FreeCAD.Vector(*default_vector),
+                        min_limit=-180,
+                        max_limit=180,
+                        max_velocity=36000,
+                        sequence=0,
+                        prefer_positive=True
+                    )
+                    # Initialize saved_axes_data
+                    self.saved_axes_data[axis_name] = {
+                        "min": -180,
+                        "max": 180,
+                        "max_velocity": 36000,
+                        "type": "angular",
+                        "sequence": 0,
+                        "joint": [[0, 0, 0], default_vector],
+                        "prefer_positive": True
+                    }
+            
+            self.update_axes()
 
     def setup_machine_tab(self):
         """Set up the machine configuration tab with form fields.
@@ -263,24 +416,27 @@ class MachineEditorDialog(QtGui.QDialog):
         layout = QtGui.QFormLayout(self.machine_tab)
 
         self.name_edit = QtGui.QLineEdit()
+        self.name_edit.textChanged.connect(self._on_name_changed)
         layout.addRow(translate("CAM_MachineEditor", "Name:"), self.name_edit)
 
         self.manufacturer_edit = QtGui.QLineEdit()
+        self.manufacturer_edit.textChanged.connect(self._on_manufacturer_changed)
         layout.addRow(translate("CAM_MachineEditor", "Manufacturer:"), self.manufacturer_edit)
 
         self.description_edit = QtGui.QLineEdit()
+        self.description_edit.textChanged.connect(self._on_description_changed)
         layout.addRow(translate("CAM_MachineEditor", "Description:"), self.description_edit)
 
         self.units_combo = QtGui.QComboBox()
         self.units_combo.addItem(translate("CAM_MachineEditor", "Metric"), "metric")
         self.units_combo.addItem(translate("CAM_MachineEditor", "Imperial"), "imperial")
-        self.units_combo.currentIndexChanged.connect(self.update_axes)
+        self.units_combo.currentIndexChanged.connect(self._on_units_changed)
         layout.addRow(translate("CAM_MachineEditor", "Units:"), self.units_combo)
 
         self.type_combo = QtGui.QComboBox()
         for key, value in self.MACHINE_TYPES.items():
             self.type_combo.addItem(value["name"], key)
-        self.type_combo.currentIndexChanged.connect(self.update_axes)
+        self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         layout.addRow(translate("CAM_MachineEditor", "Type:"), self.type_combo)
 
         self.spindle_count_combo = QtGui.QComboBox()
@@ -454,6 +610,9 @@ class MachineEditorDialog(QtGui.QDialog):
                 sequence_spin = QtGui.QSpinBox()
                 sequence_spin.setRange(0, 10)
                 sequence_spin.setValue(self.saved_axes_data.get(axis, {}).get("sequence", 0))
+                sequence_spin.valueChanged.connect(
+                    lambda value, ax=axis: self._on_rotary_sequence_changed(ax, value)
+                )
 
                 # Joint (rotation axis) combo
                 joint_combo = QtGui.QComboBox()
@@ -472,10 +631,16 @@ class MachineEditorDialog(QtGui.QDialog):
                         if vector == saved_joint[1]:
                             joint_combo.setCurrentIndex(i)
                             break
+                joint_combo.currentIndexChanged.connect(
+                    lambda index, ax=axis, combo=joint_combo: self._on_rotary_joint_changed(ax, combo)
+                )
 
                 prefer_positive = QtGui.QCheckBox()
                 prefer_positive.setChecked(
                     self.saved_axes_data.get(axis, {}).get("prefer_positive", True)
+                )
+                prefer_positive.stateChanged.connect(
+                    lambda state, ax=axis: self._on_rotary_prefer_positive_changed(ax, state == QtCore.Qt.Checked)
                 )
 
                 # Grid layout
@@ -609,67 +774,198 @@ class MachineEditorDialog(QtGui.QDialog):
             )
 
     def setup_post_tab(self):
-        """Set up the post processor configuration tab.
+        """Set up the post processor configuration tab with comprehensive settings."""
+        # Use scroll area for all the options
+        scroll = QtGui.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_widget = QtGui.QWidget()
+        layout = QtGui.QVBoxLayout(scroll_widget)
+        scroll.setWidget(scroll_widget)
+        
+        main_layout = QtGui.QVBoxLayout(self.post_tab)
+        main_layout.addWidget(scroll)
 
-        Creates input fields for post processor selection, arguments,
-        output units, comments, line numbers, and tool length offsets.
-        """
-        layout = QtGui.QFormLayout(self.post_tab)
-
-        # Post Processor selection (at the top)
+        # === Post Processor Selection ===
+        pp_group = QtGui.QGroupBox("Post Processor")
+        pp_layout = QtGui.QFormLayout(pp_group)
+        
         self.post_processor_combo = QtGui.QComboBox()
         postProcessors = Path.Preferences.allEnabledPostProcessors([""])
         for post in postProcessors:
             self.post_processor_combo.addItem(post)
         self.post_processor_combo.currentIndexChanged.connect(self.updatePostProcessorTooltip)
+        self.post_processor_combo.currentIndexChanged.connect(
+            lambda: self._update_machine_field("postprocessor_file_name", self.post_processor_combo.currentText())
+        )
         self.postProcessorDefaultTooltip = translate("CAM_MachineEditor", "Select a post processor")
         self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
-        layout.addRow(translate("CAM_MachineEditor", "Post Processor:"), self.post_processor_combo)
+        pp_layout.addRow("Post Processor:", self.post_processor_combo)
 
-        # Post Processor Arguments (below post processor selection)
         self.post_processor_args_edit = QtGui.QLineEdit()
-        self.postProcessorArgsDefaultTooltip = translate(
-            "CAM_MachineEditor", "Additional arguments for the post processor"
+        self.post_processor_args_edit.textChanged.connect(
+            lambda text: self._update_machine_field("postprocessor_args", text)
         )
+        self.postProcessorArgsDefaultTooltip = translate("CAM_MachineEditor", "Additional arguments")
         self.post_processor_args_edit.setToolTip(self.postProcessorArgsDefaultTooltip)
-        layout.addRow(translate("CAM_MachineEditor", "Arguments:"), self.post_processor_args_edit)
+        pp_layout.addRow("Arguments:", self.post_processor_args_edit)
+        layout.addWidget(pp_group)
 
-        # Separator
-        separator = QtGui.QFrame()
-        separator.setFrameShape(QtGui.QFrame.HLine)
-        separator.setFrameShadow(QtGui.QFrame.Sunken)
-        layout.addRow(separator)
-
-        # Output Unit
-        self.output_unit_combo = QtGui.QComboBox()
-        self.output_unit_combo.addItem(translate("CAM_MachineEditor", "Metric"), "metric")
-        self.output_unit_combo.addItem(translate("CAM_MachineEditor", "Imperial"), "imperial")
-        layout.addRow(translate("CAM_MachineEditor", "Output Unit:"), self.output_unit_combo)
-
-        # Comments
-        self.comments_combo = QtGui.QComboBox()
-        self.comments_combo.addItem(translate("CAM_MachineEditor", "Yes"), True)
-        self.comments_combo.addItem(translate("CAM_MachineEditor", "No"), False)
-        layout.addRow(translate("CAM_MachineEditor", "Comments:"), self.comments_combo)
-
-        # Line Numbers
-        self.line_numbers_combo = QtGui.QComboBox()
-        self.line_numbers_combo.addItem(translate("CAM_MachineEditor", "Yes"), True)
-        self.line_numbers_combo.addItem(translate("CAM_MachineEditor", "No"), False)
-        self.line_numbers_combo.setCurrentIndex(1)  # Default to "No" (False)
-        layout.addRow(translate("CAM_MachineEditor", "Line Numbers:"), self.line_numbers_combo)
-
-        # Tool Length Offset
-        self.tool_length_offset_combo = QtGui.QComboBox()
-        self.tool_length_offset_combo.addItem(translate("CAM_MachineEditor", "Yes"), True)
-        self.tool_length_offset_combo.addItem(translate("CAM_MachineEditor", "No"), False)
-        layout.addRow(
-            translate("CAM_MachineEditor", "Tool Length Offset:"),
-            self.tool_length_offset_combo,
+        # === Output Options ===
+        output_group = QtGui.QGroupBox("Output Options")
+        output_layout = QtGui.QFormLayout(output_group)
+        
+        self.comments_check = QtGui.QCheckBox()
+        self.comments_check.setChecked(True)
+        self.comments_check.stateChanged.connect(
+            lambda state: self._update_machine_field("output.comments", state == QtCore.Qt.Checked)
         )
+        output_layout.addRow("Include Comments:", self.comments_check)
+        
+        self.line_numbers_check = QtGui.QCheckBox()
+        self.line_numbers_check.stateChanged.connect(
+            lambda state: self._update_machine_field("output.line_numbers", state == QtCore.Qt.Checked)
+        )
+        output_layout.addRow("Line Numbers:", self.line_numbers_check)
+        
+        self.show_editor_check = QtGui.QCheckBox()
+        self.show_editor_check.setChecked(True)
+        self.show_editor_check.stateChanged.connect(
+            lambda state: self._update_machine_field("processing.show_editor", state == QtCore.Qt.Checked)
+        )
+        output_layout.addRow("Show Editor:", self.show_editor_check)
+        
+        self.tool_length_offset_check = QtGui.QCheckBox()
+        self.tool_length_offset_check.setChecked(True)
+        self.tool_length_offset_check.stateChanged.connect(
+            lambda state: self._update_machine_field("use_tlo", state == QtCore.Qt.Checked)
+        )
+        output_layout.addRow("Tool Length Offset:", self.tool_length_offset_check)
+        
+        layout.addWidget(output_group)
+
+        # === Precision Settings ===
+        precision_group = QtGui.QGroupBox("Precision")
+        precision_layout = QtGui.QFormLayout(precision_group)
+        
+        self.axis_precision_spin = QtGui.QSpinBox()
+        self.axis_precision_spin.setRange(0, 10)
+        self.axis_precision_spin.setValue(3)
+        self.axis_precision_spin.valueChanged.connect(
+            lambda val: self._update_machine_field("precision.axis_precision", val)
+        )
+        precision_layout.addRow("Axis Decimals:", self.axis_precision_spin)
+        
+        self.feed_precision_spin = QtGui.QSpinBox()
+        self.feed_precision_spin.setRange(0, 10)
+        self.feed_precision_spin.setValue(3)
+        self.feed_precision_spin.valueChanged.connect(
+            lambda val: self._update_machine_field("precision.feed_precision", val)
+        )
+        precision_layout.addRow("Feed Decimals:", self.feed_precision_spin)
+        
+        layout.addWidget(precision_group)
+
+        # === Line Formatting ===
+        formatting_group = QtGui.QGroupBox("Line Formatting")
+        formatting_layout = QtGui.QFormLayout(formatting_group)
+        
+        self.command_space_edit = QtGui.QLineEdit(" ")
+        self.command_space_edit.textChanged.connect(
+            lambda text: self._update_machine_field("formatting.command_space", text)
+        )
+        formatting_layout.addRow("Command Space:", self.command_space_edit)
+        
+        self.comment_symbol_edit = QtGui.QLineEdit("(")
+        self.comment_symbol_edit.textChanged.connect(
+            lambda text: self._update_machine_field("formatting.comment_symbol", text)
+        )
+        formatting_layout.addRow("Comment Symbol:", self.comment_symbol_edit)
+        
+        self.line_number_start_spin = QtGui.QSpinBox()
+        self.line_number_start_spin.setRange(0, 99999)
+        self.line_number_start_spin.setValue(100)
+        self.line_number_start_spin.valueChanged.connect(
+            lambda val: self._update_machine_field("formatting.line_number_start", val)
+        )
+        formatting_layout.addRow("Line Number Start:", self.line_number_start_spin)
+        
+        self.line_increment_spin = QtGui.QSpinBox()
+        self.line_increment_spin.setRange(1, 1000)
+        self.line_increment_spin.setValue(10)
+        self.line_increment_spin.valueChanged.connect(
+            lambda val: self._update_machine_field("formatting.line_increment", val)
+        )
+        formatting_layout.addRow("Line Increment:", self.line_increment_spin)
+        
+        layout.addWidget(formatting_group)
+
+        # === Processing Options ===
+        processing_group = QtGui.QGroupBox("Processing Options")
+        processing_layout = QtGui.QFormLayout(processing_group)
+        
+        self.modal_check = QtGui.QCheckBox()
+        self.modal_check.stateChanged.connect(
+            lambda state: self._update_machine_field("processing.modal", state == QtCore.Qt.Checked)
+        )
+        processing_layout.addRow("Modal (Suppress Repeated):", self.modal_check)
+        
+        self.translate_drill_check = QtGui.QCheckBox()
+        self.translate_drill_check.stateChanged.connect(
+            lambda state: self._update_machine_field("processing.translate_drill_cycles", state == QtCore.Qt.Checked)
+        )
+        processing_layout.addRow("Translate Drill Cycles:", self.translate_drill_check)
+        
+        self.list_tools_check = QtGui.QCheckBox()
+        self.list_tools_check.stateChanged.connect(
+            lambda state: self._update_machine_field("processing.list_tools_in_preamble", state == QtCore.Qt.Checked)
+        )
+        processing_layout.addRow("List Tools in Preamble:", self.list_tools_check)
+        
+        self.tool_before_change_check = QtGui.QCheckBox()
+        self.tool_before_change_check.stateChanged.connect(
+            lambda state: self._update_machine_field("processing.tool_before_change", state == QtCore.Qt.Checked)
+        )
+        processing_layout.addRow("Tool Before M6:", self.tool_before_change_check)
+        
+        layout.addWidget(processing_group)
+
+        # === G-Code Blocks ===
+        blocks_group = QtGui.QGroupBox("G-Code Blocks")
+        blocks_layout = QtGui.QFormLayout(blocks_group)
+        
+        self.preamble_edit = QtGui.QTextEdit()
+        self.preamble_edit.setMaximumHeight(60)
+        self.preamble_edit.textChanged.connect(
+            lambda: self._update_machine_field("blocks.preamble", self.preamble_edit.toPlainText())
+        )
+        blocks_layout.addRow("Preamble:", self.preamble_edit)
+        
+        self.postamble_edit = QtGui.QTextEdit()
+        self.postamble_edit.setMaximumHeight(60)
+        self.postamble_edit.textChanged.connect(
+            lambda: self._update_machine_field("blocks.postamble", self.postamble_edit.toPlainText())
+        )
+        blocks_layout.addRow("Postamble:", self.postamble_edit)
+        
+        layout.addWidget(blocks_group)
 
         # Cache for post processors
         self.processor = {}
+    
+    def _update_machine_field(self, field_path, value):
+        """Update a nested field in the machine object using dot notation."""
+        if not self.machine:
+            return
+        
+        parts = field_path.split(".")
+        obj = self.machine
+        
+        # Navigate to the parent object
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        
+        # Set the final field
+        setattr(obj, parts[-1], value)
 
     def getPostProcessor(self, name):
         if name not in self.processor:
@@ -700,30 +996,21 @@ class MachineEditorDialog(QtGui.QDialog):
             self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
             self.post_processor_args_edit.setToolTip(self.postProcessorArgsDefaultTooltip)
 
-    def set_defaults(self):
-        """Set default values for all form fields.
-
-        Initializes the dialog with sensible defaults for creating a new machine.
-        """
-        data = MachineFactory.create_default_machine_data()
-        self.populate_from_data(data)
-
-    def populate_from_data(self, data: Dict[str, Any]):
-        """Populate UI fields from machine data dictionary.
+    def populate_from_machine(self, machine: Machine):
+        """Populate UI fields from Machine object.
 
         Args:
-            data: Dictionary containing machine configuration data
+            machine: Machine object containing configuration
         """
-        machine = data.get("machine", {})
-        self.name_edit.setText(machine.get("name", ""))
-        self.manufacturer_edit.setText(machine.get("manufacturer", ""))
-        self.description_edit.setText(machine.get("description", ""))
-        units = machine.get("units", "metric")
+        self.name_edit.setText(machine.name)
+        self.manufacturer_edit.setText(machine.manufacturer)
+        self.description_edit.setText(machine.description)
+        units = machine.units
         index = self.units_combo.findData(units)
         if index >= 0:
             self.units_combo.setCurrentIndex(index)
         self.current_units = units
-        machine_type = machine.get("type", "custom")
+        machine_type = machine.machine_type
         index = self.type_combo.findData(machine_type)
         if index >= 0:
             self.type_combo.setCurrentIndex(index)
@@ -735,29 +1022,29 @@ class MachineEditorDialog(QtGui.QDialog):
         angle_suffix = " deg"
         angle_vel_suffix = " deg/min"
 
-        # Populate axes values - NEW FLATTENED STRUCTURE
-        axes = machine.get("axes", {})
-
-        # Store axes data in flattened structure
+        # Populate axes values from Machine object
         self.saved_axes_data = {}
-        for axis_name, axis_values in axes.items():
-            axis_type = axis_values.get("type", "linear")
+        
+        # Process linear axes (dict of name -> LinearAxis)
+        for axis_name, axis in machine.linear_axes.items():
             self.saved_axes_data[axis_name] = {
-                "min": axis_values.get("min", 0 if axis_type == "linear" else -180),
-                "max": axis_values.get("max", 1000 if axis_type == "linear" else 180),
-                "max_velocity": axis_values.get(
-                    "max_velocity", 10000 if axis_type == "linear" else 36000
-                ),
-                "type": axis_type,
+                "min": axis.min_limit,
+                "max": axis.max_limit,
+                "max_velocity": axis.max_velocity,
+                "type": "linear",
             }
-            if axis_type == "angular":
-                self.saved_axes_data[axis_name]["sequence"] = axis_values.get("sequence", 0)
-                self.saved_axes_data[axis_name]["joint"] = axis_values.get(
-                    "joint", [[0, 0, 0], [1, 0, 0]]
-                )
-                self.saved_axes_data[axis_name]["prefer_positive"] = axis_values.get(
-                    "prefer_positive", True
-                )
+        
+        # Process rotary axes (dict of name -> RotaryAxis)
+        for axis_name, axis in machine.rotary_axes.items():
+            self.saved_axes_data[axis_name] = {
+                "min": axis.min_limit,
+                "max": axis.max_limit,
+                "max_velocity": axis.max_velocity,
+                "type": "angular",
+                "sequence": axis.sequence,
+                "joint": [[0, 0, 0], [axis.rotation_vector.x, axis.rotation_vector.y, axis.rotation_vector.z]],
+                "prefer_positive": axis.prefer_positive,
+            }
 
         # Update axes UI after loading data
         self.update_axes()
@@ -765,47 +1052,47 @@ class MachineEditorDialog(QtGui.QDialog):
         # Populate UI with axis values
         if hasattr(self, "axis_edits"):
             for axis_name, edits in self.axis_edits.items():
-                if axis_name in axes:
-                    values = axes[axis_name]
-                    axis_type = values.get("type", "linear")
+                if axis_name in self.saved_axes_data:
+                    values = self.saved_axes_data[axis_name]
+                    axis_type = values["type"]
 
                     if axis_type == "linear":
                         converted_min = (
-                            values.get("min", 0)
+                            values["min"]
                             if units == "metric"
-                            else values.get("min", 0) / 25.4
+                            else values["min"] / 25.4
                         )
                         edits["min"].setText(f"{converted_min:.2f}{length_suffix}")
                         converted_max = (
-                            values.get("max", 1000)
+                            values["max"]
                             if units == "metric"
-                            else values.get("max", 1000) / 25.4
+                            else values["max"] / 25.4
                         )
                         edits["max"].setText(f"{converted_max:.2f}{length_suffix}")
                         converted_vel = (
-                            values.get("max_velocity", 10000)
+                            values["max_velocity"]
                             if units == "metric"
-                            else values.get("max_velocity", 10000) / 25.4
+                            else values["max_velocity"] / 25.4
                         )
                         edits["max_velocity"].setText(f"{converted_vel:.2f}{vel_suffix}")
                     else:  # angular
-                        edits["min"].setText(f"{values.get('min', -180):.2f}{angle_suffix}")
-                        edits["max"].setText(f"{values.get('max', 180):.2f}{angle_suffix}")
+                        edits["min"].setText(f"{values['min']:.2f}{angle_suffix}")
+                        edits["max"].setText(f"{values['max']:.2f}{angle_suffix}")
                         edits["max_velocity"].setText(
-                            f"{values.get('max_velocity', 36000):.2f}{angle_vel_suffix}"
+                            f"{values['max_velocity']:.2f}{angle_vel_suffix}"
                         )
-                        edits["sequence"].setValue(values.get("sequence", 0))
-                        edits["prefer_positive"].setChecked(values.get("prefer_positive", True))
+                        edits["sequence"].setValue(values["sequence"])
+                        edits["prefer_positive"].setChecked(values["prefer_positive"])
 
                         # Set joint combo
-                        joint = values.get("joint", [[0, 0, 0], [1, 0, 0]])
+                        joint = values["joint"]
                         if len(joint) == 2:
                             for i, (label, vector) in enumerate(self.ROTATIONAL_AXIS_OPTIONS):
-                                if vector == joint[1]:
+                                if vector == list(joint[1]):
                                     edits["joint"].setCurrentIndex(i)
                                     break
 
-        spindles = machine.get("spindles", [])
+        spindles = machine.spindles
         spindle_count = len(spindles)
         if spindle_count == 0:
             spindle_count = 1  # Default to 1 if none
@@ -817,12 +1104,12 @@ class MachineEditorDialog(QtGui.QDialog):
         for i, spindle in enumerate(spindles):
             if i < len(self.spindle_edits):
                 edits = self.spindle_edits[i]
-                edits["name"].setText(spindle.get("name", ""))
-                edits["id"].setText(spindle.get("id", ""))
-                edits["max_power_kw"].setValue(spindle.get("max_power_kw", 3.0))
-                edits["max_rpm"].setValue(spindle.get("max_rpm", 24000))
-                edits["min_rpm"].setValue(spindle.get("min_rpm", 6000))
-                tool_change = spindle.get("tool_change", "manual")
+                edits["name"].setText(spindle.name)
+                edits["id"].setText(spindle.id)
+                edits["max_power_kw"].setValue(spindle.max_power_kw)
+                edits["max_rpm"].setValue(spindle.max_rpm)
+                edits["min_rpm"].setValue(spindle.min_rpm)
+                tool_change = spindle.tool_change
                 index = edits["tool_change"].findData(tool_change)
                 if index >= 0:
                     edits["tool_change"].setCurrentIndex(index)
@@ -843,42 +1130,124 @@ class MachineEditorDialog(QtGui.QDialog):
                 }
             )
 
-        post = data.get("post", {})
+        # Post processor configuration from Machine object
+        if self.enable_machine_postprocessor:
+            # Post processor selection
+            post_processor = machine.postprocessor_file_name
+            index = self.post_processor_combo.findText(post_processor, QtCore.Qt.MatchFixedString)
+            if index >= 0:
+                self.post_processor_combo.setCurrentIndex(index)
+            else:
+                self.post_processor_combo.setCurrentIndex(0)
 
-        # Post processor selection
-        post_processor = post.get("processor", "")
-        index = self.post_processor_combo.findText(post_processor, QtCore.Qt.MatchFixedString)
-        if index >= 0:
-            self.post_processor_combo.setCurrentIndex(index)
-        else:
-            self.post_processor_combo.setCurrentIndex(0)  # Empty selection
+            # Post processor arguments
+            self.post_processor_args_edit.setText(machine.postprocessor_args)
+            self.updatePostProcessorTooltip()
 
-        # Post processor arguments
-        post_processor_args = post.get("processor_args", "")
-        self.post_processor_args_edit.setText(post_processor_args)
+            # Output options
+            self.comments_check.setChecked(machine.output.comments)
+            self.line_numbers_check.setChecked(machine.output.line_numbers)
+            self.show_editor_check.setChecked(machine.processing.show_editor)
+            self.tool_length_offset_check.setChecked(machine.use_tlo)
 
-        # Update tooltips based on selection
-        self.updatePostProcessorTooltip()
+            # Precision settings
+            self.axis_precision_spin.setValue(machine.precision.axis_precision)
+            self.feed_precision_spin.setValue(machine.precision.feed_precision)
 
-        output_unit = post.get("output_unit", "metric")
-        index = self.output_unit_combo.findData(output_unit)
-        if index >= 0:
-            self.output_unit_combo.setCurrentIndex(index)
+            # Line formatting
+            self.command_space_edit.setText(machine.formatting.command_space)
+            self.comment_symbol_edit.setText(machine.formatting.comment_symbol)
+            self.line_number_start_spin.setValue(machine.formatting.line_number_start)
+            self.line_increment_spin.setValue(machine.formatting.line_increment)
 
-        comments = post.get("comments", True)
-        index = self.comments_combo.findData(comments)
-        if index >= 0:
-            self.comments_combo.setCurrentIndex(index)
+            # Processing options
+            self.modal_check.setChecked(machine.processing.modal)
+            self.translate_drill_check.setChecked(machine.processing.translate_drill_cycles)
+            self.list_tools_check.setChecked(machine.processing.list_tools_in_preamble)
+            self.tool_before_change_check.setChecked(machine.processing.tool_before_change)
 
-        line_numbers = post.get("line_numbers", False)
-        index = self.line_numbers_combo.findData(line_numbers)
-        if index >= 0:
-            self.line_numbers_combo.setCurrentIndex(index)
+            # G-Code blocks
+            self.preamble_edit.setPlainText(machine.blocks.preamble)
+            self.postamble_edit.setPlainText(machine.blocks.postamble)
 
-        tool_length_offset = post.get("tool_length_offset", True)
-        index = self.tool_length_offset_combo.findData(tool_length_offset)
-        if index >= 0:
-            self.tool_length_offset_combo.setCurrentIndex(index)
+    def to_machine(self) -> Machine:
+        """Convert UI state to Machine object.
+
+        Returns:
+            Machine object with configuration from UI
+        """
+        import FreeCAD
+        
+        machine_type = self.type_combo.itemData(self.type_combo.currentIndex())
+        config = self.MACHINE_TYPES.get(machine_type, {})
+
+        # Build linear axes list
+        linear_axes = []
+        if hasattr(self, "axis_edits"):
+            for axis_name in config.get("linear", []):
+                if axis_name in self.saved_axes_data:
+                    values = self.saved_axes_data[axis_name]
+                    axis = LinearAxis(
+                        name=axis_name,
+                        min_limit=values["min"],
+                        max_limit=values["max"],
+                        max_velocity=values["max_velocity"]
+                    )
+                    linear_axes.append(axis)
+        
+        # Build rotary axes list
+        rotary_axes = []
+        if hasattr(self, "axis_edits"):
+            for axis_name in config.get("rotary", []):
+                if axis_name in self.saved_axes_data:
+                    values = self.saved_axes_data[axis_name]
+                    joint = values.get("joint", [[0, 0, 0], [1, 0, 0]])
+                    axis = RotaryAxis(
+                        name=axis_name,
+                        min_limit=values["min"],
+                        max_limit=values["max"],
+                        max_velocity=values["max_velocity"],
+                        home_position=FreeCAD.Vector(*joint[0]),
+                        axis_vector=FreeCAD.Vector(*joint[1]),
+                        sequence=values.get("sequence", 0),
+                        prefer_positive=values.get("prefer_positive", True)
+                    )
+                    rotary_axes.append(axis)
+        
+        # Build spindles list
+        spindles = []
+        if hasattr(self, "spindle_edits"):
+            for edits in self.spindle_edits:
+                spindle = Spindle(
+                    name=edits["name"].text(),
+                    id=edits["id"].text(),
+                    max_power_kw=edits["max_power_kw"].value(),
+                    max_rpm=edits["max_rpm"].value(),
+                    min_rpm=edits["min_rpm"].value(),
+                    tool_change=edits["tool_change"].itemData(edits["tool_change"].currentIndex()),
+                    tool_axis=FreeCAD.Vector(0, 0, -1)
+                )
+                spindles.append(spindle)
+        
+        # Create Machine object
+        machine = Machine(
+            name=self.name_edit.text(),
+            manufacturer=self.manufacturer_edit.text(),
+            description=self.description_edit.text(),
+            units=self.units_combo.itemData(self.units_combo.currentIndex()),
+            type=machine_type,
+            linear_axes=linear_axes,
+            rotary_axes=rotary_axes,
+            spindles=spindles
+        )
+        
+        # TODO: Add post-processor configuration if enabled
+        # if self.enable_machine_postprocessor:
+        #     machine.postprocessor_file_name = str(self.post_processor_combo.currentText())
+        #     machine.postprocessor_args = str(self.post_processor_args_edit.text())
+        #     # etc.
+        
+        return machine
 
     def to_data(self) -> Dict[str, Any]:
         """Convert UI state to machine data dictionary.
@@ -986,8 +1355,9 @@ class MachineEditorDialog(QtGui.QDialog):
                 # Parse JSON from text editor
                 json_text = self.text_editor.toPlainText()
                 data = json.loads(json_text)
-                # Validate and populate form
-                self.populate_from_data(data)
+                # Create Machine object from JSON and populate form
+                self.machine = Machine.from_dict(data)
+                self.populate_from_machine(self.machine)
                 # Show form, hide editor
                 self.tabs.show()
                 self.text_editor.hide()
@@ -1008,9 +1378,9 @@ class MachineEditorDialog(QtGui.QDialog):
         else:
             # Switching from form to text mode
             try:
-                # Get current data from form
-                data = self.to_data()
-                # Convert to JSON with nice formatting
+                # self.machine is already up-to-date from signal handlers
+                # Just serialize it to JSON
+                data = self.machine.to_dict()
                 json_text = json.dumps(data, indent=4, sort_keys=True)
                 self.text_editor.setPlainText(json_text)
                 # Hide form, show editor
@@ -1049,8 +1419,8 @@ class MachineEditorDialog(QtGui.QDialog):
             current_name_allowed = False
             if self.filename:
                 try:
-                    current_data = MachineFactory.load_configuration(self.filename)
-                    current_name = current_data.get("machine", {}).get("name", "").lower()
+                    current_machine = MachineFactory.load_configuration(self.filename)
+                    current_name = current_machine.name.lower()
                     if machine_name_lower == current_name:
                         current_name_allowed = True
                 except:
@@ -1067,45 +1437,33 @@ class MachineEditorDialog(QtGui.QDialog):
                 )
                 return
 
-        if self.text_mode:
-            # If in text mode, parse JSON before saving
-            try:
+        try:
+            if self.text_mode:
+                # If in text mode, parse JSON and update Machine
                 json_text = self.text_editor.toPlainText()
                 data = json.loads(json_text)
-                if self.filename:
-                    config = Machine.from_dict(data)
-                    saved_path = MachineFactory.save_configuration(config, self.filename)
-                else:
-                    # New machine, create and save
-                    config = Machine.from_dict(data)
-                    saved_path = MachineFactory.save_configuration(config)
-                    self.filename = saved_path.name
-                self.path = str(saved_path)  # Keep for compatibility
-            except json.JSONDecodeError as e:
-                QtGui.QMessageBox.critical(
-                    self,
-                    translate("CAM_MachineEditor", "JSON Error"),
-                    translate("CAM_MachineEditor", "Invalid JSON: {}").format(str(e)),
-                )
-                return
-            except Exception as e:
-                QtGui.QMessageBox.critical(
-                    self,
-                    translate("CAM_MachineEditor", "Error"),
-                    translate("CAM_MachineEditor", "Failed to save: {}").format(str(e)),
-                )
-                return
-        else:
-            # Form mode - use existing save logic
+                self.machine = Machine.from_dict(data)
+            
+            # self.machine is already up-to-date from signal handlers, just save it
             if self.filename:
-                data = self.to_data()
-                config = Machine.from_dict(data)
-                saved_path = MachineFactory.save_configuration(config, self.filename)
+                saved_path = MachineFactory.save_configuration(self.machine, self.filename)
             else:
-                # New machine, create and save
-                data = self.to_data()
-                config = Machine.from_dict(data)
-                saved_path = MachineFactory.save_configuration(config)
+                saved_path = MachineFactory.save_configuration(self.machine)
                 self.filename = saved_path.name
             self.path = str(saved_path)  # Keep for compatibility
+            
+        except json.JSONDecodeError as e:
+            QtGui.QMessageBox.critical(
+                self,
+                translate("CAM_MachineEditor", "JSON Error"),
+                translate("CAM_MachineEditor", "Invalid JSON: {}").format(str(e)),
+            )
+            return
+        except Exception as e:
+            QtGui.QMessageBox.critical(
+                self,
+                translate("CAM_MachineEditor", "Error"),
+                translate("CAM_MachineEditor", "Failed to save: {}").format(str(e)),
+            )
+            return
         super().accept()
