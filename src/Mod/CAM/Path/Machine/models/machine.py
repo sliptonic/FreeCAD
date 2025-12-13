@@ -210,7 +210,7 @@ class Spindle:
         )
 
 
-class MachineConfiguration:
+class Machine:
     """Stores configuration data for rotation generation"""
 
     def __init__(self, name="Default Machine"):
@@ -585,36 +585,6 @@ class MachineConfiguration:
                 config.post_comments = post_data.get("comments", True)
                 config.post_line_numbers = post_data.get("line_numbers", False)
                 config.post_tool_length_offset = post_data.get("tool_length_offset", True)
-        else:
-            # I think we can loose this.
-            # Handle old format (for backward compatibility)
-            config = cls(data["name"])
-            config.description = data.get("description", "")
-
-            # Convert old list format to new dict format
-            old_linear_axes = data.get("linear_axes", ["X", "Y", "Z"])
-            config.linear_axes = {}
-            for axis_name in old_linear_axes:
-                dir_vec = getattr(refAxis, axis_name.lower(), refAxis.x)
-                config.linear_axes[axis_name] = LinearAxis(axis_name, dir_vec, 0, 1000, 10000)
-
-            # if "tool_axis" in data:
-            #     config.tool_axis = FreeCAD.Vector(
-            #         data["tool_axis"][0], data["tool_axis"][1], data["tool_axis"][2]
-            #     )
-
-            # config.primary_rotary_axis = data.get("primary_rotary_axis")
-            # config.secondary_rotary_axis = data.get("secondary_rotary_axis")
-            # config.compound_moves = data.get("compound_moves", True)
-            # config.prefer_positive_rotation = data.get("prefer_positive_rotation", True)
-
-            # Deserialize rotary axes from old format
-            for axis_name, axis_data in data.get("rotary_axes", {}).items():
-                axis = RotaryAxis.from_dict(axis_data)
-                config.rotary_axes[axis_name] = axis
-
-            # Initialize spindles for old format
-            config.spindles = []
 
         return config
 
@@ -624,39 +594,6 @@ class MachineFactory:
 
     # Default configuration directory
     _config_dir = None
-
-    @classmethod
-    def create_default_machine_data(cls) -> Dict[str, Any]:
-        """Create default machine configuration data.
-
-        Returns:
-            Dictionary with default machine configuration
-        """
-        param = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
-        enable_machine_postprocessor = param.GetBool("EnableMachinePostprocessor", False)
-
-        data = {
-            "machine": {
-                "name": "New Machine",
-                "manufacturer": "",
-                "description": "",
-                "units": "metric",
-                "type": "custom",
-            },
-            "version": 1,
-        }
-
-        if enable_machine_postprocessor:
-            data["post"] = {
-                "output_unit": "metric",
-                "comments": True,
-                "line_numbers": False,
-                "tool_length_offset": True,
-                "processor": "",
-                "processor_args": "",
-            }
-
-        return data
 
     @classmethod
     def set_config_directory(cls, directory):
@@ -684,7 +621,7 @@ class MachineFactory:
         Save a machine configuration to a JSON file
 
         Args:
-            config: MachineConfiguration object to save
+            config: Machine object to save
             filename: Optional filename (without path). If None, uses sanitized config name
 
         Returns:
@@ -717,7 +654,7 @@ class MachineFactory:
 
         Returns:
             Dictionary containing machine configuration data (new format) or
-            MachineConfiguration object if loading old format
+            Machine object if loading old format
 
         Raises:
             FileNotFoundError: If the file does not exist
@@ -734,16 +671,9 @@ class MachineFactory:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
             Path.Log.debug(f"Loaded machine file: {filepath}")
-
-            # Return the raw dict for new format (has "machine" key)
-            # This allows the editor to work with the full structure
-            if "machine" in data:
-                return data
-            else:
-                # Old format - convert to MachineConfiguration object
-                config = MachineConfiguration.from_dict(data)
-                Path.Log.debug(f"Loaded machine configuration from {filepath}")
-                return config
+            machine = Machine.from_dict(data)
+            Path.Log.debug(f"Loaded machine configuration from {filepath}")
+            return machine
 
         except FileNotFoundError:
             raise FileNotFoundError(f"Machine file not found: {filepath}")
@@ -819,11 +749,11 @@ class MachineFactory:
             Dictionary mapping config names to file paths
         """
         configs = {
-            "XYZ": MachineConfiguration.create_3axis_config(),
-            "XYZAC": MachineConfiguration.create_AC_table_config(),
-            "XYZBC": MachineConfiguration.create_BC_head_config(),
-            "XYZA": MachineConfiguration.create_4axis_A_config(),
-            "XYZB": MachineConfiguration.create_4axis_B_config(),
+            "XYZ": Machine.create_3axis_config(),
+            "XYZAC": Machine.create_AC_table_config(),
+            "XYZBC": Machine.create_BC_head_config(),
+            "XYZA": Machine.create_4axis_A_config(),
+            "XYZB": Machine.create_4axis_B_config(),
         }
 
         saved_paths = {}
@@ -845,14 +775,14 @@ class MachineFactory:
             config_type: One of "XYZ", "XYZAC", "XYZBC", "XYZA", "XYZB"
 
         Returns:
-            MachineConfiguration object
+            Machine object
         """
         config_map = {
-            "XYZ": MachineConfiguration.create_3axis_config,
-            "XYZAC": MachineConfiguration.create_AC_table_config,
-            "XYZBC": MachineConfiguration.create_BC_head_config,
-            "XYZA": MachineConfiguration.create_4axis_A_config,
-            "XYZB": MachineConfiguration.create_4axis_B_config,
+            "XYZ": Machine.create_3axis_config,
+            "XYZAC": Machine.create_AC_table_config,
+            "XYZBC": Machine.create_BC_head_config,
+            "XYZA": Machine.create_4axis_A_config,
+            "XYZB": Machine.create_4axis_B_config,
         }
 
         if config_type not in config_map:
@@ -871,7 +801,7 @@ class MachineFactory:
             machine_name: Name of the machine to load (without .fcm extension)
 
         Returns:
-            MachineConfiguration object
+            Machine object
 
         Raises:
             FileNotFoundError: If no machine with that name is found
@@ -897,11 +827,11 @@ class MachineFactory:
         # Load the configuration using the path from list_configuration_files()
         data = cls.load_configuration(target_path)
 
-        # If load_configuration returned a dict (new format), convert to MachineConfiguration
+        # If load_configuration returned a dict (new format), convert to Machine
         if isinstance(data, dict):
-            return MachineConfiguration.from_dict(data)
+            return Machine.from_dict(data)
         else:
-            # Already a MachineConfiguration object (old format)
+            # Already a Machine object (old format)
             return data
 
     @classmethod

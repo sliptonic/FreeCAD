@@ -222,7 +222,7 @@ class ProcessingOptions:
 
 
 @dataclass
-class MachineConfiguration:
+class PostProcessorConfiguration:
     """
     Complete typed configuration for a machine.
     

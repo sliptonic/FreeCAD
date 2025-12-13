@@ -1073,11 +1073,11 @@ class MachineEditorDialog(QtGui.QDialog):
                 json_text = self.text_editor.toPlainText()
                 data = json.loads(json_text)
                 if self.filename:
-                    config = MachineConfiguration.from_dict(data)
+                    config = Machine.from_dict(data)
                     saved_path = MachineFactory.save_configuration(config, self.filename)
                 else:
                     # New machine, create and save
-                    config = MachineConfiguration.from_dict(data)
+                    config = Machine.from_dict(data)
                     saved_path = MachineFactory.save_configuration(config)
                     self.filename = saved_path.name
                 self.path = str(saved_path)  # Keep for compatibility
@@ -1099,12 +1099,12 @@ class MachineEditorDialog(QtGui.QDialog):
             # Form mode - use existing save logic
             if self.filename:
                 data = self.to_data()
-                config = MachineConfiguration.from_dict(data)
+                config = Machine.from_dict(data)
                 saved_path = MachineFactory.save_configuration(config, self.filename)
             else:
                 # New machine, create and save
                 data = self.to_data()
-                config = MachineConfiguration.from_dict(data)
+                config = Machine.from_dict(data)
                 saved_path = MachineFactory.save_configuration(config)
                 self.filename = saved_path.name
             self.path = str(saved_path)  # Keep for compatibility
