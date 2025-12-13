@@ -84,8 +84,8 @@ class Mach3_Mach4(PostProcessor):
         super().init_values(state)
         
         # Machine configuration
-        state.machine.name = "mach3_4"
-        state.machine.enable_coolant = True
+        state.name = "mach3_4"
+        state.enable_coolant = True
         
         # Output options
         state.output.adaptive = True

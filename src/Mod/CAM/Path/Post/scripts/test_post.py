@@ -70,10 +70,10 @@ class Test(PostProcessor):
         """Initialize values that are used throughout the postprocessor."""
         super().init_values(state)
         
-        # Machine configuration
-        state.machine.name = "test"
-        state.machine.stop_spindle_for_tool_change = False
-        state.machine.use_tlo = False
+        # Machine configuration (now at top level in unified Machine)
+        state.name = "test"
+        state.stop_spindle_for_tool_change = False
+        state.use_tlo = False
         
         # Output options - minimal output for testing
         state.output.comments = False

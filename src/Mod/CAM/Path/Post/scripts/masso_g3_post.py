@@ -81,8 +81,8 @@ class Masso_G3(PostProcessor):
         super().init_values(state)
         
         # Machine configuration
-        state.machine.name = "Masso G3"
-        state.machine.enable_coolant = True
+        state.name = "Masso G3"
+        state.enable_coolant = True
         
         # Parameter order
         state.parameter_order = [

@@ -42,6 +42,19 @@ import Path.Base.Util as PathUtil
 import Path.Geom as PathGeom
 import Path.Post.UtilsArguments as PostUtilsArguments
 import Path.Post.UtilsExport as PostUtilsExport
+from Path.Machine.models.machine import (
+    Machine,
+    MachineUnits,
+    MotionMode,
+    OutputOptions,
+    PrecisionSettings,
+    LineFormatting,
+    GCodeBlocks,
+    ProcessingOptions,
+    LinearAxis,
+    RotaryAxis,
+    Spindle,
+)
 
 import FreeCAD
 import Path
@@ -66,208 +79,32 @@ class _TempObject:
 
 
 # ============================================================================
-# Typed State Classes - Modern replacement for dictionary-based configuration
+# Typed State Classes - Now imported from unified Machine model
 # ============================================================================
+# MachineUnits, MotionMode, OutputOptions, PrecisionSettings, LineFormatting,
+# GCodeBlocks, and ProcessingOptions are now imported from Path.Machine.models.machine
 
+# Alias for backward compatibility - PostProcessorConfiguration is now the unified Machine class
+PostProcessorConfiguration = Machine
 
-class MachineUnits(Enum):
-    """Machine unit system."""
-    METRIC = "G21"
-    IMPERIAL = "G20"
+# Legacy alias for compatibility
+MachineConfiguration = Machine
 
-
-class MotionMode(Enum):
-    """Motion mode for machine movements."""
-    ABSOLUTE = "G90"
-    RELATIVE = "G91"
-
-
-@dataclass
-class OutputOptions:
-    """Controls what gets included in the G-code output."""
-    comments: bool = True
-    blank_lines: bool = True
-    header: bool = True
-    line_numbers: bool = False
-    bcnc_blocks: bool = False
-    path_labels: bool = False
-    machine_name: bool = False
-    tool_change: bool = True
-    doubles: bool = True  # Output duplicate axis values
-    adaptive: bool = False
-
-
-@dataclass
-class PrecisionSettings:
-    """Numeric precision and formatting settings."""
-    axis_precision: int = 3
-    feed_precision: int = 3
-    spindle_decimals: int = 0
-    
-    # Defaults by unit system
-    default_metric_axis: int = 3
-    default_metric_feed: int = 3
-    default_imperial_axis: int = 4
-    default_imperial_feed: int = 4
-
-
-@dataclass
-class LineFormatting:
-    """Line formatting and numbering options."""
-    command_space: str = " "
-    comment_symbol: str = "("
-    line_increment: int = 10
-    line_number_start: int = 100
-    end_of_line_chars: str = "\n"
-    
-    # Mutable state for line numbering
-    _current_line: int = field(default=100, init=False, repr=False)
-    
-    def __post_init__(self):
-        """Initialize mutable line number."""
-        self._current_line = self.line_number_start
-    
-    @property
-    def current_line_number(self) -> int:
-        """Get current line number."""
-        return self._current_line
-    
-    def next_line_number(self) -> int:
-        """Get current line number and increment for next call."""
-        current = self._current_line
-        self._current_line += self.line_increment
-        return current
-    
-    def reset_line_numbers(self) -> None:
-        """Reset line numbering to start value."""
-        self._current_line = self.line_number_start
-
-
+# Create a stub MachineOptions class for backward compatibility with tests
+# In the unified Machine class, these fields are at the top level
 @dataclass
 class MachineOptions:
-    """Machine-specific options that users frequently adjust."""
+    """
+    Legacy compatibility class - fields now exist at top level in unified Machine.
+    This stub exists only for backward compatibility with existing test imports.
+    """
     name: str = "unknown machine"
     units: MachineUnits = MachineUnits.METRIC
     motion_mode: MotionMode = MotionMode.ABSOLUTE
-    use_tlo: bool = True  # Tool length offset
+    use_tlo: bool = True
     stop_spindle_for_tool_change: bool = True
     enable_coolant: bool = False
     enable_machine_specific_commands: bool = False
-
-
-@dataclass
-class GCodeBlocks:
-    """
-    G-code block templates for various lifecycle hooks.
-    
-    These templates are inserted at specific points during postprocessing
-    to provide customization points for machine-specific behavior.
-    """
-    # Job lifecycle
-    pre_job: str = ""
-    post_job: str = ""
-    
-    # Legacy aliases (maintained for compatibility)
-    preamble: str = ""  # Typically inserted at start of job
-    postamble: str = ""  # Typically inserted at end of job
-    safetyblock: str = ""  # Safety commands (G40, G49, etc.)
-    
-    # Operation lifecycle
-    pre_operation: str = ""
-    post_operation: str = ""
-    
-    # Tool change lifecycle
-    pre_tool_change: str = ""
-    post_tool_change: str = ""
-    tool_return: str = ""  # Return to tool change position
-    
-    # Fixture/WCS change lifecycle
-    pre_fixture_change: str = ""
-    post_fixture_change: str = ""
-    
-    # Rotary axis lifecycle
-    pre_rotary_move: str = ""
-    post_rotary_move: str = ""
-    
-    # Spindle lifecycle
-    pre_spindle_change: str = ""
-    post_spindle_change: str = ""
-    
-    # Miscellaneous
-    finish_label: str = "Finish"
-
-
-@dataclass
-class ProcessingOptions:
-    """Processing and transformation options."""
-    modal: bool = False  # Suppress repeated commands
-    translate_drill_cycles: bool = False
-    split_arcs: bool = False
-    show_editor: bool = True
-    list_tools_in_preamble: bool = False
-    show_machine_units: bool = True
-    show_operation_labels: bool = True
-    tool_before_change: bool = False  # Output T before M6 (e.g., T1 M6 instead of M6 T1)
-    
-    # Lists of commands
-    drill_cycles_to_translate: List[str] = field(
-        default_factory=lambda: ["G73", "G81", "G82", "G83"]
-    )
-    suppress_commands: List[str] = field(default_factory=list)
-    
-    # Numeric settings
-    chipbreaking_amount: float = 0.25  # mm
-    spindle_wait: float = 0.0  # seconds
-    return_to: Optional[Tuple[float, float, float]] = None  # (x, y, z) or None
-
-
-@dataclass
-class PostProcessorConfiguration:
-    """
-    Complete typed configuration for a machine.
-    
-    This replaces the legacy dictionary-based 'values' parameter with a
-    strongly-typed, self-documenting structure. All configuration is organized
-    into logical groups for clarity.
-    """
-    # Identification
-    postprocessor_file_name: str = ""
-    
-    # Configuration groups
-    output: OutputOptions = field(default_factory=OutputOptions)
-    precision: PrecisionSettings = field(default_factory=PrecisionSettings)
-    formatting: LineFormatting = field(default_factory=LineFormatting)
-    machine: MachineOptions = field(default_factory=MachineOptions)
-    blocks: GCodeBlocks = field(default_factory=GCodeBlocks)
-    processing: ProcessingOptions = field(default_factory=ProcessingOptions)
-    
-    # Dynamic state (functions and ordering)
-    parameter_functions: Dict[str, Callable] = field(default_factory=dict)
-    parameter_order: List[str] = field(default_factory=lambda: [
-        "D", "H", "L", "X", "Y", "Z", "A", "B", "C",
-        "U", "V", "W", "I", "J", "K", "R", "P", "E", "Q", "F", "S", "T"
-    ])
-    
-    # Computed properties
-    @property
-    def unit_format(self) -> str:
-        """Get unit format string (mm or in)."""
-        return "mm" if self.machine.units == MachineUnits.METRIC else "in"
-    
-    @property
-    def unit_speed_format(self) -> str:
-        """Get unit speed format string (mm/min or in/min)."""
-        return "mm/min" if self.machine.units == MachineUnits.METRIC else "in/min"
-    
-    @property
-    def motion_commands(self) -> List[str]:
-        """Get list of motion commands that change position (from Path.Geom)."""
-        return PathGeom.CmdMoveAll
-    
-    @property
-    def rapid_moves(self) -> List[str]:
-        """Get list of rapid move commands (from Path.Geom)."""
-        return PathGeom.CmdMoveRapid
 
 
 class StateConverter:
@@ -320,22 +157,20 @@ class StateConverter:
         state.formatting.end_of_line_chars = values.get("END_OF_LINE_CHARACTERS", "\n")
         state.formatting._current_line = values.get("line_number", 100)
         
-        # Machine
-        state.machine.name = values.get("MACHINE_NAME", "unknown machine")
+        # Machine (now at top level in unified Machine class)
+        state.name = values.get("MACHINE_NAME", "Default Machine")
         units_str = values.get("UNITS", "G21")
-        state.machine.units = (
-            MachineUnits.METRIC if units_str == "G21" else MachineUnits.IMPERIAL
-        )
+        state.units = "metric" if units_str == "G21" else "imperial"
         motion_str = values.get("MOTION_MODE", "G90")
-        state.machine.motion_mode = (
+        state.motion_mode = (
             MotionMode.ABSOLUTE if motion_str == "G90" else MotionMode.RELATIVE
         )
-        state.machine.use_tlo = values.get("USE_TLO", True)
-        state.machine.stop_spindle_for_tool_change = values.get(
+        state.use_tlo = values.get("USE_TLO", True)
+        state.stop_spindle_for_tool_change = values.get(
             "STOP_SPINDLE_FOR_TOOL_CHANGE", True
         )
-        state.machine.enable_coolant = values.get("ENABLE_COOLANT", False)
-        state.machine.enable_machine_specific_commands = values.get(
+        state.enable_coolant = values.get("ENABLE_COOLANT", False)
+        state.enable_machine_specific_commands = values.get(
             "ENABLE_MACHINE_SPECIFIC_COMMANDS", False
         )
         
@@ -426,16 +261,16 @@ class StateConverter:
             "line_number": state.formatting.current_line_number,
             "END_OF_LINE_CHARACTERS": state.formatting.end_of_line_chars,
             
-            # Machine
-            "MACHINE_NAME": state.machine.name,
-            "UNITS": state.machine.units.value,
+            # Machine (now at top level in unified Machine class)
+            "MACHINE_NAME": state.name,
+            "UNITS": state.machine_units.value,
             "UNIT_FORMAT": state.unit_format,
             "UNIT_SPEED_FORMAT": state.unit_speed_format,
-            "MOTION_MODE": state.machine.motion_mode.value,
-            "USE_TLO": state.machine.use_tlo,
-            "STOP_SPINDLE_FOR_TOOL_CHANGE": state.machine.stop_spindle_for_tool_change,
-            "ENABLE_COOLANT": state.machine.enable_coolant,
-            "ENABLE_MACHINE_SPECIFIC_COMMANDS": state.machine.enable_machine_specific_commands,
+            "MOTION_MODE": state.motion_mode.value,
+            "USE_TLO": state.use_tlo,
+            "STOP_SPINDLE_FOR_TOOL_CHANGE": state.stop_spindle_for_tool_change,
+            "ENABLE_COOLANT": state.enable_coolant,
+            "ENABLE_MACHINE_SPECIFIC_COMMANDS": state.enable_machine_specific_commands,
             
             # Blocks
             "PRE_JOB": state.blocks.pre_job,
@@ -885,17 +720,16 @@ class PostProcessor:
             state.output = initialized_state.output
             state.precision = initialized_state.precision
             state.formatting = initialized_state.formatting
-            state.machine = initialized_state.machine
             state.blocks = initialized_state.blocks
             state.processing = initialized_state.processing
             state.parameter_functions = initialized_state.parameter_functions
             state.parameter_order = initialized_state.parameter_order
             
-            # Set units from constructor parameter
+            # Set units from constructor parameter (now at top level in unified Machine)
             if self._units == "Metric":
-                state.machine.units = MachineUnits.METRIC
+                state.units = "metric"
             else:
-                state.machine.units = MachineUnits.IMPERIAL
+                state.units = "imperial"
 
     def process_arguments(self) -> Tuple[bool, ParserArgs]:
         """Process any arguments to the postprocessor."""
@@ -929,12 +763,12 @@ class PostProcessor:
     
     def _sync_dict_to_state(self) -> None:
         """Sync changes from self.values dict back to self.state after argument processing."""
-        # Sync units
+        # Sync units (now at top level in unified Machine)
         if self.values["UNITS"] == "G21":
-            self.state.machine.units = MachineUnits.METRIC
+            self.state.units = "metric"
             self._units = "Metric"
         else:
-            self.state.machine.units = MachineUnits.IMPERIAL
+            self.state.units = "imperial"
             self._units = "Inch"
         
         # Sync blocks that may have been modified by command-line arguments

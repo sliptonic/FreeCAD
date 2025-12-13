@@ -711,9 +711,9 @@ class TestMachineConfiguration(unittest.TestCase):
         self.assertTrue(state.output.comments)
         self.assertEqual(state.precision.axis_precision, 3)
         self.assertEqual(state.formatting.command_space, " ")
-        self.assertEqual(state.machine.name, "unknown machine")
-        self.assertEqual(state.machine.units, MachineUnits.METRIC)
-        self.assertEqual(state.machine.motion_mode, MotionMode.ABSOLUTE)
+        self.assertEqual(state.name, "Default Machine")
+        self.assertEqual(state.machine_units, MachineUnits.METRIC)
+        self.assertEqual(state.motion_mode, MotionMode.ABSOLUTE)
         self.assertEqual(state.blocks.finish_label, "Finish")
         self.assertFalse(state.processing.modal)
 
@@ -722,12 +722,12 @@ class TestMachineConfiguration(unittest.TestCase):
         state = MachineConfiguration()
         
         # Test metric properties
-        state.machine.units = MachineUnits.METRIC
+        state.units = "metric"
         self.assertEqual(state.unit_format, "mm")
         self.assertEqual(state.unit_speed_format, "mm/min")
         
         # Test imperial properties
-        state.machine.units = MachineUnits.IMPERIAL
+        state.units = "imperial"
         self.assertEqual(state.unit_format, "in")
         self.assertEqual(state.unit_speed_format, "in/min")
         
@@ -776,10 +776,10 @@ class TestMachineConfiguration(unittest.TestCase):
         self.assertEqual(state.precision.axis_precision, 5)
         
         # Modify machine settings
-        state.machine.units = MachineUnits.IMPERIAL
-        state.machine.motion_mode = MotionMode.RELATIVE
-        self.assertEqual(state.machine.units, MachineUnits.IMPERIAL)
-        self.assertEqual(state.machine.motion_mode, MotionMode.RELATIVE)
+        state.units = "imperial"
+        state.motion_mode = MotionMode.RELATIVE
+        self.assertEqual(state.machine_units, MachineUnits.IMPERIAL)
+        self.assertEqual(state.motion_mode, MotionMode.RELATIVE)
 
 
 class TestStateConverter(unittest.TestCase):
@@ -801,9 +801,9 @@ class TestStateConverter(unittest.TestCase):
         self.assertFalse(state.output.comments)
         self.assertTrue(state.output.line_numbers)
         self.assertEqual(state.precision.axis_precision, 4)
-        self.assertEqual(state.machine.name, "Test Machine")
-        self.assertEqual(state.machine.units, MachineUnits.IMPERIAL)
-        self.assertEqual(state.machine.motion_mode, MotionMode.RELATIVE)
+        self.assertEqual(state.name, "Test Machine")
+        self.assertEqual(state.machine_units, MachineUnits.IMPERIAL)
+        self.assertEqual(state.motion_mode, MotionMode.RELATIVE)
 
     def test020_from_dict_complete(self):
         """Test converting a complete dictionary with all fields."""
@@ -867,9 +867,9 @@ class TestStateConverter(unittest.TestCase):
         self.assertEqual(state.formatting.comment_symbol, ";")
         self.assertEqual(state.formatting.line_increment, 5)
         self.assertEqual(state.formatting.end_of_line_chars, "\r\n")
-        self.assertEqual(state.machine.name, "CNC Router")
-        self.assertEqual(state.machine.units, MachineUnits.METRIC)
-        self.assertTrue(state.machine.enable_coolant)
+        self.assertEqual(state.name, "CNC Router")
+        self.assertEqual(state.machine_units, MachineUnits.METRIC)
+        self.assertTrue(state.enable_coolant)
         self.assertEqual(state.blocks.preamble, "G17 G54")
         self.assertEqual(state.blocks.postamble, "M30")
         self.assertEqual(state.blocks.finish_label, "End")
@@ -884,8 +884,8 @@ class TestStateConverter(unittest.TestCase):
         state = MachineConfiguration()
         state.output.comments = False
         state.precision.axis_precision = 6
-        state.machine.name = "My Machine"
-        state.machine.units = MachineUnits.IMPERIAL
+        state.name = "My Machine"
+        state.units = "imperial"
         
         values = StateConverter.to_dict(state)
         
@@ -931,13 +931,13 @@ class TestStateConverter(unittest.TestCase):
         # Should have all defaults
         self.assertTrue(state.output.comments)
         self.assertEqual(state.precision.axis_precision, 3)
-        self.assertEqual(state.machine.units, MachineUnits.METRIC)
+        self.assertEqual(state.machine_units, MachineUnits.METRIC)
         self.assertEqual(state.formatting.command_space, " ")
 
     def test060_computed_properties_in_dict(self):
         """Test that computed properties are included in to_dict output."""
         state = MachineConfiguration()
-        state.machine.units = MachineUnits.METRIC
+        state.units = "metric"
         
         values = StateConverter.to_dict(state)
         
@@ -963,12 +963,12 @@ class TestStateConverterEdgeCases(unittest.TestCase):
         state = StateConverter.from_dict(values)
         
         # Specified values should be set
-        self.assertEqual(state.machine.name, "Partial Machine")
+        self.assertEqual(state.name, "Partial Machine")
         self.assertEqual(state.precision.axis_precision, 7)
         
         # Unspecified values should have defaults
         self.assertTrue(state.output.comments)
-        self.assertEqual(state.machine.units, MachineUnits.METRIC)
+        self.assertEqual(state.machine_units, MachineUnits.METRIC)
 
     def test020_list_fields_conversion(self):
         """Test conversion of list fields."""
@@ -994,7 +994,7 @@ class TestStateConverterEdgeCases(unittest.TestCase):
         state = StateConverter.from_dict(values)
         
         self.assertIsNone(state.processing.return_to)
-        self.assertEqual(state.machine.name, "Test")
+        self.assertEqual(state.name, "Test")  # name is now at top level in unified Machine
 
     def test040_line_number_state_preservation(self):
         """Test that line number state is preserved in conversion."""
@@ -1020,7 +1020,7 @@ class TestTypedStateIntegration(unittest.TestCase):
         # Set some values
         state.output.comments = True
         state.precision.axis_precision = 4
-        state.machine.name = "Integration Test"
+        state.name = "Integration Test"  # name is now at top level in unified Machine
         
         # Convert to dict for legacy code
         values = StateConverter.to_dict(state)

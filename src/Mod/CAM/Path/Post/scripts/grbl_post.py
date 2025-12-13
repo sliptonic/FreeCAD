@@ -87,10 +87,10 @@ class Grbl(PostProcessor):
         super().init_values(state)
         
         # Machine configuration
-        state.machine.name = "Grbl"
-        state.machine.enable_coolant = True
-        state.machine.enable_machine_specific_commands = True
-        state.machine.use_tlo = False
+        state.name = "Grbl"
+        state.enable_coolant = True
+        state.enable_machine_specific_commands = True
+        state.use_tlo = False
         
         # Output options
         state.output.path_labels = True

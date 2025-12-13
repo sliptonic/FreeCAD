@@ -55,7 +55,7 @@ class Generic(PostProcessor):
         super().init_values(state)
         
         # Machine configuration
-        state.machine.name = "Generic"
+        state.name = "Generic"
         state.postprocessor_file_name = __name__
         
         # G-code blocks

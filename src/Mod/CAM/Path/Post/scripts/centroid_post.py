@@ -94,8 +94,8 @@ class Centroid(PostProcessor):
         state.formatting.comment_symbol = ";"
         
         # Machine configuration
-        state.machine.name = "Centroid"
-        state.machine.stop_spindle_for_tool_change = False
+        state.name = "Centroid"
+        state.stop_spindle_for_tool_change = False
         
         # Parameter order - centroid doesn't want K properties on XY plane
         state.parameter_order = [
@@ -128,7 +128,7 @@ M25
 G49 H0"""
         
         # Default to not outputting a G43 following tool changes
-        state.machine.use_tlo = False
+        state.use_tlo = False
         #
         # This was in the original centroid postprocessor file
         # but does not appear to be used anywhere.

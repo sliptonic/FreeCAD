@@ -82,8 +82,8 @@ class Linuxcnc(PostProcessor):
         super().init_values(state)
         
         # Machine configuration
-        state.machine.name = "LinuxCNC"
-        state.machine.enable_coolant = True
+        state.name = "LinuxCNC"
+        state.enable_coolant = True
         
         # Parameter order - linuxcnc doesn't want K properties on XY plane
         state.parameter_order = [
