@@ -302,6 +302,7 @@ SET(PathPythonPost_SRCS
     Path/Post/GcodeProcessingUtils.py
     Path/Post/PostList.py
     Path/Post/Processor.py
+    Path/Post/DrillCycleExpander.py
     Path/Post/Utils.py
     Path/Post/UtilsArguments.py
     Path/Post/UtilsExport.py
@@ -528,6 +529,7 @@ SET(Tests_SRCS
     CAMTests/TestPathDressupDogboneII.py
     CAMTests/TestPathDressupHoldingTags.py
     CAMTests/TestPathDrillGenerator.py
+    CAMTests/TestDrillCycleExpander.py
     CAMTests/TestPathDrillable.py
     CAMTests/TestPathFacingGenerator.py
     CAMTests/TestPathGeneratorDogboneII.py
