@@ -258,15 +258,6 @@ SET(PathPythonToolsLibraryUi_SRCS
     Path/Tool/library/ui/properties.py
 )
 
-SET(PathPythonToolsMachine_SRCS
-    Path/Tool/machine/__init__.py
-)
-
-SET(PathPythonToolsMachineModels_SRCS
-    Path/Tool/machine/models/__init__.py
-    Path/Tool/machine/models/machine.py
-)
-
 SET(PathPythonToolsShape_SRCS
     Path/Tool/shape/__init__.py
     Path/Tool/shape/util.py
@@ -570,7 +561,6 @@ SET(Tests_SRCS
     CAMTests/TestPathToolShapeIcon.py
     CAMTests/TestPathToolLibrary.py
     CAMTests/TestPathToolLibrarySerializer.py
-    CAMTests/TestPathToolMachine.py
     CAMTests/TestPathToolController.py
     CAMTests/TestPathUtil.py
     CAMTests/TestPathVcarve.py
@@ -650,8 +640,6 @@ SET(all_files
     ${PathPythonToolsLibraryModels_SRCS}
     ${PathPythonToolsLibrarySerializers_SRCS}
     ${PathPythonToolsLibraryUi_SRCS}
-    ${PathPythonToolsMachine_SRCS}
-    ${PathPythonToolsMachineModels_SRCS}
     ${PathPythonMachineModels_SRCS}
     ${PathPythonMachineUiEditor_SRCS}
     ${PathPythonGui_SRCS}
