@@ -23,13 +23,225 @@
 from PySide import QtGui, QtCore
 import FreeCAD
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, get_type_hints, get_origin, get_args
+from dataclasses import fields, is_dataclass
+from enum import Enum
 from ...models.machine import *
 from ....Main.Gui.Editor import CodeEditor
 from Path.Post.Processor import PostProcessorFactory
 import re
 
 translate = FreeCAD.Qt.translate
+
+
+class DataclassGUIGenerator:
+    """Generates Qt widgets dynamically from dataclass definitions.
+
+    This class introspects dataclass fields and creates appropriate GUI widgets
+    based on field types. It supports nested dataclasses, creating grouped layouts
+    for better organization.
+    """
+
+    # Fields that should use multi-line text editors instead of single-line
+    MULTILINE_FIELDS = {
+        "preamble",
+        "postamble",
+        "pre_job",
+        "post_job",
+        "pre_operation",
+        "post_operation",
+        "pre_tool_change",
+        "post_tool_change",
+        "tool_return",
+        "pre_fixture_change",
+        "post_fixture_change",
+        "pre_rotary_move",
+        "post_rotary_move",
+        "pre_spindle_change",
+        "post_spindle_change",
+        "safetyblock",
+        "drill_cycles_to_translate",
+        "suppress_commands",
+    }
+
+    # Field display name overrides
+    FIELD_LABELS = {
+        "comments": "Include Comments",
+        "blank_lines": "Include Blank Lines",
+        "header": "Include Header",
+        "line_numbers": "Line Numbers",
+        "bcnc_blocks": "bCNC Blocks",
+        "path_labels": "Path Labels",
+        "machine_name": "Include Machine Name",
+        "tool_change": "Tool Change Commands",
+        "doubles": "Output Duplicate Axis Values",
+        "adaptive": "Adaptive Output",
+        "axis_precision": "Axis Precision",
+        "feed_precision": "Feed Precision",
+        "spindle_decimals": "Spindle Decimals",
+        "command_space": "Command Spacing",
+        "comment_symbol": "Comment Symbol",
+        "line_increment": "Line Number Increment",
+        "line_number_start": "Line Number Start",
+        "end_of_line_chars": "End of Line Characters",
+        "modal": "Modal Output (Suppress Repeats)",
+        "translate_drill_cycles": "Translate Drill Cycles",
+        "split_arcs": "Split Arcs",
+        "show_editor": "Show Editor After Generation",
+        "list_tools_in_preamble": "List Tools in Preamble",
+        "show_machine_units": "Show Machine Units",
+        "show_operation_labels": "Show Operation Labels",
+        "tool_before_change": "Output T Before M6",
+        "chipbreaking_amount": "Chipbreaking Amount (mm)",
+        "spindle_wait": "Spindle Wait Time (seconds)",
+        "postprocessor_file_name": "Post Processor",
+        "postprocessor_args": "Post Processor Arguments",
+        "use_tlo": "Use Tool Length Offset",
+        "stop_spindle_for_tool_change": "Stop Spindle for Tool Change",
+        "enable_coolant": "Enable Coolant",
+        "enable_machine_specific_commands": "Enable Machine-Specific Commands",
+    }
+
+    @staticmethod
+    def get_field_label(field_name: str) -> str:
+        """Get a human-readable label for a field name."""
+        if field_name in DataclassGUIGenerator.FIELD_LABELS:
+            return DataclassGUIGenerator.FIELD_LABELS[field_name]
+        # Convert snake_case to Title Case
+        return " ".join(word.capitalize() for word in field_name.split("_"))
+
+    @staticmethod
+    def create_widget_for_field(
+        field_name: str, field_type: type, current_value: Any
+    ) -> QtGui.QWidget:
+        """Create an appropriate widget for a dataclass field.
+
+        Args:
+            field_name: Name of the field
+            field_type: Type annotation of the field
+            current_value: Current value of the field
+
+        Returns:
+            Tuple of (widget, getter_function) where getter returns the current value
+        """
+        origin = get_origin(field_type)
+
+        # Handle Optional types
+        if origin is type(None) or (origin and str(origin).startswith("typing.Union")):
+            args = get_args(field_type)
+            if args:
+                # Get the non-None type
+                field_type = next((arg for arg in args if arg is not type(None)), args[0])
+                origin = get_origin(field_type)
+
+        # Boolean -> Checkbox
+        if field_type is bool:
+            widget = QtGui.QCheckBox()
+            widget.setChecked(current_value if current_value is not None else False)
+            widget.value_getter = lambda: widget.isChecked()
+            return widget
+
+        # Enum -> ComboBox
+        if isinstance(field_type, type) and issubclass(field_type, Enum):
+            widget = QtGui.QComboBox()
+            for member in field_type:
+                widget.addItem(member.value if hasattr(member, "value") else str(member), member)
+            if current_value:
+                index = widget.findData(current_value)
+                if index >= 0:
+                    widget.setCurrentIndex(index)
+            widget.value_getter = lambda: widget.itemData(widget.currentIndex())
+            return widget
+
+        # List[str] -> Multi-line text area
+        if origin is list:
+            args = get_args(field_type)
+            if args and args[0] is str:
+                widget = QtGui.QPlainTextEdit()
+                widget.setMaximumHeight(100)
+                if current_value:
+                    widget.setPlainText("\n".join(current_value))
+                else:
+                    widget.setPlainText("")
+                widget.value_getter = lambda: [
+                    line.strip() for line in widget.toPlainText().split("\n") if line.strip()
+                ]
+                return widget
+
+        # Int -> SpinBox
+        if field_type is int:
+            widget = QtGui.QSpinBox()
+            widget.setRange(-999999, 999999)
+            widget.setValue(current_value if current_value is not None else 0)
+            widget.value_getter = lambda: widget.value()
+            return widget
+
+        # Float -> DoubleSpinBox
+        if field_type is float:
+            widget = QtGui.QDoubleSpinBox()
+            widget.setRange(-999999.0, 999999.0)
+            widget.setDecimals(4)
+            widget.setValue(current_value if current_value is not None else 0.0)
+            widget.value_getter = lambda: widget.value()
+            return widget
+
+        # String -> LineEdit or PlainTextEdit
+        if field_type is str:
+            if field_name in DataclassGUIGenerator.MULTILINE_FIELDS:
+                widget = QtGui.QPlainTextEdit()
+                widget.setMaximumHeight(100)
+                widget.setPlainText(current_value if current_value else "")
+                widget.value_getter = lambda: widget.toPlainText()
+            else:
+                widget = QtGui.QLineEdit()
+                widget.setText(current_value if current_value else "")
+                widget.value_getter = lambda: widget.text()
+            return widget
+
+        # Fallback to string representation
+        widget = QtGui.QLineEdit()
+        widget.setText(str(current_value) if current_value is not None else "")
+        widget.value_getter = lambda: widget.text()
+        return widget
+
+    @staticmethod
+    def create_group_for_dataclass(
+        dataclass_instance: Any, group_title: str
+    ) -> tuple[QtGui.QGroupBox, Dict[str, QtGui.QWidget]]:
+        """Create a QGroupBox with widgets for all fields in a dataclass.
+
+        Args:
+            dataclass_instance: Instance of a dataclass
+            group_title: Title for the group box
+
+        Returns:
+            Tuple of (QGroupBox, dict mapping field_name to widget)
+        """
+        group = QtGui.QGroupBox(group_title)
+        layout = QtGui.QFormLayout(group)
+        widgets = {}
+
+        for field in fields(dataclass_instance):
+            # Skip private fields and complex types we don't handle
+            if field.name.startswith("_"):
+                continue
+
+            current_value = getattr(dataclass_instance, field.name)
+            field_type = field.type
+
+            # Skip parameter_functions and other callable/complex types
+            if field.name in ["parameter_functions", "parameter_order"]:
+                continue
+
+            widget = DataclassGUIGenerator.create_widget_for_field(
+                field.name, field_type, current_value
+            )
+
+            label = DataclassGUIGenerator.get_field_label(field.name)
+            layout.addRow(label + ":", widget)
+            widgets[field.name] = widget
+
+        return group, widgets
 
 
 class MachineEditorDialog(QtGui.QDialog):
@@ -91,6 +303,15 @@ class MachineEditorDialog(QtGui.QDialog):
 
         self.current_units = "metric"
 
+        # Initialize machine object first (needed by setup_post_tab)
+        self.filename = machine_filename
+        self.machine = None  # Store the Machine object
+
+        if machine_filename:
+            self.machine = MachineFactory.load_configuration(machine_filename)
+        else:
+            self.machine = Machine(name="New Machine")
+
         self.layout = QtGui.QVBoxLayout(self)
 
         # Tab widget for sections
@@ -146,16 +367,12 @@ class MachineEditorDialog(QtGui.QDialog):
 
         self.layout.addLayout(button_layout)
         self.text_mode = False
-        self.filename = machine_filename
-        self.machine = None  # Store the Machine object
 
-        if machine_filename:
-            self.machine = MachineFactory.load_configuration(machine_filename)
-            self.populate_from_machine(self.machine)
-        else:
-            self.machine = Machine(name="New Machine")
-            self.populate_from_machine(self.machine)
-            # Set focus and select the name field for new machines
+        # Populate GUI from machine object
+        self.populate_from_machine(self.machine)
+
+        # Set focus and select the name field for new machines
+        if not machine_filename:
             self.name_edit.setFocus()
             self.name_edit.selectAll()
 
@@ -274,27 +491,26 @@ class MachineEditorDialog(QtGui.QDialog):
         """Update machine name when text changes."""
         if self.machine:
             self.machine.name = text
-    
+
     def _on_rotary_sequence_changed(self, axis_name, value):
         """Update rotary axis sequence."""
         if self.machine and axis_name in self.machine.rotary_axes:
             self.machine.rotary_axes[axis_name].sequence = value
-    
+
     def _on_rotary_joint_changed(self, axis_name, combo):
         """Update rotary axis joint/rotation vector."""
         if self.machine and axis_name in self.machine.rotary_axes:
-            import FreeCAD
             vector = combo.itemData(combo.currentIndex())
             self.machine.rotary_axes[axis_name].rotation_vector = FreeCAD.Vector(*vector)
-    
+
     def _on_rotary_prefer_positive_changed(self, axis_name, checked):
         """Update rotary axis prefer_positive."""
         if self.machine and axis_name in self.machine.rotary_axes:
             self.machine.rotary_axes[axis_name].prefer_positive = checked
-    
+
     def _on_spindle_field_changed(self, spindle_index, field_name, value):
         """Update spindle field in Machine object when UI field changes.
-        
+
         Args:
             spindle_index: Index of the spindle in machine.spindles
             field_name: Name of the field being updated
@@ -303,17 +519,17 @@ class MachineEditorDialog(QtGui.QDialog):
         if self.machine and spindle_index < len(self.machine.spindles):
             spindle = self.machine.spindles[spindle_index]
             setattr(spindle, field_name, value)
-    
+
     def _on_manufacturer_changed(self, text):
         """Update manufacturer when text changes."""
         if self.machine:
             self.machine.manufacturer = text
-    
+
     def _on_description_changed(self, text):
         """Update description when text changes."""
         if self.machine:
             self.machine.description = text
-    
+
     def _on_units_changed(self, index):
         """Update units and refresh axes display."""
         if self.machine:
@@ -321,21 +537,20 @@ class MachineEditorDialog(QtGui.QDialog):
             self.machine.units = units
             self.current_units = units
             self.update_axes()
-    
+
     def _on_type_changed(self, index):
         """Update machine type and refresh axes."""
         if self.machine:
-            import FreeCAD
             machine_type = self.type_combo.itemData(index)
             self.machine.machine_type = machine_type
-            
+
             # Rebuild axes in machine based on new type
             config = self.MACHINE_TYPES.get(machine_type, {})
-            
+
             # Store existing axes for preservation
             old_linear_axes = self.machine.linear_axes.copy()
             old_rotary_axes = self.machine.rotary_axes.copy()
-            
+
             # Clear and rebuild linear axes
             self.machine.linear_axes = {}
             for axis_name in config.get("linear", []):
@@ -346,14 +561,20 @@ class MachineEditorDialog(QtGui.QDialog):
                     # Create with defaults
                     self.machine.linear_axes[axis_name] = LinearAxis(
                         name=axis_name,
-                        direction_vector=FreeCAD.Vector(1, 0, 0) if axis_name == "X" else 
-                                       FreeCAD.Vector(0, 1, 0) if axis_name == "Y" else 
-                                       FreeCAD.Vector(0, 0, 1),
+                        direction_vector=(
+                            FreeCAD.Vector(1, 0, 0)
+                            if axis_name == "X"
+                            else (
+                                FreeCAD.Vector(0, 1, 0)
+                                if axis_name == "Y"
+                                else FreeCAD.Vector(0, 0, 1)
+                            )
+                        ),
                         min_limit=0,
                         max_limit=1000,
-                        max_velocity=10000
+                        max_velocity=10000,
                     )
-            
+
             # Clear and rebuild rotary axes
             self.machine.rotary_axes = {}
             for axis_name in config.get("rotary", []):
@@ -362,7 +583,11 @@ class MachineEditorDialog(QtGui.QDialog):
                     self.machine.rotary_axes[axis_name] = old_rotary_axes[axis_name]
                 else:
                     # Create with defaults
-                    default_vector = [1, 0, 0] if axis_name == "A" else [0, 1, 0] if axis_name == "B" else [0, 0, 1]
+                    default_vector = (
+                        [1, 0, 0]
+                        if axis_name == "A"
+                        else [0, 1, 0] if axis_name == "B" else [0, 0, 1]
+                    )
                     self.machine.rotary_axes[axis_name] = RotaryAxis(
                         name=axis_name,
                         rotation_vector=FreeCAD.Vector(*default_vector),
@@ -370,9 +595,9 @@ class MachineEditorDialog(QtGui.QDialog):
                         max_limit=180,
                         max_velocity=36000,
                         sequence=0,
-                        prefer_positive=True
+                        prefer_positive=True,
                     )
-            
+
             self.update_axes()
 
     def setup_machine_tab(self):
@@ -480,7 +705,9 @@ class MachineEditorDialog(QtGui.QDialog):
 
             for axis in linear_axes:
                 axis_obj = self.machine.linear_axes[axis]
-                converted_min = axis_obj.min_limit if units == "metric" else axis_obj.min_limit / 25.4
+                converted_min = (
+                    axis_obj.min_limit if units == "metric" else axis_obj.min_limit / 25.4
+                )
                 min_edit = QtGui.QLineEdit()
                 min_edit.setText(f"{converted_min:.2f}{length_suffix}")
                 min_edit.editingFinished.connect(
@@ -489,7 +716,9 @@ class MachineEditorDialog(QtGui.QDialog):
                     )
                 )
 
-                converted_max = axis_obj.max_limit if units == "metric" else axis_obj.max_limit / 25.4
+                converted_max = (
+                    axis_obj.max_limit if units == "metric" else axis_obj.max_limit / 25.4
+                )
                 max_edit = QtGui.QLineEdit()
                 max_edit.setText(f"{converted_max:.2f}{length_suffix}")
                 max_edit.editingFinished.connect(
@@ -498,7 +727,9 @@ class MachineEditorDialog(QtGui.QDialog):
                     )
                 )
 
-                converted_vel = axis_obj.max_velocity if units == "metric" else axis_obj.max_velocity / 25.4
+                converted_vel = (
+                    axis_obj.max_velocity if units == "metric" else axis_obj.max_velocity / 25.4
+                )
                 vel_edit = QtGui.QLineEdit()
                 vel_edit.setText(f"{converted_vel:.2f}{vel_suffix}")
                 vel_edit.editingFinished.connect(
@@ -531,7 +762,7 @@ class MachineEditorDialog(QtGui.QDialog):
 
             for axis in rotary_axes:
                 axis_obj = self.machine.rotary_axes[axis]
-                
+
                 min_edit = QtGui.QLineEdit()
                 min_edit.setText(f"{axis_obj.min_limit:.2f}{angle_suffix}")
                 min_edit.editingFinished.connect(
@@ -569,20 +800,28 @@ class MachineEditorDialog(QtGui.QDialog):
                 for label, vector in self.ROTATIONAL_AXIS_OPTIONS:
                     joint_combo.addItem(label, vector)
                 # Get rotation vector from axis object
-                rotation_vec = [axis_obj.rotation_vector.x, axis_obj.rotation_vector.y, axis_obj.rotation_vector.z]
+                rotation_vec = [
+                    axis_obj.rotation_vector.x,
+                    axis_obj.rotation_vector.y,
+                    axis_obj.rotation_vector.z,
+                ]
                 # Find matching option and set it
                 for i, (label, vector) in enumerate(self.ROTATIONAL_AXIS_OPTIONS):
                     if vector == rotation_vec:
                         joint_combo.setCurrentIndex(i)
                         break
                 joint_combo.currentIndexChanged.connect(
-                    lambda index, ax=axis, combo=joint_combo: self._on_rotary_joint_changed(ax, combo)
+                    lambda index, ax=axis, combo=joint_combo: self._on_rotary_joint_changed(
+                        ax, combo
+                    )
                 )
 
                 prefer_positive = QtGui.QCheckBox()
                 prefer_positive.setChecked(axis_obj.prefer_positive)
                 prefer_positive.stateChanged.connect(
-                    lambda state, ax=axis: self._on_rotary_prefer_positive_changed(ax, state == QtCore.Qt.Checked)
+                    lambda state, ax=axis: self._on_rotary_prefer_positive_changed(
+                        ax, state == QtCore.Qt.Checked
+                    )
                 )
 
                 # Grid layout
@@ -633,7 +872,7 @@ class MachineEditorDialog(QtGui.QDialog):
                 self.machine.spindles.append(Spindle(name=""))
             while len(self.machine.spindles) > len(self.spindle_edits):
                 self.machine.spindles.pop()
-            
+
             # Update each spindle from UI
             for i, edits in enumerate(self.spindle_edits):
                 spindle = self.machine.spindles[i]
@@ -650,27 +889,33 @@ class MachineEditorDialog(QtGui.QDialog):
         self.spindles_tabs.clear()
         self.spindle_edits = []
         count = self.spindle_count_combo.itemData(self.spindle_count_combo.currentIndex())
-        
+
         # Ensure machine has enough spindles
         if self.machine:
             while len(self.machine.spindles) < count:
-                self.machine.spindles.append(Spindle(
-                    name=f"Spindle {len(self.machine.spindles) + 1}",
-                    id=f"spindle{len(self.machine.spindles) + 1}",
-                    max_power_kw=3.0,
-                    max_rpm=24000,
-                    min_rpm=6000,
-                    tool_change="manual"
-                ))
+                self.machine.spindles.append(
+                    Spindle(
+                        name=f"Spindle {len(self.machine.spindles) + 1}",
+                        id=f"spindle{len(self.machine.spindles) + 1}",
+                        max_power_kw=3.0,
+                        max_rpm=24000,
+                        min_rpm=6000,
+                        tool_change="manual",
+                    )
+                )
             while len(self.machine.spindles) > count:
                 self.machine.spindles.pop()
-        
+
         for i in range(count):
             tab = QtGui.QWidget()
             layout = QtGui.QFormLayout(tab)
-            
+
             # Get spindle object or use defaults
-            spindle = self.machine.spindles[i] if self.machine and i < len(self.machine.spindles) else None
+            spindle = (
+                self.machine.spindles[i]
+                if self.machine and i < len(self.machine.spindles)
+                else None
+            )
 
             name_edit = QtGui.QLineEdit()
             name_edit.setText(spindle.name if spindle else f"Spindle {i+1}")
@@ -737,198 +982,314 @@ class MachineEditorDialog(QtGui.QDialog):
             )
 
     def setup_post_tab(self):
-        """Set up the post processor configuration tab with comprehensive settings."""
+        """Set up the post processor configuration tab dynamically from Machine dataclass."""
         # Use scroll area for all the options
         scroll = QtGui.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll_widget = QtGui.QWidget()
         layout = QtGui.QVBoxLayout(scroll_widget)
         scroll.setWidget(scroll_widget)
-        
+
         main_layout = QtGui.QVBoxLayout(self.post_tab)
         main_layout.addWidget(scroll)
 
-        # === Post Processor Selection ===
-        pp_group = QtGui.QGroupBox("Post Processor")
+        # Store widgets for later population
+        self.post_widgets = {}
+
+        # === Post Processor Selection (special handling for combo box) ===
+        pp_group = QtGui.QGroupBox("Post Processor Selection")
         pp_layout = QtGui.QFormLayout(pp_group)
-        
+
         self.post_processor_combo = QtGui.QComboBox()
         postProcessors = Path.Preferences.allEnabledPostProcessors([""])
         for post in postProcessors:
             self.post_processor_combo.addItem(post)
         self.post_processor_combo.currentIndexChanged.connect(self.updatePostProcessorTooltip)
         self.post_processor_combo.currentIndexChanged.connect(
-            lambda: self._update_machine_field("postprocessor_file_name", self.post_processor_combo.currentText())
+            lambda: self._update_machine_field(
+                "postprocessor_file_name", self.post_processor_combo.currentText()
+            )
         )
         self.postProcessorDefaultTooltip = translate("CAM_MachineEditor", "Select a post processor")
         self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
         pp_layout.addRow("Post Processor:", self.post_processor_combo)
+        self.post_widgets["postprocessor_file_name"] = self.post_processor_combo
 
         self.post_processor_args_edit = QtGui.QLineEdit()
         self.post_processor_args_edit.textChanged.connect(
             lambda text: self._update_machine_field("postprocessor_args", text)
         )
-        self.postProcessorArgsDefaultTooltip = translate("CAM_MachineEditor", "Additional arguments")
+        self.postProcessorArgsDefaultTooltip = translate(
+            "CAM_MachineEditor", "Additional arguments"
+        )
         self.post_processor_args_edit.setToolTip(self.postProcessorArgsDefaultTooltip)
         pp_layout.addRow("Arguments:", self.post_processor_args_edit)
+        self.post_widgets["postprocessor_args"] = self.post_processor_args_edit
+
         layout.addWidget(pp_group)
 
-        # === Output Options ===
-        output_group = QtGui.QGroupBox("Output Options")
-        output_layout = QtGui.QFormLayout(output_group)
-        
-        self.comments_check = QtGui.QCheckBox()
-        self.comments_check.setChecked(True)
-        self.comments_check.stateChanged.connect(
-            lambda state: self._update_machine_field("output.comments", state == QtCore.Qt.Checked)
-        )
-        output_layout.addRow("Include Comments:", self.comments_check)
-        
-        self.line_numbers_check = QtGui.QCheckBox()
-        self.line_numbers_check.stateChanged.connect(
-            lambda state: self._update_machine_field("output.line_numbers", state == QtCore.Qt.Checked)
-        )
-        output_layout.addRow("Line Numbers:", self.line_numbers_check)
-        
-        self.show_editor_check = QtGui.QCheckBox()
-        self.show_editor_check.setChecked(True)
-        self.show_editor_check.stateChanged.connect(
-            lambda state: self._update_machine_field("processing.show_editor", state == QtCore.Qt.Checked)
-        )
-        output_layout.addRow("Show Editor:", self.show_editor_check)
-        
-        self.tool_length_offset_check = QtGui.QCheckBox()
-        self.tool_length_offset_check.setChecked(True)
-        self.tool_length_offset_check.stateChanged.connect(
-            lambda state: self._update_machine_field("use_tlo", state == QtCore.Qt.Checked)
-        )
-        output_layout.addRow("Tool Length Offset:", self.tool_length_offset_check)
-        
-        layout.addWidget(output_group)
+        # === Dynamically generate groups for nested dataclasses ===
+        if self.machine:
+            # Output Options
+            output_group, output_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.output, "Output Options"
+            )
+            layout.addWidget(output_group)
+            self._connect_widgets_to_machine(output_widgets, "output")
 
-        # === Precision Settings ===
-        precision_group = QtGui.QGroupBox("Precision")
-        precision_layout = QtGui.QFormLayout(precision_group)
-        
-        self.axis_precision_spin = QtGui.QSpinBox()
-        self.axis_precision_spin.setRange(0, 10)
-        self.axis_precision_spin.setValue(3)
-        self.axis_precision_spin.valueChanged.connect(
-            lambda val: self._update_machine_field("precision.axis_precision", val)
-        )
-        precision_layout.addRow("Axis Decimals:", self.axis_precision_spin)
-        
-        self.feed_precision_spin = QtGui.QSpinBox()
-        self.feed_precision_spin.setRange(0, 10)
-        self.feed_precision_spin.setValue(3)
-        self.feed_precision_spin.valueChanged.connect(
-            lambda val: self._update_machine_field("precision.feed_precision", val)
-        )
-        precision_layout.addRow("Feed Decimals:", self.feed_precision_spin)
-        
-        layout.addWidget(precision_group)
+            # Precision Settings
+            precision_group, precision_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.precision, "Precision Settings"
+            )
+            layout.addWidget(precision_group)
+            self._connect_widgets_to_machine(precision_widgets, "precision")
 
-        # === Line Formatting ===
-        formatting_group = QtGui.QGroupBox("Line Formatting")
-        formatting_layout = QtGui.QFormLayout(formatting_group)
-        
-        self.command_space_edit = QtGui.QLineEdit(" ")
-        self.command_space_edit.textChanged.connect(
-            lambda text: self._update_machine_field("formatting.command_space", text)
-        )
-        formatting_layout.addRow("Command Space:", self.command_space_edit)
-        
-        self.comment_symbol_edit = QtGui.QLineEdit("(")
-        self.comment_symbol_edit.textChanged.connect(
-            lambda text: self._update_machine_field("formatting.comment_symbol", text)
-        )
-        formatting_layout.addRow("Comment Symbol:", self.comment_symbol_edit)
-        
-        self.line_number_start_spin = QtGui.QSpinBox()
-        self.line_number_start_spin.setRange(0, 99999)
-        self.line_number_start_spin.setValue(100)
-        self.line_number_start_spin.valueChanged.connect(
-            lambda val: self._update_machine_field("formatting.line_number_start", val)
-        )
-        formatting_layout.addRow("Line Number Start:", self.line_number_start_spin)
-        
-        self.line_increment_spin = QtGui.QSpinBox()
-        self.line_increment_spin.setRange(1, 1000)
-        self.line_increment_spin.setValue(10)
-        self.line_increment_spin.valueChanged.connect(
-            lambda val: self._update_machine_field("formatting.line_increment", val)
-        )
-        formatting_layout.addRow("Line Increment:", self.line_increment_spin)
-        
-        layout.addWidget(formatting_group)
+            # Line Formatting
+            formatting_group, formatting_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.formatting, "Line Formatting"
+            )
+            layout.addWidget(formatting_group)
+            self._connect_widgets_to_machine(formatting_widgets, "formatting")
 
-        # === Processing Options ===
-        processing_group = QtGui.QGroupBox("Processing Options")
-        processing_layout = QtGui.QFormLayout(processing_group)
-        
-        self.modal_check = QtGui.QCheckBox()
-        self.modal_check.stateChanged.connect(
-            lambda state: self._update_machine_field("processing.modal", state == QtCore.Qt.Checked)
-        )
-        processing_layout.addRow("Modal (Suppress Repeated):", self.modal_check)
-        
-        self.translate_drill_check = QtGui.QCheckBox()
-        self.translate_drill_check.stateChanged.connect(
-            lambda state: self._update_machine_field("processing.translate_drill_cycles", state == QtCore.Qt.Checked)
-        )
-        processing_layout.addRow("Translate Drill Cycles:", self.translate_drill_check)
-        
-        self.list_tools_check = QtGui.QCheckBox()
-        self.list_tools_check.stateChanged.connect(
-            lambda state: self._update_machine_field("processing.list_tools_in_preamble", state == QtCore.Qt.Checked)
-        )
-        processing_layout.addRow("List Tools in Preamble:", self.list_tools_check)
-        
-        self.tool_before_change_check = QtGui.QCheckBox()
-        self.tool_before_change_check.stateChanged.connect(
-            lambda state: self._update_machine_field("processing.tool_before_change", state == QtCore.Qt.Checked)
-        )
-        processing_layout.addRow("Tool Before M6:", self.tool_before_change_check)
-        
-        layout.addWidget(processing_group)
+            # G-Code Blocks
+            blocks_group, blocks_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.blocks, "G-Code Blocks"
+            )
+            layout.addWidget(blocks_group)
+            self._connect_widgets_to_machine(blocks_widgets, "blocks")
 
-        # === G-Code Blocks ===
-        blocks_group = QtGui.QGroupBox("G-Code Blocks")
-        blocks_layout = QtGui.QFormLayout(blocks_group)
-        
-        self.preamble_edit = QtGui.QTextEdit()
-        self.preamble_edit.setMaximumHeight(60)
-        self.preamble_edit.textChanged.connect(
-            lambda: self._update_machine_field("blocks.preamble", self.preamble_edit.toPlainText())
-        )
-        blocks_layout.addRow("Preamble:", self.preamble_edit)
-        
-        self.postamble_edit = QtGui.QTextEdit()
-        self.postamble_edit.setMaximumHeight(60)
-        self.postamble_edit.textChanged.connect(
-            lambda: self._update_machine_field("blocks.postamble", self.postamble_edit.toPlainText())
-        )
-        blocks_layout.addRow("Postamble:", self.postamble_edit)
-        
-        layout.addWidget(blocks_group)
+            # Processing Options
+            processing_group, processing_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.processing, "Processing Options"
+            )
+            layout.addWidget(processing_group)
+            self._connect_widgets_to_machine(processing_widgets, "processing")
+
+            # Top-level machine fields related to post-processing
+            machine_pp_group = QtGui.QGroupBox("Machine Post-Processing Options")
+            machine_pp_layout = QtGui.QFormLayout(machine_pp_group)
+
+            # use_tlo
+            tlo_check = QtGui.QCheckBox()
+            tlo_check.setChecked(self.machine.use_tlo)
+            tlo_check.stateChanged.connect(
+                lambda state: self._update_machine_field("use_tlo", state == 2)
+            )
+            machine_pp_layout.addRow("Use Tool Length Offset:", tlo_check)
+            self.post_widgets["use_tlo"] = tlo_check
+
+            # stop_spindle_for_tool_change
+            stop_spindle_check = QtGui.QCheckBox()
+            stop_spindle_check.setChecked(self.machine.stop_spindle_for_tool_change)
+            stop_spindle_check.stateChanged.connect(
+                lambda state: self._update_machine_field("stop_spindle_for_tool_change", state == 2)
+            )
+            machine_pp_layout.addRow("Stop Spindle for Tool Change:", stop_spindle_check)
+            self.post_widgets["stop_spindle_for_tool_change"] = stop_spindle_check
+
+            # enable_coolant
+            coolant_check = QtGui.QCheckBox()
+            coolant_check.setChecked(self.machine.enable_coolant)
+            coolant_check.stateChanged.connect(
+                lambda state: self._update_machine_field("enable_coolant", state == 2)
+            )
+            machine_pp_layout.addRow("Enable Coolant:", coolant_check)
+            self.post_widgets["enable_coolant"] = coolant_check
+
+            # enable_machine_specific_commands
+            machine_cmds_check = QtGui.QCheckBox()
+            machine_cmds_check.setChecked(self.machine.enable_machine_specific_commands)
+            machine_cmds_check.stateChanged.connect(
+                lambda state: self._update_machine_field(
+                    "enable_machine_specific_commands", state == 2
+                )
+            )
+            machine_pp_layout.addRow("Enable Machine-Specific Commands:", machine_cmds_check)
+            self.post_widgets["enable_machine_specific_commands"] = machine_cmds_check
+
+            layout.addWidget(machine_pp_group)
+
+        layout.addStretch()
 
         # Cache for post processors
         self.processor = {}
-    
+
+    def _connect_widgets_to_machine(self, widgets: Dict[str, QtGui.QWidget], parent_path: str):
+        """Connect widgets to update Machine object fields.
+
+        Args:
+            widgets: Dictionary of field_name -> widget
+            parent_path: Path to parent object (e.g., 'output', 'precision')
+        """
+        for field_name, widget in widgets.items():
+            field_path = f"{parent_path}.{field_name}"
+
+            # Store widget for later population
+            self.post_widgets[field_path] = widget
+
+            # Connect based on widget type
+            if isinstance(widget, QtGui.QCheckBox):
+                # Use a wrapper to avoid lambda capture issues
+                def make_checkbox_handler(path):
+                    def handler(state):
+                        # Qt.Checked = 2, Qt.Unchecked = 0
+                        value = state == 2
+                        self._update_machine_field(path, value)
+
+                    return handler
+
+                handler_func = make_checkbox_handler(field_path)
+                widget.stateChanged.connect(handler_func)
+            elif isinstance(widget, QtGui.QLineEdit):
+
+                def make_lineedit_handler(path):
+                    def handler(text):
+                        self._update_machine_field(path, text)
+
+                    return handler
+
+                widget.textChanged.connect(make_lineedit_handler(field_path))
+            elif isinstance(widget, QtGui.QPlainTextEdit):
+
+                def make_plaintext_handler(path, w):
+                    def handler():
+                        self._update_machine_field(path, w.value_getter())
+
+                    return handler
+
+                widget.textChanged.connect(make_plaintext_handler(field_path, widget))
+            elif isinstance(widget, (QtGui.QSpinBox, QtGui.QDoubleSpinBox)):
+
+                def make_spinbox_handler(path):
+                    def handler(value):
+                        self._update_machine_field(path, value)
+
+                    return handler
+
+                widget.valueChanged.connect(make_spinbox_handler(field_path))
+            elif isinstance(widget, QtGui.QComboBox):
+
+                def make_combo_handler(path, w):
+                    def handler(index):
+                        self._update_machine_field(path, w.value_getter())
+
+                    return handler
+
+                widget.currentIndexChanged.connect(make_combo_handler(field_path, widget))
+
     def _update_machine_field(self, field_path, value):
         """Update a nested field in the machine object using dot notation."""
         if not self.machine:
             return
-        
-        parts = field_path.split(".")
-        obj = self.machine
-        
-        # Navigate to the parent object
-        for part in parts[:-1]:
-            obj = getattr(obj, part)
-        
-        # Set the final field
-        setattr(obj, parts[-1], value)
+
+        try:
+            parts = field_path.split(".")
+            obj = self.machine
+
+            # Navigate to the parent object
+            for part in parts[:-1]:
+                obj = getattr(obj, part)
+
+            # Set the final field
+            final_field = parts[-1]
+            current_value = getattr(obj, final_field, None)
+
+            # Only update if value actually changed
+            if current_value != value:
+                setattr(obj, final_field, value)
+        except Exception as e:
+            Path.Log.error(f"Error updating {field_path}: {e}")
+
+    def _populate_post_widgets_from_machine(self, machine: Machine):
+        """Populate dynamically generated post-processor widgets from machine object.
+
+        This updates all the nested dataclass widgets (output, precision, formatting,
+        blocks, processing) and top-level machine post-processing options.
+
+        Args:
+            machine: Machine object to read values from
+        """
+
+        # Helper to set widget value without triggering signals
+        def set_widget_value_silent(widget, value):
+            if isinstance(widget, QtGui.QCheckBox):
+                widget.blockSignals(True)
+                widget.setChecked(value)
+                widget.blockSignals(False)
+            elif isinstance(widget, QtGui.QLineEdit):
+                widget.blockSignals(True)
+                widget.setText(str(value) if value is not None else "")
+                widget.blockSignals(False)
+            elif isinstance(widget, QtGui.QPlainTextEdit):
+                widget.blockSignals(True)
+                if isinstance(value, list):
+                    widget.setPlainText("\n".join(value))
+                else:
+                    widget.setPlainText(str(value) if value is not None else "")
+                widget.blockSignals(False)
+            elif isinstance(widget, QtGui.QSpinBox):
+                widget.blockSignals(True)
+                widget.setValue(int(value) if value is not None else 0)
+                widget.blockSignals(False)
+            elif isinstance(widget, QtGui.QDoubleSpinBox):
+                widget.blockSignals(True)
+                widget.setValue(float(value) if value is not None else 0.0)
+                widget.blockSignals(False)
+            elif isinstance(widget, QtGui.QComboBox):
+                widget.blockSignals(True)
+                if hasattr(value, "value"):  # Enum
+                    value = value.value
+                # Find the item with this value
+                for i in range(widget.count()):
+                    item_data = widget.itemData(i)
+                    if item_data == value or widget.itemText(i) == str(value):
+                        widget.setCurrentIndex(i)
+                        break
+                widget.blockSignals(False)
+
+        # Update nested dataclass fields
+        dataclass_groups = [
+            ("output", machine.output),
+            ("precision", machine.precision),
+            ("formatting", machine.formatting),
+            ("blocks", machine.blocks),
+            ("processing", machine.processing),
+        ]
+
+        for group_name, dataclass_obj in dataclass_groups:
+            if dataclass_obj is None:
+                continue
+
+            # Get all fields from the dataclass
+            from dataclasses import fields as dataclass_fields
+
+            for field in dataclass_fields(dataclass_obj):
+                widget_key = f"{group_name}.{field.name}"
+                # Find the widget in post_widgets (it might be stored with or without the parent path)
+                widget = None
+                if widget_key in self.post_widgets:
+                    widget = self.post_widgets[widget_key]
+                elif field.name in self.post_widgets:
+                    widget = self.post_widgets[field.name]
+
+                if widget:
+                    value = getattr(dataclass_obj, field.name)
+                    set_widget_value_silent(widget, value)
+
+        # Update top-level machine post-processing fields
+        top_level_fields = [
+            "use_tlo",
+            "stop_spindle_for_tool_change",
+            "enable_coolant",
+            "enable_machine_specific_commands",
+        ]
+
+        for field_name in top_level_fields:
+            if field_name in self.post_widgets:
+                widget = self.post_widgets[field_name]
+                value = getattr(machine, field_name, None)
+                if value is not None:
+                    set_widget_value_silent(widget, value)
 
     def getPostProcessor(self, name):
         if name not in self.processor:
@@ -996,8 +1357,8 @@ class MachineEditorDialog(QtGui.QDialog):
         self.spindle_count_combo.setCurrentText(str(spindle_count))
         self.update_spindles()  # Update spindles after setting count (will populate from machine.spindles)
 
-        # Post processor configuration from Machine object
-        if self.enable_machine_postprocessor:
+        # Post processor configuration - populate dynamically generated widgets
+        if self.enable_machine_postprocessor and hasattr(self, "post_widgets"):
             # Post processor selection
             post_processor = machine.postprocessor_file_name
             index = self.post_processor_combo.findText(post_processor, QtCore.Qt.MatchFixedString)
@@ -1010,31 +1371,8 @@ class MachineEditorDialog(QtGui.QDialog):
             self.post_processor_args_edit.setText(machine.postprocessor_args)
             self.updatePostProcessorTooltip()
 
-            # Output options
-            self.comments_check.setChecked(machine.output.comments)
-            self.line_numbers_check.setChecked(machine.output.line_numbers)
-            self.show_editor_check.setChecked(machine.processing.show_editor)
-            self.tool_length_offset_check.setChecked(machine.use_tlo)
-
-            # Precision settings
-            self.axis_precision_spin.setValue(machine.precision.axis_precision)
-            self.feed_precision_spin.setValue(machine.precision.feed_precision)
-
-            # Line formatting
-            self.command_space_edit.setText(machine.formatting.command_space)
-            self.comment_symbol_edit.setText(machine.formatting.comment_symbol)
-            self.line_number_start_spin.setValue(machine.formatting.line_number_start)
-            self.line_increment_spin.setValue(machine.formatting.line_increment)
-
-            # Processing options
-            self.modal_check.setChecked(machine.processing.modal)
-            self.translate_drill_check.setChecked(machine.processing.translate_drill_cycles)
-            self.list_tools_check.setChecked(machine.processing.list_tools_in_preamble)
-            self.tool_before_change_check.setChecked(machine.processing.tool_before_change)
-
-            # G-Code blocks
-            self.preamble_edit.setPlainText(machine.blocks.preamble)
-            self.postamble_edit.setPlainText(machine.blocks.postamble)
+            # Update all post-processor widgets from machine object
+            self._populate_post_widgets_from_machine(machine)
 
     def to_machine(self) -> Machine:
         """Convert UI state to Machine object.
@@ -1054,7 +1392,7 @@ class MachineEditorDialog(QtGui.QDialog):
         """
         # Update machine from UI first (spindles need to be synchronized)
         machine = self.to_machine()
-        
+
         # Use Machine's to_dict method for serialization
         return machine.to_dict()
 
@@ -1154,7 +1492,7 @@ class MachineEditorDialog(QtGui.QDialog):
                 json_text = self.text_editor.toPlainText()
                 data = json.loads(json_text)
                 self.machine = Machine.from_dict(data)
-            
+
             # self.machine is already up-to-date from signal handlers, just save it
             if self.filename:
                 saved_path = MachineFactory.save_configuration(self.machine, self.filename)
@@ -1162,7 +1500,7 @@ class MachineEditorDialog(QtGui.QDialog):
                 saved_path = MachineFactory.save_configuration(self.machine)
                 self.filename = saved_path.name
             self.path = str(saved_path)  # Keep for compatibility
-            
+
         except json.JSONDecodeError as e:
             QtGui.QMessageBox.critical(
                 self,

@@ -60,12 +60,14 @@ refRotAxis = RefRotAxes(
 
 class MachineUnits(Enum):
     """Machine unit system."""
+
     METRIC = "G21"
     IMPERIAL = "G20"
 
 
 class MotionMode(Enum):
     """Motion mode for machine movements."""
+
     ABSOLUTE = "G90"
     RELATIVE = "G91"
 
@@ -78,6 +80,7 @@ class MotionMode(Enum):
 @dataclass
 class OutputOptions:
     """Controls what gets included in the G-code output."""
+
     comments: bool = True
     blank_lines: bool = True
     header: bool = True
@@ -93,10 +96,11 @@ class OutputOptions:
 @dataclass
 class PrecisionSettings:
     """Numeric precision and formatting settings."""
+
     axis_precision: int = 3
     feed_precision: int = 3
     spindle_decimals: int = 0
-    
+
     # Defaults by unit system
     default_metric_axis: int = 3
     default_metric_feed: int = 3
@@ -107,30 +111,31 @@ class PrecisionSettings:
 @dataclass
 class LineFormatting:
     """Line formatting and numbering options."""
+
     command_space: str = " "
     comment_symbol: str = "("
     line_increment: int = 10
     line_number_start: int = 100
     end_of_line_chars: str = "\n"
-    
+
     # Mutable state for line numbering
     _current_line: int = field(default=100, init=False, repr=False)
-    
+
     def __post_init__(self):
         """Initialize mutable line number."""
         self._current_line = self.line_number_start
-    
+
     @property
     def current_line_number(self) -> int:
         """Get current line number."""
         return self._current_line
-    
+
     def next_line_number(self) -> int:
         """Get current line number and increment for next call."""
         current = self._current_line
         self._current_line += self.line_increment
         return current
-    
+
     def reset_line_numbers(self) -> None:
         """Reset line numbering to start value."""
         self._current_line = self.line_number_start
@@ -140,40 +145,41 @@ class LineFormatting:
 class GCodeBlocks:
     """
     G-code block templates for various lifecycle hooks.
-    
+
     These templates are inserted at specific points during postprocessing
     to provide customization points for machine-specific behavior.
     """
+
     # Job lifecycle
     pre_job: str = ""
     post_job: str = ""
-    
+
     # Legacy aliases (maintained for compatibility)
     preamble: str = ""  # Typically inserted at start of job
     postamble: str = ""  # Typically inserted at end of job
     safetyblock: str = ""  # Safety commands (G40, G49, etc.)
-    
+
     # Operation lifecycle
     pre_operation: str = ""
     post_operation: str = ""
-    
+
     # Tool change lifecycle
     pre_tool_change: str = ""
     post_tool_change: str = ""
     tool_return: str = ""  # Return to tool change position
-    
+
     # Fixture/WCS change lifecycle
     pre_fixture_change: str = ""
     post_fixture_change: str = ""
-    
+
     # Rotary axis lifecycle
     pre_rotary_move: str = ""
     post_rotary_move: str = ""
-    
+
     # Spindle lifecycle
     pre_spindle_change: str = ""
     post_spindle_change: str = ""
-    
+
     # Miscellaneous
     finish_label: str = "Finish"
 
@@ -181,6 +187,7 @@ class GCodeBlocks:
 @dataclass
 class ProcessingOptions:
     """Processing and transformation options."""
+
     modal: bool = False  # Suppress repeated commands
     translate_drill_cycles: bool = False
     split_arcs: bool = False
@@ -189,13 +196,13 @@ class ProcessingOptions:
     show_machine_units: bool = True
     show_operation_labels: bool = True
     tool_before_change: bool = False  # Output T before M6 (e.g., T1 M6 instead of M6 T1)
-    
+
     # Lists of commands
     drill_cycles_to_translate: List[str] = field(
         default_factory=lambda: ["G73", "G81", "G82", "G83"]
     )
     suppress_commands: List[str] = field(default_factory=list)
-    
+
     # Numeric settings
     chipbreaking_amount: float = 0.25  # mm
     spindle_wait: float = 0.0  # seconds
@@ -210,13 +217,14 @@ class ProcessingOptions:
 @dataclass
 class LinearAxis:
     """Represents a single linear axis in a machine configuration"""
+
     name: str
     direction_vector: FreeCAD.Vector
     min_limit: float = 0
     max_limit: float = 1000
     max_velocity: float = 10000
     sequence: int = 0
-    
+
     def __post_init__(self):
         """Normalize direction vector after initialization"""
         self.direction_vector = self.direction_vector.normalize()
@@ -259,6 +267,7 @@ class LinearAxis:
 @dataclass
 class RotaryAxis:
     """Represents a single rotary axis in a machine configuration"""
+
     name: str
     rotation_vector: FreeCAD.Vector
     min_limit: float = -360
@@ -266,7 +275,7 @@ class RotaryAxis:
     max_velocity: float = 36000
     sequence: int = 0
     prefer_positive: bool = True
-    
+
     def __post_init__(self):
         """Normalize rotation vector after initialization"""
         self.rotation_vector = self.rotation_vector.normalize()
@@ -311,6 +320,7 @@ class RotaryAxis:
 @dataclass
 class Spindle:
     """Represents a single spindle in a machine configuration"""
+
     name: str
     id: Optional[str] = None
     max_power_kw: float = 0
@@ -318,7 +328,7 @@ class Spindle:
     min_rpm: float = 0
     tool_change: str = "manual"
     tool_axis: Optional[FreeCAD.Vector] = None
-    
+
     def __post_init__(self):
         """Set default tool axis if not provided"""
         if self.tool_axis is None:
@@ -359,124 +369,151 @@ class Machine:
     """
     Unified machine configuration combining physical machine definition
     with post-processor settings.
-    
+
     This is the single source of truth for all machine-related configuration,
     including physical capabilities (axes, spindles) and G-code generation
     preferences (output options, formatting, processing).
     """
+
     # ========================================================================
     # PHYSICAL MACHINE DEFINITION
     # ========================================================================
-    
+
     # Basic identification
     name: str = "Default Machine"
     manufacturer: str = ""
     description: str = ""
     machine_type: str = "custom"  # xyz, xyzac, xyzbc, xyza, xyzb
-    
+
     # Machine components
     linear_axes: Dict[str, LinearAxis] = field(default_factory=dict)
     rotary_axes: Dict[str, RotaryAxis] = field(default_factory=dict)
     spindles: List[Spindle] = field(default_factory=list)
-    
+
     # Coordinate system
-    reference_system: Dict[str, FreeCAD.Vector] = field(default_factory=lambda: {
-        "X": FreeCAD.Vector(1, 0, 0),
-        "Y": FreeCAD.Vector(0, 1, 0),
-        "Z": FreeCAD.Vector(0, 0, 1),
-    })
+    reference_system: Dict[str, FreeCAD.Vector] = field(
+        default_factory=lambda: {
+            "X": FreeCAD.Vector(1, 0, 0),
+            "Y": FreeCAD.Vector(0, 1, 0),
+            "Z": FreeCAD.Vector(0, 0, 1),
+        }
+    )
     tool_axis: FreeCAD.Vector = field(default_factory=lambda: FreeCAD.Vector(0, 0, -1))
-    
+
     # Rotary axis configuration
     primary_rotary_axis: Optional[str] = None
     secondary_rotary_axis: Optional[str] = None
     compound_moves: bool = True
     prefer_positive_rotation: bool = True
-    
+
     # Units and versioning
     units: str = "metric"  # "metric" or "imperial"
     version: int = 1
     freecad_version: str = field(init=False)
-    
+
     # ========================================================================
     # POST-PROCESSOR CONFIGURATION
     # ========================================================================
-    
+
     # Output options
     output: OutputOptions = field(default_factory=OutputOptions)
     precision: PrecisionSettings = field(default_factory=PrecisionSettings)
     formatting: LineFormatting = field(default_factory=LineFormatting)
     blocks: GCodeBlocks = field(default_factory=GCodeBlocks)
     processing: ProcessingOptions = field(default_factory=ProcessingOptions)
-    
+
     # Post-processor selection
     postprocessor_file_name: str = ""
     postprocessor_args: str = ""
-    
+
     # Motion mode
     motion_mode: MotionMode = MotionMode.ABSOLUTE
     use_tlo: bool = True  # Tool length offset
     stop_spindle_for_tool_change: bool = True
     enable_coolant: bool = False
     enable_machine_specific_commands: bool = False
-    
+
     # Dynamic state (for runtime)
     parameter_functions: Dict[str, Callable] = field(default_factory=dict)
-    parameter_order: List[str] = field(default_factory=lambda: [
-        "D", "H", "L", "X", "Y", "Z", "A", "B", "C",
-        "U", "V", "W", "I", "J", "K", "R", "P", "E", "Q", "F", "S", "T"
-    ])
-    
+    parameter_order: List[str] = field(
+        default_factory=lambda: [
+            "D",
+            "H",
+            "L",
+            "X",
+            "Y",
+            "Z",
+            "A",
+            "B",
+            "C",
+            "U",
+            "V",
+            "W",
+            "I",
+            "J",
+            "K",
+            "R",
+            "P",
+            "E",
+            "Q",
+            "F",
+            "S",
+            "T",
+        ]
+    )
+
     def __post_init__(self):
         """Initialize computed fields"""
         self.freecad_version = ".".join(FreeCAD.Version()[0:3])
-    
+
     # ========================================================================
     # PROPERTIES - Bridge between physical machine and post-processor
     # ========================================================================
-    
+
     @property
     def machine_units(self) -> MachineUnits:
         """Get machine units as enum for post-processor"""
         return MachineUnits.METRIC if self.units == "metric" else MachineUnits.IMPERIAL
-    
+
     @property
     def unit_format(self) -> str:
         """Get unit format string (mm or in)"""
         return "mm" if self.units == "metric" else "in"
-    
+
     @property
     def unit_speed_format(self) -> str:
         """Get unit speed format string (mm/min or in/min)"""
         return "mm/min" if self.units == "metric" else "in/min"
-    
+
     @property
     def has_rotary_axes(self) -> bool:
         """Check if machine has any rotary axes"""
         return len(self.rotary_axes) > 0
-    
+
     @property
     def is_5axis(self) -> bool:
         """Check if machine is 5-axis (2 rotary axes)"""
         return len(self.rotary_axes) >= 2
-    
+
     @property
     def is_4axis(self) -> bool:
         """Check if machine is 4-axis (1 rotary axis)"""
         return len(self.rotary_axes) == 1
-    
+
     @property
     def motion_commands(self) -> List[str]:
         """Get list of motion commands that change position"""
         import Path.Geom as PathGeom
+
         return PathGeom.CmdMoveAll
-    
+
     @property
     def rapid_moves(self) -> List[str]:
         """Get list of rapid move commands"""
         import Path.Geom as PathGeom
+
         return PathGeom.CmdMoveRapid
-    
+
     # ========================================================================
     # BUILDER METHODS - Fluent interface for machine construction
     # ========================================================================
@@ -716,7 +753,7 @@ class Machine:
             "enable_coolant": self.enable_coolant,
             "enable_machine_specific_commands": self.enable_machine_specific_commands,
         }
-        
+
         # Output options
         data["output"] = {
             "comments": self.output.comments,
@@ -730,14 +767,14 @@ class Machine:
             "doubles": self.output.doubles,
             "adaptive": self.output.adaptive,
         }
-        
+
         # Precision settings
         data["precision"] = {
             "axis_precision": self.precision.axis_precision,
             "feed_precision": self.precision.feed_precision,
             "spindle_decimals": self.precision.spindle_decimals,
         }
-        
+
         # Formatting
         data["formatting"] = {
             "command_space": self.formatting.command_space,
@@ -746,9 +783,13 @@ class Machine:
             "line_number_start": self.formatting.line_number_start,
             "end_of_line_chars": self.formatting.end_of_line_chars,
         }
-        
+
         # G-code blocks (only non-empty ones)
         blocks = {}
+        if self.blocks.pre_job:
+            blocks["pre_job"] = self.blocks.pre_job
+        if self.blocks.post_job:
+            blocks["post_job"] = self.blocks.post_job
         if self.blocks.preamble:
             blocks["preamble"] = self.blocks.preamble
         if self.blocks.postamble:
@@ -759,11 +800,29 @@ class Machine:
             blocks["pre_operation"] = self.blocks.pre_operation
         if self.blocks.post_operation:
             blocks["post_operation"] = self.blocks.post_operation
+        if self.blocks.pre_tool_change:
+            blocks["pre_tool_change"] = self.blocks.pre_tool_change
+        if self.blocks.post_tool_change:
+            blocks["post_tool_change"] = self.blocks.post_tool_change
         if self.blocks.tool_return:
             blocks["tool_return"] = self.blocks.tool_return
+        if self.blocks.pre_fixture_change:
+            blocks["pre_fixture_change"] = self.blocks.pre_fixture_change
+        if self.blocks.post_fixture_change:
+            blocks["post_fixture_change"] = self.blocks.post_fixture_change
+        if self.blocks.pre_rotary_move:
+            blocks["pre_rotary_move"] = self.blocks.pre_rotary_move
+        if self.blocks.post_rotary_move:
+            blocks["post_rotary_move"] = self.blocks.post_rotary_move
+        if self.blocks.pre_spindle_change:
+            blocks["pre_spindle_change"] = self.blocks.pre_spindle_change
+        if self.blocks.post_spindle_change:
+            blocks["post_spindle_change"] = self.blocks.post_spindle_change
+        if self.blocks.finish_label:
+            blocks["finish_label"] = self.blocks.finish_label
         if blocks:
             data["blocks"] = blocks
-        
+
         # Processing options
         data["processing"] = {
             "modal": self.processing.modal,
@@ -774,6 +833,8 @@ class Machine:
             "show_machine_units": self.processing.show_machine_units,
             "show_operation_labels": self.processing.show_operation_labels,
             "tool_before_change": self.processing.tool_before_change,
+            "drill_cycles_to_translate": self.processing.drill_cycles_to_translate,
+            "suppress_commands": self.processing.suppress_commands,
             "chipbreaking_amount": self.processing.chipbreaking_amount,
             "spindle_wait": self.processing.spindle_wait,
         }
@@ -876,12 +937,16 @@ class Machine:
                 config.postprocessor_file_name = pp.get("file_name", "")
                 config.postprocessor_args = pp.get("args", "")
                 motion_mode_str = pp.get("motion_mode", "G90")
-                config.motion_mode = MotionMode.ABSOLUTE if motion_mode_str == "G90" else MotionMode.RELATIVE
+                config.motion_mode = (
+                    MotionMode.ABSOLUTE if motion_mode_str == "G90" else MotionMode.RELATIVE
+                )
                 config.use_tlo = pp.get("use_tlo", True)
                 config.stop_spindle_for_tool_change = pp.get("stop_spindle_for_tool_change", True)
                 config.enable_coolant = pp.get("enable_coolant", False)
-                config.enable_machine_specific_commands = pp.get("enable_machine_specific_commands", False)
-            
+                config.enable_machine_specific_commands = pp.get(
+                    "enable_machine_specific_commands", False
+                )
+
             # Load output options
             if "output" in data:
                 out = data["output"]
@@ -895,14 +960,14 @@ class Machine:
                 config.output.tool_change = out.get("tool_change", True)
                 config.output.doubles = out.get("doubles", True)
                 config.output.adaptive = out.get("adaptive", False)
-            
+
             # Load precision settings
             if "precision" in data:
                 prec = data["precision"]
                 config.precision.axis_precision = prec.get("axis_precision", 3)
                 config.precision.feed_precision = prec.get("feed_precision", 3)
                 config.precision.spindle_decimals = prec.get("spindle_decimals", 0)
-            
+
             # Load formatting
             if "formatting" in data:
                 fmt = data["formatting"]
@@ -912,17 +977,28 @@ class Machine:
                 config.formatting.line_number_start = fmt.get("line_number_start", 100)
                 config.formatting.end_of_line_chars = fmt.get("end_of_line_chars", "\n")
                 config.formatting._current_line = config.formatting.line_number_start
-            
+
             # Load G-code blocks
             if "blocks" in data:
                 blk = data["blocks"]
+                config.blocks.pre_job = blk.get("pre_job", "")
+                config.blocks.post_job = blk.get("post_job", "")
                 config.blocks.preamble = blk.get("preamble", "")
                 config.blocks.postamble = blk.get("postamble", "")
                 config.blocks.safetyblock = blk.get("safetyblock", "")
                 config.blocks.pre_operation = blk.get("pre_operation", "")
                 config.blocks.post_operation = blk.get("post_operation", "")
+                config.blocks.pre_tool_change = blk.get("pre_tool_change", "")
+                config.blocks.post_tool_change = blk.get("post_tool_change", "")
                 config.blocks.tool_return = blk.get("tool_return", "")
-            
+                config.blocks.pre_fixture_change = blk.get("pre_fixture_change", "")
+                config.blocks.post_fixture_change = blk.get("post_fixture_change", "")
+                config.blocks.pre_rotary_move = blk.get("pre_rotary_move", "")
+                config.blocks.post_rotary_move = blk.get("post_rotary_move", "")
+                config.blocks.pre_spindle_change = blk.get("pre_spindle_change", "")
+                config.blocks.post_spindle_change = blk.get("post_spindle_change", "")
+                config.blocks.finish_label = blk.get("finish_label", "Finish")
+
             # Load processing options
             if "processing" in data:
                 proc = data["processing"]
@@ -934,6 +1010,10 @@ class Machine:
                 config.processing.show_machine_units = proc.get("show_machine_units", True)
                 config.processing.show_operation_labels = proc.get("show_operation_labels", True)
                 config.processing.tool_before_change = proc.get("tool_before_change", False)
+                config.processing.drill_cycles_to_translate = proc.get(
+                    "drill_cycles_to_translate", ["G73", "G81", "G82", "G83"]
+                )
+                config.processing.suppress_commands = proc.get("suppress_commands", [])
                 config.processing.chipbreaking_amount = proc.get("chipbreaking_amount", 0.25)
                 config.processing.spindle_wait = proc.get("spindle_wait", 0.0)
                 if "return_to" in proc:
@@ -1040,7 +1120,7 @@ class MachineFactory:
     def create_default_machine_data(cls):
         """
         Create a default machine configuration dictionary for the editor.
-        
+
         Returns:
             Dictionary with default machine configuration structure
         """
