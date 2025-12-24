@@ -299,6 +299,7 @@ SET(PathPythonToolsShapeUi_SRCS
 SET(PathPythonPost_SRCS
     Path/Post/__init__.py
     Path/Post/Command.py
+    Path/Post/GcodeProcessingUtils.py
     Path/Post/PostList.py
     Path/Post/Processor.py
     Path/Post/Utils.py
@@ -578,6 +579,7 @@ SET(Tests_SRCS
     CAMTests/TestPostMCodes.py
     CAMTests/TestSnapmakerPost.py
     CAMTests/TestTSPSolver.py
+    CAMTests/TestGcodeProcessingUtils.py
     CAMTests/Tools/Bit/test-path-tool-bit-bit-00.fctb
     CAMTests/Tools/Library/test-path-tool-bit-library-00.fctl
     CAMTests/Tools/Shape/test-path-tool-bit-shape-00.fcstd
