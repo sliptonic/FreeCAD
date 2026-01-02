@@ -35,6 +35,7 @@ from PySide import QtCore, QtGui
 import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple, Union
+from Path.Post.DrillCycleExpander import DrillCycleExpander, EXPANDABLE_DRILL_CYCLES
 
 import Path.Base.Util as PathUtil
 import Path.Post.UtilsArguments as PostUtilsArguments
@@ -43,6 +44,8 @@ import Path.Post.PostList as PostList
 
 import FreeCAD
 import Path
+
+import Path.Post.Utils as PostUtils
 from Path.Machine.models.machine import (
     Machine,
     Spindle,
@@ -238,16 +241,27 @@ class PostProcessor:
             self._jobs = job_or_jobs
             if len(self._jobs) == 0:
                 raise ValueError("At least one job must be provided")
-            self._job = self._jobs[0]  # Default to first job for backward compatibility
+            # Validate all jobs have the same machine
+            machine_name = self._jobs[0].Machine
+            for job in self._jobs[1:]:
+                if job.Machine != machine_name:
+                    raise ValueError("All jobs must have the same machine")
+            # For now, only single job supported
+            if len(self._jobs) > 1:
+                raise NotImplementedError("Multiple jobs are not yet supported. Please process one job at a time.")
+            self._job = self._jobs[0]  # For backward compatibility
         else:
-            self._jobs = [job_or_jobs]  # Ensure it's always a list
+            self._jobs = [job_or_jobs]
             self._job = job_or_jobs
 
-        # Initialize machine from job or set to None
-        self._machine = getattr(self._job, 'Machine', None) if self._job else None
-        if self._machine:
-            self._machine = MachineFactory.get_machine(self._machine)  # Ensure machine is loaded
-
+        # Get machine
+        if self._job is None:
+            self._machine = None
+        else:
+            machine = MachineFactory.get_machine(self._job.Machine)
+            if machine is None:
+                raise ValueError(f"Machine '{self._job.Machine}' not found")
+            self._machine = machine
         self._modal_state = {
             'X': None, 'Y': None, 'Z': None,
             'A': None, 'B': None, 'C': None,
@@ -255,6 +269,14 @@ class PostProcessor:
             'F': None, 'S': None
         }
         self.reinitialize()
+
+        if isinstance(job_or_jobs, dict):
+            # process only selected operations
+            self._job = job_or_jobs["job"]
+            self._operations = job_or_jobs["operations"]
+        else:
+            # get all operations from 'Operations' group
+            self._operations = getattr(self._job.Operations, "Group", []) if self._job is not None else []
 
     @classmethod
     def exists(cls, processor):
@@ -278,10 +300,6 @@ class PostProcessor:
     def _buildPostList(self, early_tool_prep=False):
         """Determine the specific objects and order to postprocess.
 
-        Returns a list of objects which can be passed to exportObjectsWith()
-        for final posting. The ordering strategy is determined by the job's
-        OrderOutputBy setting.
-
         Args:
             early_tool_prep: If True, split tool changes into separate prep (Tn)
                            and change (M6) commands for better machine efficiency
@@ -290,6 +308,273 @@ class PostProcessor:
             List of (name, operations) tuples
         """
         return PostList.buildPostList(self, early_tool_prep)
+
+    def export2(self) -> Union[None, GCodeSections]:
+        """
+        Process jobs through all postprocessing stages to produce final G-code.
+        
+        Assumes Stage 0 (Configuration) is complete.
+        
+        Stages:
+        1. Ordering - Build ordered list of postables
+        2. Command Expansion - Canned cycles, arc splitting
+        3. Command Conversion - Convert Path.Commands to G-code strings
+        4. G-code Optimization - Deduplication, line numbering
+        5. Output Production - Assemble final structure
+        """
+        from Path.Op.Drilling import ObjectDrilling
+        from Path.Post.GcodeProcessingUtils import (
+            deduplicate_repeated_commands,
+            suppress_redundant_axes_words,
+            filter_inefficient_moves,
+            insert_line_numbers,
+        )
+        
+        # Merge machine configuration into values dict
+        if self._machine and hasattr(self._machine, 'output'):
+            # Map machine config to values dict keys
+            output_options = self._machine.output
+            if hasattr(output_options, 'line_numbers'):
+                self.values['OUTPUT_LINE_NUMBERS'] = output_options.line_numbers
+            if hasattr(output_options, 'line_number_start'):
+                self.values['line_number'] = output_options.line_number_start
+            if hasattr(output_options, 'line_increment'):
+                self.values['LINE_INCREMENT'] = output_options.line_increment
+            # Support both old and new field names for backward compatibility
+            if hasattr(output_options, 'output_comments'):
+                self.values['OUTPUT_COMMENTS'] = output_options.output_comments
+            elif hasattr(output_options, 'comments'):
+                self.values['OUTPUT_COMMENTS'] = output_options.comments
+            if hasattr(output_options, 'output_header'):
+                self.values['OUTPUT_HEADER'] = output_options.output_header
+            elif hasattr(output_options, 'header'):
+                self.values['OUTPUT_HEADER'] = output_options.header
+            if hasattr(output_options, 'axis_precision'):
+                self.values['AXIS_PRECISION'] = output_options.axis_precision
+            if hasattr(output_options, 'feed_precision'):
+                self.values['FEED_PRECISION'] = output_options.feed_precision
+            if hasattr(output_options, 'spindle_precision'):
+                self.values['SPINDLE_DECIMALS'] = output_options.spindle_precision
+            elif hasattr(output_options, 'spindle_decimals'):
+                self.values['SPINDLE_DECIMALS'] = output_options.spindle_decimals
+            if hasattr(output_options, 'comment_symbol'):
+                self.values['COMMENT_SYMBOL'] = output_options.comment_symbol
+            if hasattr(output_options, 'filter_double_parameters'):
+                self.values['OUTPUT_DOUBLES'] = output_options.filter_double_parameters
+            elif hasattr(output_options, 'output_double_parameters'):
+                self.values['OUTPUT_DOUBLES'] = output_options.output_double_parameters
+        
+        # ===== STAGE 1: ORDERING =====
+        # Process all jobs (currently only first job supported)
+        all_job_sections = []
+        
+        for job in self._jobs:
+            # Build ordered postables for this job
+            postables = self._buildPostList(job)
+            
+            # ===== STAGE 2: COMMAND EXPANSION =====
+            # Expand commands and collect header information
+            gcodeheader = _HeaderBuilder()
+            if self.values.get('OUTPUT_HEADER', True):
+                if self._machine:
+                    gcodeheader.add_machine_info(self._machine.name if hasattr(self._machine, 'name') else str(self._machine))
+            
+            # Process each section's postables
+            for section_name, sublist in postables:
+                for item in sublist:
+                    # Canned cycle termination and expansion
+                    if hasattr(item, 'Proxy') and isinstance(item.Proxy, ObjectDrilling):
+                        item.Path = PostUtils.cannedCycleTerminator(item.Path)
+                        
+                        if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.translate_drill_cycles:
+                            item.Path = DrillCycleExpander.expand_commands(item)
+                    
+                    # Arc splitting
+                    if hasattr(item, 'Path') and item.Path:
+                        if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.split_arcs:
+                            item.Path = PostUtils.splitArcs(item.Path)
+                    
+                    # Collect header information
+                    if self.values.get('OUTPUT_HEADER', True):
+                        if hasattr(item, 'ToolNumber'):  # Tool controller
+                            gcodeheader.add_tool(item.ToolNumber, item.Label)
+                        elif hasattr(item, 'Label') and item.Label == "Fixture":  # Fixture
+                            if hasattr(item, 'Path') and item.Path and item.Path.Commands:
+                                fixture_name = item.Path.Commands[0].Name
+                                gcodeheader.add_fixture(fixture_name)
+            
+            # ===== STAGE 3: COMMAND CONVERSION =====
+            job_sections = []
+            
+            # Collect HEADER lines (comment-only) - controlled by OUTPUT_HEADER
+            header_lines = []
+            if self.values.get('OUTPUT_HEADER', True):
+                header_commands = gcodeheader.Path.Commands if hasattr(gcodeheader, 'Path') else []
+                comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+                for cmd in header_commands:
+                    if cmd.Name.startswith("("):
+                        comment_text = cmd.Name[1:-1] if cmd.Name.startswith("(") and cmd.Name.endswith(")") else cmd.Name[1:]
+                        if comment_symbol == '(':
+                            header_lines.append(f"({comment_text})")
+                        else:
+                            header_lines.append(f"{comment_symbol} {comment_text}")
+            
+            # Collect PREAMBLE lines
+            preamble_lines = []
+            if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.preamble:
+                preamble_lines = [line for line in self._machine.blocks.preamble.split('\n') if line.strip()]
+            
+            # Collect PRE-JOB lines
+            pre_job_lines = []
+            if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.pre_job:
+                pre_job_lines = [line for line in self._machine.blocks.pre_job.split('\n') if line.strip()]
+            
+            # Process each section (BODY)
+            for section_name, sublist in postables:
+                gcode_lines = []
+                
+                # Add header, preamble, and pre-job lines only to first section
+                if section_name == postables[0][0]:
+                    # Header comments first (no line numbers)
+                    gcode_lines.extend(header_lines)
+                    # Then preamble
+                    gcode_lines.extend(preamble_lines)
+                    # Then pre-job
+                    gcode_lines.extend(pre_job_lines)
+                
+                for item in sublist:
+                    # Determine item type and add appropriate pre-blocks
+                    if hasattr(item, 'ToolNumber'):  # TOOLCHANGE
+                        if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.pre_tool_change:
+                            pre_lines = [line for line in self._machine.blocks.pre_tool_change.split('\n') if line.strip()]
+                            gcode_lines.extend(pre_lines)
+                    elif hasattr(item, 'Label') and item.Label == "Fixture":  # FIXTURE
+                        if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.pre_fixture_change:
+                            pre_lines = [line for line in self._machine.blocks.pre_fixture_change.split('\n') if line.strip()]
+                            gcode_lines.extend(pre_lines)
+                    elif hasattr(item, 'Proxy'):  # OPERATION
+                        if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.pre_operation:
+                            pre_lines = [line for line in self._machine.blocks.pre_operation.split('\n') if line.strip()]
+                            gcode_lines.extend(pre_lines)
+                    
+                    # Convert Path commands to G-code
+                    if hasattr(item, 'Path') and item.Path:
+                        # Group consecutive rotary moves together
+                        in_rotary_group = False
+                        
+                        for cmd in item.Path.Commands:
+                            try:
+                                # Check if this command involves a rotary axis move
+                                has_rotary = any(param in cmd.Parameters for param in ['A', 'B', 'C'])
+                                
+                                # Start a new rotary group if needed
+                                if has_rotary and not in_rotary_group:
+                                    if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.pre_rotary_move:
+                                        pre_rotary_lines = [line for line in self._machine.blocks.pre_rotary_move.split('\n') if line.strip()]
+                                        gcode_lines.extend(pre_rotary_lines)
+                                    in_rotary_group = True
+                                
+                                # End rotary group if we're leaving rotary moves
+                                elif not has_rotary and in_rotary_group:
+                                    if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.post_rotary_move:
+                                        post_rotary_lines = [line for line in self._machine.blocks.post_rotary_move.split('\n') if line.strip()]
+                                        gcode_lines.extend(post_rotary_lines)
+                                    in_rotary_group = False
+                                
+                                gcode = self.convert_command_to_gcode(cmd)
+                                if gcode is not None and gcode.strip():
+                                    gcode_lines.append(gcode)
+                                
+                            except (ValueError, AttributeError) as e:
+                                # Skip unsupported commands or log error
+                                Path.Log.debug(f"Skipping command {cmd.Name}: {e}")
+                        
+                        # Close rotary group if we ended while still in one
+                        if in_rotary_group:
+                            if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.post_rotary_move:
+                                post_rotary_lines = [line for line in self._machine.blocks.post_rotary_move.split('\n') if line.strip()]
+                                gcode_lines.extend(post_rotary_lines)
+                    
+                    # Add appropriate post-blocks
+                    if hasattr(item, 'ToolNumber'):  # TOOLCHANGE
+                        if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.post_tool_change:
+                            post_lines = [line for line in self._machine.blocks.post_tool_change.split('\n') if line.strip()]
+                            gcode_lines.extend(post_lines)
+                        # Add tool_return after tool change
+                        if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.tool_return:
+                            return_lines = [line for line in self._machine.blocks.tool_return.split('\n') if line.strip()]
+                            gcode_lines.extend(return_lines)
+                    elif hasattr(item, 'Label') and item.Label == "Fixture":  # FIXTURE
+                        if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.post_fixture_change:
+                            post_lines = [line for line in self._machine.blocks.post_fixture_change.split('\n') if line.strip()]
+                            gcode_lines.extend(post_lines)
+                    elif hasattr(item, 'Proxy'):  # OPERATION
+                        if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.post_operation:
+                            post_lines = [line for line in self._machine.blocks.post_operation.split('\n') if line.strip()]
+                            gcode_lines.extend(post_lines)
+                
+                # ===== STAGE 4: G-CODE OPTIMIZATION =====
+                if gcode_lines:
+                    # Separate header comments from numbered lines
+                    num_header_lines = len(header_lines) if section_name == postables[0][0] else 0
+                    header_part = gcode_lines[:num_header_lines]
+                    body_part = gcode_lines[num_header_lines:]
+                    
+                    # Apply optimizations to body only (not header comments)
+                    if body_part and self._machine and hasattr(self._machine, 'output'):
+                        # Modal command deduplication
+                        if self._machine.output.filter_double_commands:
+                            body_part = deduplicate_repeated_commands(body_part)
+                        
+                        # Suppress redundant axis words
+                        body_part = suppress_redundant_axes_words(body_part)
+                        
+                        # Filter inefficient moves
+                        body_part = filter_inefficient_moves(body_part)
+                    
+                    # Line numbering (only on body, not header comments)
+                    if body_part and self.values.get('OUTPUT_LINE_NUMBERS', False):
+                        start = 10
+                        increment = 10
+                        if self._machine and hasattr(self._machine, 'output'):
+                            start = self._machine.output.line_number_start
+                            increment = self._machine.output.line_increment
+                        body_part = insert_line_numbers(body_part, start=start, increment=increment)
+                    
+                    # Recombine header and body
+                    final_lines = header_part + body_part
+                    
+                    # Add section to output
+                    job_sections.append((section_name, "\n".join(final_lines)))
+            
+            # Add POST-JOB block
+            if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.post_job:
+                post_job_lines = [line for line in self._machine.blocks.post_job.split('\n') if line.strip()]
+                if post_job_lines:
+                    job_sections.append(("post_job", "\n".join(post_job_lines)))
+            
+            # Add POSTAMBLE section
+            if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.postamble:
+                postamble_lines = [line for line in self._machine.blocks.postamble.split('\n') if line.strip()]
+                if postamble_lines:
+                    job_sections.append(("postamble", "\n".join(postamble_lines)))
+            
+            # Add FOOTER section (comment-only)
+            # TODO: Add footer generation if needed
+            
+            all_job_sections.extend(job_sections)
+        
+        # ===== STAGE 5: OUTPUT PRODUCTION =====
+        # Return sections (file writing happens elsewhere)
+        
+        # Add safetyblock at the very beginning if present
+        if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.safetyblock:
+            safety_lines = [line for line in self._machine.blocks.safetyblock.split('\n') if line.strip()]
+            if safety_lines:
+                all_job_sections.insert(0, ("safetyblock", "\n".join(safety_lines)))
+        
+        return all_job_sections 
+        
 
     def export(self) -> Union[None, GCodeSections]:
         """Process the parser arguments, then postprocess the 'postables'."""
@@ -452,6 +737,160 @@ class PostProcessor:
         self.all_visible: Parser = self.init_arguments(
             self.values, self.argument_defaults, self.all_arguments_visible
         )
+
+
+    def convert_command_to_gcode(self, command: Path.Command) -> str:
+        """
+        Converts a single-line commands to gcode.
+        Specifically, this method considers 
+          - the command name,
+          - units,
+          - required precision
+
+        The method looks for the blockdelete annotation and adds the leading slash if necessary.
+        The method evaluates commments and looks for the bCNC annotation to process them.
+        For highly unusual postprocessors this method may be overridden.
+
+        This method handles the following commmands
+          - Comments (Message)
+          - G0/G00 Rapid moves
+          - G1/G01 Feed Moves
+          - G2/G02/G3/G03 arc moves
+          - G73, G74, G81, G82, G83, G84, G38.2
+        """
+        from Path.Post.UtilsParse import (
+            linenumber,
+            format_command_line,
+            create_comment,
+        )
+
+        # reject unhandled commands
+        supported_commands = ["G0", "G00", "G1", "G01", "G2", "G02", "G3", "G03", "G73", "G74", "G81", "G82", "G83", "G84", "G38.2"]
+        if command.Name not in supported_commands and not command.Name.startswith("("):
+            raise ValueError(f"Unsupported command: {command.Name}")
+
+        # Extract command name and parameters
+        command_name = command.Name
+        params = command.Parameters
+        annotations = command.Annotations
+
+        # skip suppressed commands        
+        if self._machine and hasattr(self._machine, 'OutputOptions') and self._machine.OutputOptions.suppress_commands:
+            if command_name in self._machine.OutputOptions.suppress_commands:
+                return None
+
+        # handle comments
+        if command_name.startswith("("):  # comment
+            if self.values.get('OUTPUT_BCNC', False) and annotations.get("bcnc"):
+                # For now, treat bCNC comments as regular comments
+                # TODO: Implement proper bCNC block formatting when available
+                if self.values.get('OUTPUT_COMMENTS', True):
+                    # Format comment according to comment_symbol
+                    comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
+                    comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+                    if comment_symbol == '(':
+                        return f"({comment_text})"
+                    else:
+                        return f"{comment_symbol} {comment_text}"
+                return None
+            else:
+                if self.values.get('OUTPUT_COMMENTS', True):
+                    # Format comment according to comment_symbol
+                    comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
+                    comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+                    if comment_symbol == '(':
+                        return f"({comment_text})"
+                    else:
+                        return f"{comment_symbol} {comment_text}"
+                return None
+        
+        # Check for blockdelete annotation
+        block_delete_string = "/" if annotations.get("blockdelete") else "" 
+        
+        # Filter and prepare command (simple version)
+        filtered_command = command_name
+        should_skip = False
+        if should_skip:
+            return ""
+        
+        # Build command line
+        command_line: CommandLine = []
+        command_line.append(filtered_command)
+        
+        # Format parameters with clean, stateless implementation
+        parameter_order = self.values.get('PARAMETER_ORDER', ['X', 'Y', 'Z', 'F', 'I', 'J', 'K', 'R', 'Q', 'P'])
+        
+        def format_axis_param(value):
+            """Format axis parameter with unit conversion and precision."""
+            # Apply unit conversion if needed
+            units = self.values.get('UNITS', 'G21')
+            if units == 'G20':  # Imperial units
+                converted_value = value / 25.4  # Convert mm to inches
+            else:  # G21 or default - metric units
+                converted_value = value  # Keep as mm
+            
+            precision = self.values.get('AXIS_PRECISION', 3)
+            return f"{converted_value:.{precision}f}"
+        
+        def format_feed_param(value):
+            """Format feed parameter with speed precision."""
+            # Convert from mm/sec to mm/min (multiply by 60)
+            feed_value = value * 60.0
+            precision = self.values.get('FEED_PRECISION', 3)
+            return f"{feed_value:.{precision}f}"
+        
+        def format_spindle_param(value):
+            """Format spindle parameter with spindle decimals."""
+            decimals = self.values.get('SPINDLE_DECIMALS', 0)
+            return f"{value:.{decimals}f}"
+        
+        def format_int_param(value):
+            """Format integer parameter."""
+            return str(int(value))
+        
+        # Parameter type mappings
+        param_formatters = {
+            # Axis parameters
+            'X': format_axis_param, 'Y': format_axis_param, 'Z': format_axis_param,
+            'U': format_axis_param, 'V': format_axis_param, 'W': format_axis_param,
+            'A': format_axis_param, 'B': format_axis_param, 'C': format_axis_param,
+            # Arc parameters
+            'I': format_axis_param, 'J': format_axis_param, 'K': format_axis_param,
+            'R': format_axis_param, 'Q': format_axis_param,
+            # Feed and spindle
+            'F': format_feed_param, 'S': format_spindle_param,
+            # Integer parameters
+            'D': format_int_param, 'H': format_int_param, 'L': format_int_param,
+            'T': format_int_param, 'P': format_int_param,
+        }
+        
+        for parameter in parameter_order:
+            if parameter in params:
+                # Check if we should suppress duplicate parameters
+                if not self.values.get('OUTPUT_DOUBLES', False):  # Changed default value to False
+                    # Suppress parameters that haven't changed
+                    current_value = params[parameter]
+                    if parameter in self._modal_state and self._modal_state[parameter] == current_value:
+                        continue  # Skip this parameter
+                
+                if parameter in param_formatters:
+                    formatted_value = param_formatters[parameter](params[parameter])
+                    command_line.append(f"{parameter}{formatted_value}")
+                    # Update modal state
+                    self._modal_state[parameter] = params[parameter]
+                else:
+                    # Default formatting for unhandled parameters
+                    command_line.append(f"{parameter}{params[parameter]}")
+                    # Update modal state for unhandled parameters too
+                    self._modal_state[parameter] = params[parameter]
+        
+        # Format the command line
+        formatted_line = format_command_line(self.values, command_line)
+        
+        # Combine block delete and formatted command (no line numbers)
+        gcode_string = f"{block_delete_string}{formatted_line}"
+        
+        return gcode_string
 
 
 class WrapperPost(PostProcessor):
