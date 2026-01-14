@@ -690,6 +690,26 @@ class ObjectJob:
             self.obj.Operations.Group = group
             # op.Path.Center = self.obj.Operations.Path.Center
 
+    def getMachine(self):
+        """getMachine() ... returns an instantiated Machine object for this job.
+        Returns None if no machine is configured or if the machine cannot be loaded.
+        """
+        # TODO: Once Machine property is added to Job, use it here
+        # For now, return None since Machine property doesn't exist yet
+        if not hasattr(self.obj, "Machine"):
+            return None
+        
+        machine_name = self.obj.Machine
+        if not machine_name:
+            return None
+            
+        try:
+            from Path.Machine.models.machine import MachineFactory
+            return MachineFactory.get_machine(machine_name)
+        except Exception as e:
+            Path.Log.error(f"Failed to load machine '{machine_name}': {e}")
+            return None
+
     def nextToolNumber(self):
         # returns the next available toolnumber in the job
         group = self.obj.Tools.Group
