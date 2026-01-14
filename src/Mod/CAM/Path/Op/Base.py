@@ -470,6 +470,15 @@ class ObjectOp(object):
             )
             obj.StepDown = 0
 
+        if not hasattr(obj, "Workplane"):
+            obj.addProperty(
+                "App::PropertyVector",
+                "Workplane",
+                "Path",
+                QT_TRANSLATE_NOOP("App::Property", "Workplane for this operation"),
+            )
+            obj.Workplane = FreeCAD.Vector(0, 0, 1)  # Default Z-up
+
         self.setEditorModes(obj, features)
         self.opOnDocumentRestored(obj)
 
@@ -813,6 +822,8 @@ class ObjectOp(object):
         self.commandlist.append(Path.Command("(%s)" % obj.Label))
         if obj.Comment:
             self.commandlist.append(Path.Command("(%s)" % obj.Comment))
+
+
 
         result = self.opExecute(obj)
 
