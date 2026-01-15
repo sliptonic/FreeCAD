@@ -40,10 +40,17 @@ import Path.Base.Util as PathUtil
 import Path.Post.UtilsArguments as PostUtilsArguments
 import Path.Post.UtilsExport as PostUtilsExport
 import Path.Post.PostList as PostList
-import Path.Post.Utils as PostUtils
 
 import FreeCAD
 import Path
+from Path.Machine.models.machine import (
+    Machine,
+    Spindle,
+    OutputOptions,
+    GCodeBlocks,
+    ProcessingOptions,
+    MachineFactory,
+)
 
 translate = FreeCAD.Qt.translate
 
@@ -219,22 +226,35 @@ def needsTcOp(oldTc, newTc):
 class PostProcessor:
     """Base Class.  All non-legacy postprocessors should inherit from this class."""
 
-    def __init__(self, job, tooltip, tooltipargs, units, *args, **kwargs):
+    def __init__(self, job_or_jobs, tooltip, tooltipargs, units, *args, **kwargs):
         self._tooltip = tooltip
         self._tooltipargs = tooltipargs
         self._units = units
         self._args = args
         self._kwargs = kwargs
-        self.reinitialize()
 
-        if isinstance(job, dict):
-            # process only selected operations
-            self._job = job["job"]
-            self._operations = job["operations"]
+        # Handle job_or_jobs: can be single job or list of jobs
+        if isinstance(job_or_jobs, list):
+            self._jobs = job_or_jobs
+            if len(self._jobs) == 0:
+                raise ValueError("At least one job must be provided")
+            self._job = self._jobs[0]  # Default to first job for backward compatibility
         else:
-            # get all operations from 'Operations' group
-            self._job = job
-            self._operations = getattr(job.Operations, "Group", []) if job is not None else []
+            self._jobs = [job_or_jobs]  # Ensure it's always a list
+            self._job = job_or_jobs
+
+        # Initialize machine from job or set to None
+        self._machine = getattr(self._job, 'Machine', None) if self._job else None
+        if self._machine:
+            self._machine = MachineFactory.get_machine(self._machine)  # Ensure machine is loaded
+
+        self._modal_state = {
+            'X': None, 'Y': None, 'Z': None,
+            'A': None, 'B': None, 'C': None,
+            'U': None, 'V': None, 'W': None,
+            'F': None, 'S': None
+        }
+        self.reinitialize()
 
     @classmethod
     def exists(cls, processor):
