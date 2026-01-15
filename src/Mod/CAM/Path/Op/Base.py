@@ -830,7 +830,55 @@ class ObjectOp(object):
         if obj.Comment:
             self.commandlist.append(Path.Command("(%s)" % obj.Comment))
 
-
+        # Check if workplane rotation is needed and possible
+        # Requirements: 1) Workplane not Z-aligned, 2) Job has machine, 3) Machine has rotary axes
+        if hasattr(obj, "Workplane") and obj.Workplane:
+            if not obj.Workplane.isEqual(FreeCAD.Vector(0, 0, 1), 1e-6):
+                # Workplane needs rotation - check if machine supports it
+                machine = self.job.Proxy.getMachine() if self.job else None
+                if machine and machine.has_rotary_axes:
+                    # Calculate rotation commands using the rotation generator
+                    try:
+                        import Path.Base.Generator.rotation as rotation
+                        
+                        # Get rotation limits from machine (default to unlimited if not specified)
+                        aMin, aMax = -360, 360
+                        cMin, cMax = -360, 360
+                        
+                        if "A" in machine.rotary_axes:
+                            aMin = machine.rotary_axes["A"].min_limit
+                            aMax = machine.rotary_axes["A"].max_limit
+                        if "C" in machine.rotary_axes:
+                            cMin = machine.rotary_axes["C"].min_limit
+                            cMax = machine.rotary_axes["C"].max_limit
+                        
+                        # Generate rotation commands to align workplane with Z
+                        # Use compound moves if machine supports it
+                        rotation_commands = rotation.generate(
+                            obj.Workplane, 
+                            aMin=aMin, 
+                            aMax=aMax, 
+                            cMin=cMin, 
+                            cMax=cMax,
+                            compound=machine.compound_moves
+                        )
+                        
+                        self.commandlist.extend(rotation_commands)
+                        
+                    except ValueError as e:
+                        # No valid rotation solution found within machine limits
+                        Path.Log.error(
+                            f"Operation {obj.Label}: Cannot find valid rotation for workplane within machine limits: {e}"
+                        )
+                    except Exception as e:
+                        Path.Log.error(
+                            f"Operation {obj.Label}: Error calculating workplane rotation: {e}"
+                        )
+                else:
+                    # Machine doesn't support rotation or no machine configured
+                    Path.Log.warning(
+                        f"Operation {obj.Label} requires workplane rotation but machine does not have rotary axes"
+                    )
 
         result = self.opExecute(obj)
 
