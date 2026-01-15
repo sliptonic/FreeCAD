@@ -43,7 +43,7 @@ Values = Dict[str, Any]
 class Generic(PostProcessor):
     def __init__(self, job):
         super().__init__(
-            job,
+            job_or_jobs=job,
             tooltip=translate("CAM", "Generic post processor"),
             tooltipargs=[],
             units="Metric",

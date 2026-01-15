@@ -45,7 +45,7 @@ class Svg(PostProcessor):
     def __init__(self, job):
 
         super().__init__(
-            job,
+            job_or_jobs=job,
             tooltip=translate("CAM", "SVG post processor"),
             tooltipargs=[],
             units="mm",

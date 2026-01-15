@@ -59,7 +59,7 @@ class Centroid(PostProcessor):
         units="Metric",
     ) -> None:
         super().__init__(
-            job=job,
+            job_or_jobs=job,
             tooltip=tooltip,
             tooltipargs=tooltipargs,
             units=units,
