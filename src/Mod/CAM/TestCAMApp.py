@@ -25,6 +25,7 @@
 import TestApp
 
 from CAMTests.TestCAMSanity import TestCAMSanity
+
 from CAMTests.TestLinkingGenerator import TestGetLinkingMoves
 from CAMTests.TestMachine import (
     TestMachineDataclass,
@@ -59,11 +60,12 @@ from CAMTests.TestPathPost import TestPathPostUtils
 from CAMTests.TestPathPost import TestBuildPostList
 
 # from CAMTests.TestPathPost import TestOutputNameSubstitution
+from CAMTests.TestPathPost import TestConvertCommandToGcode
 from CAMTests.TestPathPost import TestPostProcessorFactory
 from CAMTests.TestPathPost import TestResolvingPostProcessorName
 from CAMTests.TestPathPost import TestFileNameGenerator
 from CAMTests.TestPathPost import TestHeaderBuilder
-
+from CAMTests.TestPathPost import TestExport2Integration
 
 from CAMTests.TestPathPreferences import TestPathPreferences
 from CAMTests.TestPathProfile import TestPathProfile
