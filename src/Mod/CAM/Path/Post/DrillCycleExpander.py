@@ -20,6 +20,8 @@ coupling to the postprocessing infrastructure.
 import Path
 from typing import List, Optional
 
+EXPANDABLE_DRILL_CYCLES = {"G81", "G82", "G83", "G73"}
+
 
 class DrillCycleExpander:
     """Expands canned drill cycles (Path.Command) into basic G-code movements."""
