@@ -61,17 +61,19 @@ class NumberGenerator:
 
 # Insert Line Numbers
 
-def insert_line_numbers(gcode: List[str]) -> List[str]:
+def insert_line_numbers(gcode: List[str], start: int = 10, increment: int = 10) -> List[str]:
     """Insert line numbers (N-codes) into G-code lines.
     
     Args:
         gcode: List of G-code strings
+        start: Starting line number (default: 10)
+        increment: Line number increment (default: 10)
         
     Returns:
         List of G-code strings with line numbers inserted
     """
     result = []
-    line_generator = NumberGenerator(template='N{}', start=10, increment=10)
+    line_generator = NumberGenerator(template='N{}', start=start, increment=increment)
     
     for line in gcode:
         # Skip empty lines and comments
