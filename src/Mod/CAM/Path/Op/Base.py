@@ -198,7 +198,8 @@ class ObjectOp(object):
         
         # Add attachment extension to enable attaching operations to geometry
         # This allows operations to automatically position/orient based on attached faces
-        if not obj.hasExtension("Part::AttachExtension"):
+        # Only add to real objects, not OpPrototypes
+        if hasattr(obj, 'hasExtension') and not obj.hasExtension("Part::AttachExtension"):
             obj.addExtension("Part::AttachExtensionPython")
 
         features = self.opFeatures(obj)
