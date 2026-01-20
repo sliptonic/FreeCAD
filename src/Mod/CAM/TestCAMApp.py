@@ -55,17 +55,21 @@ from CAMTests.TestPathHelixGenerator import TestPathHelixGenerator
 from CAMTests.TestPathLog import TestPathLog
 from CAMTests.TestPathOpUtil import TestPathOpUtil
 
-# from CAMTests.TestPathPost import TestPathPost
-from CAMTests.TestPathPost import TestPathPostUtils
-from CAMTests.TestPathPost import TestBuildPostList
-
-# from CAMTests.TestPathPost import TestOutputNameSubstitution
-from CAMTests.TestPathPost import TestConvertCommandToGcode
-from CAMTests.TestPathPost import TestPostProcessorFactory
-from CAMTests.TestPathPost import TestResolvingPostProcessorName
-from CAMTests.TestPathPost import TestFileNameGenerator
-from CAMTests.TestPathPost import TestHeaderBuilder
-from CAMTests.TestPathPost import TestExport2Integration
+# Post-processing tests split into 3 files for better organization
+from CAMTests.TestPostCore import (
+    TestPathPostUtils,
+    TestBuildPostList,
+    TestConvertCommandToGcode,
+)
+from CAMTests.TestPostProcessor import (
+    TestPostProcessorFactory,
+    TestResolvingPostProcessorName,
+    TestHeaderBuilder,
+)
+from CAMTests.TestPostOutput import (
+    TestFileNameGenerator,
+    TestExport2Integration,
+)
 
 from CAMTests.TestPathPreferences import TestPathPreferences
 from CAMTests.TestPathProfile import TestPathProfile
