@@ -1644,3 +1644,101 @@ class TestExport2Integration(unittest.TestCase):
         if m4_index is not None:
             self.assertIn(m4_index + 1, g4_indices,
                         "G4 should appear immediately after M4")
+
+    def test110_early_tool_prep(self):
+        """Test that early_tool_prep inserts tool prep commands after M6."""
+        # Create a second tool controller for testing tool changes
+        from Path.Tool.toolbit import ToolBit
+        tool_attrs = {
+            "name": "TestTool2",
+            "shape": "endmill.fcstd",
+            "parameter": {"Diameter": 3.0},
+            "attribute": {},
+        }
+        toolbit2 = ToolBit.from_dict(tool_attrs)
+        tool2 = toolbit2.attach_to_doc(doc=self.doc)
+        tool2.Label = "3mm_Endmill"
+        
+        tc2 = PathToolController.Create("TC_Test_Tool2", tool2, 2)
+        tc2.Label = "TC: 3mm Endmill"
+        self.job.addObject(tc2)
+        
+        # Create a second operation using the second tool
+        profile_op2 = self.doc.addObject("Path::FeaturePython", "TestProfile2")
+        profile_op2.Label = "TestProfile2"
+        profile_op2.Path = Path.Path([
+            Path.Command("G0", {"X": 50.0, "Y": 50.0, "Z": 5.0}),
+            Path.Command("G1", {"X": 60.0, "Y": 50.0, "Z": -5.0, "F": 100.0}),
+            Path.Command("G0", {"X": 50.0, "Y": 50.0, "Z": 5.0}),
+        ])
+        self.job.Operations.addObject(profile_op2)
+        
+        # Create machine with early_tool_prep enabled
+        config_with_prep = self._get_full_machine_config()
+        config_with_prep['processing']['early_tool_prep'] = True
+        machine_with_prep = Machine.from_dict(config_with_prep)
+        
+        # Create machine without early_tool_prep
+        config_no_prep = self._get_full_machine_config()
+        config_no_prep['processing']['early_tool_prep'] = False
+        machine_no_prep = Machine.from_dict(config_no_prep)
+        
+        try:
+            # Test with early_tool_prep enabled
+            results_with = self._run_export2(machine_with_prep)
+            gcode_with = self._get_all_gcode(results_with)
+            print("XXXXXXXXXXXXXXXXXX  WITH")
+            print(gcode_with)
+            print("XXXXXXXXXXXXXXXXXX  WITH")
+            
+            # Test without early_tool_prep
+            results_without = self._run_export2(machine_no_prep)
+            gcode_without = self._get_all_gcode(results_without)
+            print("XXXXXXXXXXXXXXXXXX  WITHOUT")
+            print(gcode_without)
+            print("XXXXXXXXXXXXXXXXXX  WITHOUT")
+            
+            lines_with = [line.strip() for line in gcode_with.split('\n') if line.strip()]
+            lines_without = [line.strip() for line in gcode_without.split('\n') if line.strip()]
+            
+            # Debug: Print some output to understand what's happening
+            # print("\n=== WITH early_tool_prep ===")
+            # for i, line in enumerate(lines_with[:50]):
+            #     print(f"{i:3d}: {line}")
+            
+            # Find M6 commands in both outputs
+            m6_lines_with = [i for i, line in enumerate(lines_with) if 'M6' in line]
+            m6_lines_without = [i for i, line in enumerate(lines_without) if 'M6' in line]
+            
+            # With early_tool_prep, should have standalone T commands (tool prep)
+            # Look for lines that start with T followed by a digit
+            import re
+            standalone_t_with = [line for line in lines_with if re.match(r'^T\d+$', line)]
+            standalone_t_without = [line for line in lines_without if re.match(r'^T\d+$', line)]
+            
+            # Should have standalone T commands when early_tool_prep is enabled
+            # Note: early_tool_prep only works when there are multiple tools
+            if len(m6_lines_with) >= 2:
+                self.assertGreater(len(standalone_t_with), 0,
+                                 "Should have standalone T prep commands when early_tool_prep is enabled with multiple tools")
+                
+                # Verify the early prep command appears after first M6
+                first_m6_idx = m6_lines_with[0]
+                # Look for standalone T command shortly after first M6
+                found_early_prep = False
+                for i in range(first_m6_idx + 1, min(first_m6_idx + 20, len(lines_with))):
+                    line = lines_with[i]
+                    if re.match(r'^T\d+$', line):
+                        found_early_prep = True
+                        break
+                
+                self.assertTrue(found_early_prep,
+                              "Should have early tool prep command shortly after first M6")
+            
+        finally:
+            # Clean up the second tool controller and operation
+            self.job.Operations.removeObject(profile_op2)
+            self.job.removeObject(tc2)
+            self.doc.removeObject(profile_op2.Name)
+            self.doc.removeObject(tc2.Name)
+            self.doc.removeObject(tool2.Name)

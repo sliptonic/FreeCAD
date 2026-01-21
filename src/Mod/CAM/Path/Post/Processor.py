@@ -422,6 +422,8 @@ class PostProcessor:
         early_tool_prep = False
         if self._machine and hasattr(self._machine, 'processing'):
             early_tool_prep = getattr(self._machine.processing, 'early_tool_prep', False)
+
+        Path.Log.info(f"Early tool prep: {early_tool_prep}")
         
         for job in self._jobs:
             # Build ordered postables for this job
@@ -930,6 +932,7 @@ class PostProcessor:
             early_tool_prep = getattr(self._machine.processing, 'early_tool_prep', False)
         
         postables = self._buildPostList(early_tool_prep)
+        Path.Log.debug(f"postables {postables}")
 
         # Process canned cycles for drilling operations
         for _, section in enumerate(postables):
@@ -1004,7 +1007,7 @@ class PostProcessor:
         
         supported = CONSTANTS.GCODE_SUPPORTED + CONSTANTS.GCODE_FIXTURES + CONSTANTS.MCODE_SUPPORTED
 
-        if command.Name not in supported and not command.Name.startswith("("):
+        if command.Name not in supported and not command.Name.startswith("(") and not command.Name.startswith("T"):
             raise ValueError(f"Unsupported command: {command.Name}")
 
         # Extract command name and parameters
