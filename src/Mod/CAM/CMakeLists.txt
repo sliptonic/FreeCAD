@@ -318,28 +318,20 @@ SET(PathPythonPostScripts_SRCS
     Path/Post/scripts/dxf_post.py
     Path/Post/scripts/dynapath_post.py
     Path/Post/scripts/dynapath_4060_post.py
-    Path/Post/scripts/estlcam_post.py
-    Path/Post/scripts/fablin_post.py
     Path/Post/scripts/fanuc_post.py
     Path/Post/scripts/fangling_post.py
     Path/Post/scripts/gcode_pre.py
     Path/Post/scripts/generic_post.py
-    Path/Post/scripts/grbl_legacy_post.py
     Path/Post/scripts/heidenhain_post.py
     Path/Post/scripts/jtech_post.py
-    Path/Post/scripts/KineticNCBeamicon2_post.py
     Path/Post/scripts/linuxcnc_post.py
-    Path/Post/scripts/linuxcnc_legacy_post.py
     Path/Post/scripts/mach3_mach4_post.py
     Path/Post/scripts/mach3_mach4_legacy_post.py
-    Path/Post/scripts/masso_g3_post.py
     Path/Post/scripts/marlin_post.py
     Path/Post/scripts/nccad_post.py
     Path/Post/scripts/opensbp_post.py
     Path/Post/scripts/opensbp_pre.py
     Path/Post/scripts/philips_post.py
-    Path/Post/scripts/grbl_post.py
-    Path/Post/scripts/grbl_legacy_post.py
     Path/Post/scripts/test_post.py
     Path/Post/scripts/rml_post.py
     Path/Post/scripts/rrf_post.py
@@ -347,7 +339,6 @@ SET(PathPythonPostScripts_SRCS
     Path/Post/scripts/smoothie_post.py
     Path/Post/scripts/snapmaker_post.py
     Path/Post/scripts/svg_post.py
-    Path/Post/scripts/uccnc_post.py
     Path/Post/scripts/wedm_post.py
 )
 
@@ -581,7 +572,6 @@ SET(Tests_SRCS
     CAMTests/TestPathVcarve.py
     CAMTests/TestPathVoronoi.py
     CAMTests/TestGrblLegacyPost.py
-    CAMTests/TestLinuxCNCLegacyPost.py
     CAMTests/TestDressupPost.py
     CAMTests/TestTestPost.py
     CAMTests/TestPostGCodes.py
@@ -1018,4 +1008,12 @@ INSTALL(
         ${PathData_Threads}
     DESTINATION
         Mod/CAM/Data/Threads
+)
+
+INSTALL(
+    DIRECTORY
+        Machine/machines/
+    DESTINATION
+        Mod/CAM/Machine/machines
+    FILES_MATCHING PATTERN "*.fcm"
 )

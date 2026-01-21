@@ -43,10 +43,10 @@ class TestPathPreferences(PathTestUtils.PathTestBase):
         self.assertEqual(len([p for p in paths if p.endswith("/Path/Post/scripts/")]), 1)
 
     def test03(self):
-        """Available post processors include linuxcnc, grbl and opensbp."""
+        """Available post processors include linuxcnc, generic and opensbp."""
         posts = Path.Preferences.allAvailablePostProcessors()
         self.assertTrue("linuxcnc" in posts)
-        self.assertTrue("grbl" in posts)
+        self.assertTrue("generic" in posts)
         self.assertTrue("opensbp" in posts)
 
     def test10(self):

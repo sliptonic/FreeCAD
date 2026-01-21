@@ -1,0 +1,134 @@
+{
+    "blocks": {
+        "postamble": "M5",
+        "preamble": ""
+    },
+    "freecad_version": "1.2.0",
+    "machine": {
+        "axes": {
+            "X": {
+                "joint": [
+                    [
+                        1.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ]
+                ],
+                "max": 500,
+                "max_velocity": 10000,
+                "min": 0,
+                "sequence": 0,
+                "type": "linear"
+            },
+            "Y": {
+                "joint": [
+                    [
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ]
+                ],
+                "max": 300,
+                "max_velocity": 10000,
+                "min": 0,
+                "sequence": 0,
+                "type": "linear"
+            },
+            "Z": {
+                "joint": [
+                    [
+                        0.0,
+                        0.0,
+                        1.0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ]
+                ],
+                "max": 300,
+                "max_velocity": 10000,
+                "min": 0,
+                "sequence": 0,
+                "type": "linear"
+            }
+        },
+        "description": "3D printer converted to CNC using Marlin firmware",
+        "manufacturer": "Marlin",
+        "name": "Generic Marlin CNC",
+        "spindles": [
+            {
+                "id": "spindle1",
+                "max_power_kw": 0.5,
+                "max_rpm": 24000,
+                "min_rpm": 0,
+                "name": "Spindle 1",
+                "tool_axis": [
+                    0.0,
+                    0.0,
+                    -1.0
+                ],
+                "tool_change": "manual"
+            }
+        ],
+        "units": "metric"
+    },
+    "output": {
+        "axis_precision": 3,
+        "command_space": " ",
+        "comment_symbol": "(",
+        "date_in_header": true,
+        "description_in_header": true,
+        "document_name_in_header": true,
+        "end_of_line_chars": "\n",
+        "feed_precision": 3,
+        "line_increment": 10,
+        "line_number_prefix": "N",
+        "line_number_start": 100,
+        "line_numbers": false,
+        "list_fixtures_in_header": true,
+        "list_tools_in_header": false,
+        "machine_name_in_header": false,
+        "output_bcnc_comments": true,
+        "output_blank_lines": true,
+        "output_comments": true,
+        "output_duplicate_commands": true,
+        "output_duplicate_parameters": true,
+        "output_header": true,
+        "output_labels": false,
+        "output_operation_labels": true,
+        "output_units": "metric",
+        "spindle_precision": 0
+    },
+    "postprocessor": {
+        "args": "",
+        "file_name": "marlin"
+    },
+    "processing": {
+        "drill_cycles_to_translate": [
+            "G73",
+            "G81",
+            "G82",
+            "G83"
+        ],
+        "early_tool_prep": false,
+        "filter_inefficient_moves": false,
+        "spindle_wait": 3.0,
+        "split_arcs": false,
+        "suppress_commands": [],
+        "tool_change": false,
+        "translate_drill_cycles": true
+    },
+    "version": 1
+}
