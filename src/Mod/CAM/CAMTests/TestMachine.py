@@ -14,7 +14,7 @@ import FreeCAD
 import tempfile
 import pathlib
 import CAMTests.PathTestUtils as PathTestUtils
-from Path.Machine.models.machine import (
+from Machine.models.machine import (
     Machine,
     Spindle,
     OutputOptions,
@@ -114,7 +114,7 @@ class TestOutputOptions(PathTestUtils.PathTestBase):
         opts = OutputOptions()
 
         # Default values - using current field names
-        from Path.Machine.models.machine import OutputUnits
+        from Machine.models.machine import OutputUnits
         self.assertEqual(opts.output_units, OutputUnits.METRIC)
         self.assertEqual(opts.command_space, " ")
         self.assertEqual(opts.comment_symbol, "(")
@@ -145,7 +145,7 @@ class TestOutputOptions(PathTestUtils.PathTestBase):
 
     def test_custom_initialization(self):
         """Test OutputOptions initialization with custom values"""
-        from Path.Machine.models.machine import OutputUnits
+        from Machine.models.machine import OutputUnits
         opts = OutputOptions(
             output_units=OutputUnits.IMPERIAL,
             command_space="",

@@ -27,8 +27,8 @@ import json
 from typing import Optional, Dict, Any, get_origin, get_args
 from dataclasses import fields
 from enum import Enum
-from ...models import Machine, MachineFactory, LinearAxis, RotaryAxis, Spindle
-from ....Main.Gui.Editor import CodeEditor
+from Machine.models.machine import Machine, MachineFactory, LinearAxis, RotaryAxis, Spindle
+from Path.Main.Gui.Editor import CodeEditor
 from Path.Post.Processor import PostProcessorFactory
 import re
 
