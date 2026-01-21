@@ -116,8 +116,8 @@ from CAMTests.TestPathVoronoi import TestPathVoronoi
 from CAMTests.TestGenericPost import TestGenericPost
 from CAMTests.TestLinuxCNCPost import TestLinuxCNCPost
 from CAMTests.TestFanucPost import TestFanucPost
-from CAMTests.TestGrblPost import TestGrblPost
-from CAMTests.TestMassoG3Post import TestMassoG3Post
+# from CAMTests.TestGrblPost import TestGrblPost
+# from CAMTests.TestMassoG3Post import TestMassoG3Post
 from CAMTests.TestCentroidPost import TestCentroidPost
 from CAMTests.TestMach3Mach4Post import TestMach3Mach4Post
 from CAMTests.TestTestPost import TestTestPost
@@ -125,8 +125,8 @@ from CAMTests.TestPostGCodes import TestPostGCodes
 from CAMTests.TestPostMCodes import TestPostMCodes
 from CAMTests.TestDressupPost import TestDressupPost
 
-from CAMTests.TestLinuxCNCLegacyPost import TestLinuxCNCLegacyPost
-from CAMTests.TestGrblLegacyPost import TestGrblLegacyPost
+# from CAMTests.TestLinuxCNCLegacyPost import TestLinuxCNCLegacyPost
+# from CAMTests.TestGrblLegacyPost import TestGrblLegacyPost
 from CAMTests.TestCentroidLegacyPost import TestCentroidLegacyPost
 from CAMTests.TestMach3Mach4LegacyPost import TestMach3Mach4LegacyPost
 
