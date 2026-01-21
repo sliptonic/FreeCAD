@@ -704,7 +704,7 @@ class ObjectJob:
             return None
             
         try:
-            from Path.Machine.models.machine import MachineFactory
+            from Machine.models.machine import MachineFactory
             return MachineFactory.get_machine(machine_name)
         except Exception as e:
             Path.Log.error(f"Failed to load machine '{machine_name}': {e}")
