@@ -77,6 +77,10 @@ class _HeaderBuilder:
         self._machine = None
         self._post_processor = None
         self._cam_file = None
+        self._project_file = None
+        self._output_units = None
+        self._document_name = None
+        self._description = None
         self._author = None
         self._output_time = None
         self._tools = []  # List of (tool_number, tool_name) tuples
@@ -98,6 +102,22 @@ class _HeaderBuilder:
     def add_cam_file(self, filename: str):
         """Add CAM file information to the header."""
         self._cam_file = filename
+
+    def add_project_file(self, filename: str):
+        """Add project file information to the header."""
+        self._project_file = filename
+
+    def add_output_units(self, units: str):
+        """Add output units information to the header."""
+        self._output_units = units
+
+    def add_document_name(self, name: str):
+        """Add document name to the header."""
+        self._document_name = name
+
+    def add_description(self, description: str):
+        """Add description to the header."""
+        self._description = description
 
     def add_author(self, author: str):
         """Add author information to the header."""
@@ -139,6 +159,22 @@ class _HeaderBuilder:
         # Add CAM file info
         if self._cam_file:
             commands.append(Path.Command(f"(Cam File: {self._cam_file})"))
+
+        # Add project file info
+        if self._project_file:
+            commands.append(Path.Command(f"(Project File: {self._project_file})"))
+
+        # Add output units info
+        if self._output_units:
+            commands.append(Path.Command(f"(Output Units: {self._output_units})"))
+
+        # Add document name
+        if self._document_name:
+            commands.append(Path.Command(f"(Document: {self._document_name})"))
+
+        # Add description
+        if self._description:
+            commands.append(Path.Command(f"(Description: {self._description})"))
 
         # Add author info
         if self._author:
@@ -367,24 +403,29 @@ class PostProcessor:
                 self.values['AXIS_PRECISION'] = output_options.axis_precision
             if hasattr(output_options, 'feed_precision'):
                 self.values['FEED_PRECISION'] = output_options.feed_precision
+            if hasattr(output_options, 'command_space'):
+                self.values['COMMAND_SPACE'] = output_options.command_space
+            if hasattr(output_options, 'end_of_line_chars'):
+                self.values['END_OF_LINE_CHARS'] = output_options.end_of_line_chars
             if hasattr(output_options, 'spindle_precision'):
                 self.values['SPINDLE_DECIMALS'] = output_options.spindle_precision
-            elif hasattr(output_options, 'spindle_decimals'):
-                self.values['SPINDLE_DECIMALS'] = output_options.spindle_decimals
             if hasattr(output_options, 'comment_symbol'):
                 self.values['COMMENT_SYMBOL'] = output_options.comment_symbol
-            if hasattr(output_options, 'filter_double_parameters'):
-                self.values['OUTPUT_DOUBLES'] = output_options.filter_double_parameters
-            elif hasattr(output_options, 'output_double_parameters'):
-                self.values['OUTPUT_DOUBLES'] = output_options.output_double_parameters
+            if hasattr(output_options, 'output_duplicate_parameters'):
+                self.values['OUTPUT_DOUBLES'] = output_options.output_duplicate_parameters
         
         # ===== STAGE 1: ORDERING =====
         # Process all jobs (currently only first job supported)
         all_job_sections = []
         
+        # Get early_tool_prep setting from machine config
+        early_tool_prep = False
+        if self._machine and hasattr(self._machine, 'processing'):
+            early_tool_prep = getattr(self._machine.processing, 'early_tool_prep', False)
+        
         for job in self._jobs:
             # Build ordered postables for this job
-            postables = self._buildPostList(job)
+            postables = self._buildPostList(early_tool_prep)
             Path.Log.info(f"Postables for job {job.Name}: {postables}")
 
             
@@ -394,22 +435,85 @@ class PostProcessor:
             if self.values.get('OUTPUT_HEADER', True):
                 if self._machine:
                     gcodeheader.add_machine_info(self._machine.name if hasattr(self._machine, 'name') else str(self._machine))
+                
+                # Add project file if enabled
+                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'project_file_in_header'):
+                    if self._machine.output.project_file_in_header and self._job:
+                        if hasattr(self._job, 'Document') and self._job.Document:
+                            project_file = self._job.Document.FileName
+                            if project_file:
+                                gcodeheader.add_project_file(project_file)
+                
+                # Add output units if enabled
+                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'output_units_in_header'):
+                    if self._machine.output.output_units_in_header:
+                        units_str = "Metric - mm" if self._machine.output.output_units.value == "metric" else "Imperial - inch"
+                        gcodeheader.add_output_units(units_str)
+                
+                # Add document name if enabled
+                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'document_name_in_header'):
+                    if self._machine.output.document_name_in_header and self._job:
+                        if hasattr(self._job, 'Document') and self._job.Document:
+                            doc_name = self._job.Document.Label
+                            if doc_name:
+                                gcodeheader.add_document_name(doc_name)
+                
+                # Add description if enabled
+                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'description_in_header'):
+                    if self._machine.output.description_in_header and self._job:
+                        if hasattr(self._job, 'Description') and self._job.Description:
+                            gcodeheader.add_description(self._job.Description)
+                
+                # Add author if enabled
+                if self._job and hasattr(self._job, 'Document') and self._job.Document:
+                    if hasattr(self._job.Document, 'CreatedBy') and self._job.Document.CreatedBy:
+                        gcodeheader.add_author(self._job.Document.CreatedBy)
+                
+                # Add date/time if enabled
+                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'date_in_header'):
+                    if self._machine.output.date_in_header:
+                        import datetime
+                        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        gcodeheader.add_output_time(timestamp)
             
             # Process each section's postables
             for section_name, sublist in postables:
                 Path.Log.info(f"Processing section {section_name} with {len(sublist)} postables")
                 for item in sublist:
                     # Canned cycle termination and expansion
-                    if hasattr(item, 'Proxy') and isinstance(item.Proxy, ObjectDrilling):
+                    # Check if this item has drill cycle commands
+                    has_drill_cycles = False
+                    if hasattr(item, 'Path') and item.Path:
+                        drill_commands = ['G73', 'G74', 'G81', 'G82', 'G83', 'G84', 'G85', 'G86', 'G87', 'G88', 'G89']
+                        has_drill_cycles = any(cmd.Name in drill_commands for cmd in item.Path.Commands)
+                    
+                    if has_drill_cycles:
                         item.Path = PostUtils.cannedCycleTerminator(item.Path)
                         
                         if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.translate_drill_cycles:
-                            item.Path = DrillCycleExpander.expand_commands(item)
+                            # Only expand if it's actually a drilling operation
+                            if hasattr(item, 'Proxy') and isinstance(item.Proxy, ObjectDrilling):
+                                item.Path = DrillCycleExpander.expand_commands(item)
                     
                     # Arc splitting
                     if hasattr(item, 'Path') and item.Path:
                         if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.split_arcs:
                             item.Path = PostUtils.splitArcs(item.Path)
+                    
+                    # Spindle wait - inject G4 pause after M3/M4 spindle start commands
+                    if hasattr(item, 'Path') and item.Path:
+                        if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.spindle_wait > 0:
+                            wait_time = self._machine.processing.spindle_wait
+                            new_commands = []
+                            for cmd in item.Path.Commands:
+                                new_commands.append(cmd)
+                                # After spindle start commands, inject G4 pause
+                                if cmd.Name in ('M3', 'M03', 'M4', 'M04'):
+                                    # Create G4 dwell command with P parameter
+                                    pause_cmd = Path.Command('G4', {'P': wait_time})
+                                    new_commands.append(pause_cmd)
+                            # Replace Path with modified command list
+                            item.Path = Path.Path(new_commands)
                     
                     # Collect header information
                     if self.values.get('OUTPUT_HEADER', True):
@@ -419,7 +523,7 @@ class PostProcessor:
                             if hasattr(item, 'Path') and item.Path and item.Path.Commands:
                                 fixture_name = item.Path.Commands[0].Name
                                 gcodeheader.add_fixture(fixture_name)
-            
+            Path.Log.debug(postables)
             # ===== STAGE 3: COMMAND CONVERSION =====
             job_sections = []
             
@@ -441,6 +545,15 @@ class PostProcessor:
             if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.preamble:
                 preamble_lines = [line for line in self._machine.blocks.preamble.split('\n') if line.strip()]
             
+            # Insert unit command (G20/G21) based on output_units setting
+            unit_command_line = []
+            if self._machine and hasattr(self._machine, 'output'):
+                from Path.Machine.models.machine import OutputUnits
+                if self._machine.output.output_units == OutputUnits.METRIC:
+                    unit_command_line = ["G21"]
+                elif self._machine.output.output_units == OutputUnits.IMPERIAL:
+                    unit_command_line = ["G20"]
+            
             # Collect PRE-JOB lines
             pre_job_lines = []
             if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.pre_job:
@@ -450,12 +563,14 @@ class PostProcessor:
             for section_name, sublist in postables:
                 gcode_lines = []
                 
-                # Add header, preamble, and pre-job lines only to first section
+                # Add header, preamble, unit command, and pre-job lines only to first section
                 if section_name == postables[0][0]:
                     # Header comments first (no line numbers)
                     gcode_lines.extend(header_lines)
                     # Then preamble
                     gcode_lines.extend(preamble_lines)
+                    # Then unit command (G20/G21)
+                    gcode_lines.extend(unit_command_line)
                     # Then pre-job
                     gcode_lines.extend(pre_job_lines)
                 
@@ -465,6 +580,27 @@ class PostProcessor:
                         if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.pre_tool_change:
                             pre_lines = [line for line in self._machine.blocks.pre_tool_change.split('\n') if line.strip()]
                             gcode_lines.extend(pre_lines)
+                        
+                        # Generate M6 tool change command
+                        if self._machine and hasattr(self._machine, 'processing'):
+                            if self._machine.processing.tool_change:
+                                # Generate M6 T{ToolNumber} command
+                                tool_num = item.ToolNumber
+                                m6_cmd = f"M6 T{tool_num}"
+                                gcode_lines.append(m6_cmd)
+                            else:
+                                # Tool change disabled - output as comment
+                                comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+                                tool_num = item.ToolNumber
+                                if comment_symbol == '(':
+                                    gcode_lines.append(f"(Tool change suppressed: M6 T{tool_num})")
+                                else:
+                                    gcode_lines.append(f"{comment_symbol} Tool change suppressed: M6 T{tool_num}")
+                        else:
+                            # No machine config - output M6 by default
+                            tool_num = item.ToolNumber
+                            m6_cmd = f"M6 T{tool_num}"
+                            gcode_lines.append(m6_cmd)
                     elif hasattr(item, 'Label') and item.Label == "Fixture":  # FIXTURE
                         if self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.pre_fixture_change:
                             pre_lines = [line for line in self._machine.blocks.pre_fixture_change.split('\n') if line.strip()]
@@ -498,7 +634,24 @@ class PostProcessor:
                                         gcode_lines.extend(post_rotary_lines)
                                     in_rotary_group = False
                                 
+                                # Convert command to G-code
                                 gcode = self.convert_command_to_gcode(cmd)
+                                
+                                # Handle tool_change setting - suppress M6 if disabled
+                                if cmd.Name in ('M6', 'M06'):
+                                    if self._machine and hasattr(self._machine, 'processing') and not self._machine.processing.tool_change:
+                                        # Convert M6 to comment instead of outputting it
+                                        comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+                                        if comment_symbol == '(':
+                                            gcode = f"(Tool change suppressed: {gcode})"
+                                        else:
+                                            gcode = f"{comment_symbol} Tool change suppressed: {gcode}"
+                                    
+                                    # Handle tool_before_change setting - swap T and M6 order
+                                    # This is handled in convert_command_to_gcode, but we need to track it
+                                    # The actual swapping happens when formatting the command line
+                                
+                                # Add the G-code line
                                 if gcode is not None and gcode.strip():
                                     gcode_lines.append(gcode)
                                 
@@ -540,14 +693,26 @@ class PostProcessor:
                     # Apply optimizations to body only (not header comments)
                     if body_part and self._machine and hasattr(self._machine, 'output'):
                         # Modal command deduplication
-                        if self._machine.output.filter_double_commands:
-                            body_part = deduplicate_repeated_commands(body_part)
+                        # output_duplicate_commands: True = output all, False = suppress duplicates
+                        if hasattr(self._machine.output, 'output_duplicate_commands'):
+                            if not self._machine.output.output_duplicate_commands:
+                                body_part = deduplicate_repeated_commands(body_part)
                         
-                        # Suppress redundant axis words
-                        body_part = suppress_redundant_axes_words(body_part)
-                        
-                        # Filter inefficient moves
-                        body_part = filter_inefficient_moves(body_part)
+                        # Suppress redundant axis words (only if output_duplicate_parameters is False)
+                        # output_duplicate_parameters: True = output all parameters, False = suppress duplicates
+                        if hasattr(self._machine.output, 'output_duplicate_parameters'):
+                            if not self._machine.output.output_duplicate_parameters:
+                                body_part = suppress_redundant_axes_words(body_part)
+                        else:
+                            # Default behavior if setting not present: suppress duplicates
+                            body_part = suppress_redundant_axes_words(body_part)
+                    
+                    # Filter inefficient moves (optional optimization)
+                    # Collapses redundant G0 rapid move chains - may be too aggressive for some machines
+                    if body_part and self._machine and hasattr(self._machine, 'processing'):
+                        if hasattr(self._machine.processing, 'filter_inefficient_moves'):
+                            if self._machine.processing.filter_inefficient_moves:
+                                body_part = filter_inefficient_moves(body_part)
                     
                     # Line numbering (only on body, not header comments)
                     if body_part and self.values.get('OUTPUT_LINE_NUMBERS', False):
@@ -561,8 +726,21 @@ class PostProcessor:
                     # Recombine header and body
                     final_lines = header_part + body_part
                     
+                    # Build gcode with \n separators (standard format)
+                    gcode_with_newlines = '\n'.join(final_lines)
+                    
+                    # Get configured line ending and apply transformation
+                    line_ending = self.values.get('END_OF_LINE_CHARS', '\n')
+                    
+                    if line_ending == '\n':
+                        # Default: let _write_file convert to system line endings
+                        gcode_string = gcode_with_newlines
+                    else:
+                        # Custom or standard line endings: replace \n with configured chars
+                        gcode_string = gcode_with_newlines.replace('\n', line_ending)
+                    
                     # Add section to output
-                    job_sections.append((section_name, "\n".join(final_lines)))
+                    job_sections.append((section_name, gcode_string))
             
             # Append POST-JOB and POSTAMBLE blocks to the last section
             if job_sections:
@@ -583,7 +761,18 @@ class PostProcessor:
                 
                 # Append to last section if we have additional lines
                 if additional_lines:
-                    job_sections[-1] = (last_section_name, last_section_gcode + "\n" + "\n".join(additional_lines))
+                    # Build with \n separators
+                    additional_gcode_newlines = '\n'.join(additional_lines)
+                    
+                    # Get configured line ending and apply transformation
+                    line_ending = self.values.get('END_OF_LINE_CHARS', '\n')
+                    
+                    if line_ending == '\n':
+                        additional_gcode = '\n' + additional_gcode_newlines
+                    else:
+                        additional_gcode = line_ending + additional_gcode_newlines.replace('\n', line_ending)
+                    
+                    job_sections[-1] = (last_section_name, last_section_gcode + additional_gcode)
             
             # Add FOOTER section (comment-only)
             # TODO: Add footer generation if needed
@@ -597,8 +786,19 @@ class PostProcessor:
         if all_job_sections and self._machine and hasattr(self._machine, 'blocks') and self._machine.blocks.safetyblock:
             safety_lines = [line for line in self._machine.blocks.safetyblock.split('\n') if line.strip()]
             if safety_lines:
+                # Build with \n separators
+                safety_gcode_newlines = '\n'.join(safety_lines)
+                
+                # Get configured line ending and apply transformation
+                line_ending = self.values.get('END_OF_LINE_CHARS', '\n')
+                
+                if line_ending == '\n':
+                    safety_gcode = safety_gcode_newlines + '\n'
+                else:
+                    safety_gcode = safety_gcode_newlines.replace('\n', line_ending) + line_ending
+                
                 first_section_name, first_section_gcode = all_job_sections[0]
-                all_job_sections[0] = (first_section_name, "\n".join(safety_lines) + "\n" + first_section_gcode)
+                all_job_sections[0] = (first_section_name, safety_gcode + first_section_gcode)
 
         Path.Log.debug(f"Returning {len(all_job_sections)} sections")
         Path.Log.debug(f"Sections: {all_job_sections}")
@@ -724,7 +924,12 @@ class PostProcessor:
         section: Section
         sublist: Sublist
 
-        postables = self._buildPostList()
+        # Get early_tool_prep setting from machine config
+        early_tool_prep = False
+        if self._machine and hasattr(self._machine, 'processing'):
+            early_tool_prep = getattr(self._machine.processing, 'early_tool_prep', False)
+        
+        postables = self._buildPostList(early_tool_prep)
 
         # Process canned cycles for drilling operations
         for _, section in enumerate(postables):
@@ -795,7 +1000,7 @@ class PostProcessor:
         )
 
         # reject unhandled commands
-        supported_commands = ["G0", "G00", "G1", "G01", "G2", "G02", "G3", "G03", "G73", "G74", "G81", "G82", "G83", "G84", "G38.2"]
+        supported_commands = ["G0", "G00", "G1", "G01", "G2", "G02", "G3", "G03", "G4", "G04", "G73", "G74", "G80", "G81", "G82", "G83", "G84", "G38.2", "G88""G89", "G90", "G91", "G92", "G93", "G94", "G95", "G96", "G97", "G98", "G99"]
         supported_fixtures = ["G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3", "G59.4", "G59.5", "G59.6", "G59.7", "G59.8", "G59.9"]
         supported_mcodes = ["M0", "M00", "M1", "M01", "M3", "M03", "M4", "M04", "M6", "M06"]
         supported = supported_commands + supported_fixtures + supported_mcodes
@@ -809,8 +1014,8 @@ class PostProcessor:
         annotations = command.Annotations
 
         # skip suppressed commands        
-        if self._machine and hasattr(self._machine, 'OutputOptions') and self._machine.OutputOptions.suppress_commands:
-            if command_name in self._machine.OutputOptions.suppress_commands:
+        if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.suppress_commands:
+            if command_name in self._machine.processing.suppress_commands:
                 return None
 
         # handle comments
@@ -856,20 +1061,42 @@ class PostProcessor:
         
         def format_axis_param(value):
             """Format axis parameter with unit conversion and precision."""
-            # Apply unit conversion if needed
-            units = self.values.get('UNITS', 'G21')
-            if units == 'G20':  # Imperial units
+            # Apply unit conversion based on machine output_units setting
+            is_imperial = False
+            if self._machine and hasattr(self._machine, 'output'):
+                from Path.Machine.models.machine import OutputUnits
+                is_imperial = self._machine.output.output_units == OutputUnits.IMPERIAL
+            else:
+                # Fallback to legacy UNITS value
+                units = self.values.get('UNITS', 'G21')
+                is_imperial = units == 'G20'
+            
+            if is_imperial:
                 converted_value = value / 25.4  # Convert mm to inches
-            else:  # G21 or default - metric units
+            else:
                 converted_value = value  # Keep as mm
             
             precision = self.values.get('AXIS_PRECISION', 3)
             return f"{converted_value:.{precision}f}"
         
         def format_feed_param(value):
-            """Format feed parameter with speed precision."""
+            """Format feed parameter with speed precision and unit conversion."""
             # Convert from mm/sec to mm/min (multiply by 60)
             feed_value = value * 60.0
+            
+            # Apply unit conversion if imperial
+            is_imperial = False
+            if self._machine and hasattr(self._machine, 'output'):
+                from Path.Machine.models.machine import OutputUnits
+                is_imperial = self._machine.output.output_units == OutputUnits.IMPERIAL
+            else:
+                # Fallback to legacy UNITS value
+                units = self.values.get('UNITS', 'G21')
+                is_imperial = units == 'G20'
+            
+            if is_imperial:
+                feed_value = feed_value / 25.4  # Convert mm/min to in/min
+            
             precision = self.values.get('FEED_PRECISION', 3)
             return f"{feed_value:.{precision}f}"
         
@@ -893,9 +1120,11 @@ class PostProcessor:
             'R': format_axis_param, 'Q': format_axis_param,
             # Feed and spindle
             'F': format_feed_param, 'S': format_spindle_param,
+            # P parameter - use axis formatting to support decimal values (e.g., G4 P2.5)
+            'P': format_axis_param,
             # Integer parameters
             'D': format_int_param, 'H': format_int_param, 'L': format_int_param,
-            'T': format_int_param, 'P': format_int_param,
+            'T': format_int_param,
         }
         
         for parameter in parameter_order:
@@ -917,6 +1146,13 @@ class PostProcessor:
                     command_line.append(f"{parameter}{params[parameter]}")
                     # Update modal state for unhandled parameters too
                     self._modal_state[parameter] = params[parameter]
+        
+        # Handle tool_before_change - swap T and M6 order for M6 commands
+        if command_name in ('M6', 'M06'):
+            if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.tool_before_change:
+                # Swap order: put T before M6
+                if len(command_line) >= 2 and command_line[1].startswith('T'):
+                    command_line = [command_line[1], command_line[0]] + command_line[2:]
         
         # Format the command line
         formatted_line = format_command_line(self.values, command_line)
@@ -957,7 +1193,12 @@ class WrapperPost(PostProcessor):
     def export(self):
         """Dynamically reload the module for the export to ensure up-to-date usage."""
 
-        postables = self._buildPostList()
+        # Get early_tool_prep setting from machine config
+        early_tool_prep = False
+        if self._machine and hasattr(self._machine, 'processing'):
+            early_tool_prep = getattr(self._machine.processing, 'early_tool_prep', False)
+        
+        postables = self._buildPostList(early_tool_prep)
         Path.Log.debug(f"postables count: {len(postables)}")
 
         g_code_sections = []

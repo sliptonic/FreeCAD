@@ -59,7 +59,7 @@ from CAMTests.TestPathOpUtil import TestPathOpUtil
 from CAMTests.TestPostCore import (
     TestPathPostUtils,
     TestBuildPostList,
-    TestConvertCommandToGcode,
+    # TestConvertCommandToGcode,  # DEPRECATED - redundant with integration tests
 )
 from CAMTests.TestPostProcessor import (
     TestPostProcessorFactory,
