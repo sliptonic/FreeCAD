@@ -28,6 +28,7 @@ from Path.Post.GcodeProcessingUtils import (
     insert_line_numbers,
     suppress_redundant_axes_words,
     filter_inefficient_moves,
+    deduplicate_repeated_commands,
     NumberGenerator,
 )
 
@@ -529,3 +530,118 @@ class TestNumberGenerator(unittest.TestCase):
         self.assertEqual(gen.get(), '10000')
         self.assertEqual(gen.get(), '11000')
         self.assertEqual(gen.get(), '12000')
+
+
+class TestDeduplicateRepeatedCommands(unittest.TestCase):
+    """Test the deduplicate_repeated_commands function for modal G-code output."""
+
+    def test_modal_consecutive_same_commands(self):
+        """Test that consecutive same commands have command word removed (modal behavior)."""
+        gcode = [
+            "G1 X10.0 Y20.0",
+            "G1 X30.0 Y40.0",
+            "G1 X50.0 Y60.0"
+        ]
+        result = deduplicate_repeated_commands(gcode)
+        expected = [
+            "G1 X10.0 Y20.0",  # First G1 - full command
+            "X30.0 Y40.0",      # G1 removed (modal)
+            "X50.0 Y60.0"       # G1 removed (modal)
+        ]
+        self.assertEqual(result, expected)
+
+    def test_modal_different_commands(self):
+        """Test that different commands are output with full command word."""
+        gcode = [
+            "G1 X10.0",
+            "G1 X20.0",
+            "G0 Z5.0",
+            "G0 Z10.0"
+        ]
+        result = deduplicate_repeated_commands(gcode)
+        expected = [
+            "G1 X10.0",  # First G1
+            "X20.0",     # G1 removed
+            "G0 Z5.0",   # Different command - full
+            "Z10.0"      # G0 removed
+        ]
+        self.assertEqual(result, expected)
+
+    def test_modal_with_comments(self):
+        """Test that comments are preserved and don't affect modal state."""
+        gcode = [
+            "G1 X10.0",
+            "(Comment)",
+            "G1 X20.0",
+            "G1 X30.0"
+        ]
+        result = deduplicate_repeated_commands(gcode)
+        expected = [
+            "G1 X10.0",
+            "(Comment)",
+            "X20.0",     # G1 removed (modal continues)
+            "X30.0"      # G1 removed
+        ]
+        self.assertEqual(result, expected)
+
+    def test_modal_with_empty_lines(self):
+        """Test that empty lines are preserved."""
+        gcode = [
+            "G1 X10.0",
+            "",
+            "G1 X20.0"
+        ]
+        result = deduplicate_repeated_commands(gcode)
+        expected = [
+            "G1 X10.0",
+            "",
+            "X20.0"  # G1 removed
+        ]
+        self.assertEqual(result, expected)
+
+    def test_modal_command_without_parameters(self):
+        """Test commands without parameters."""
+        gcode = [
+            "G80",
+            "G80"
+        ]
+        result = deduplicate_repeated_commands(gcode)
+        expected = [
+            "G80"  # First one kept, second removed (no params to output)
+        ]
+        self.assertEqual(result, expected)
+
+    def test_modal_mixed_commands(self):
+        """Test realistic G-code with mixed commands."""
+        gcode = [
+            "G0 X0.0 Y0.0",
+            "G0 Z5.0",
+            "G1 X10.0 F100.0",
+            "G1 Y10.0",
+            "G1 X0.0",
+            "G0 Z20.0"
+        ]
+        result = deduplicate_repeated_commands(gcode)
+        expected = [
+            "G0 X0.0 Y0.0",
+            "Z5.0",          # G0 removed
+            "G1 X10.0 F100.0",
+            "Y10.0",         # G1 removed
+            "X0.0",          # G1 removed
+            "G0 Z20.0"
+        ]
+        self.assertEqual(result, expected)
+
+    def test_modal_blockdelete(self):
+        """Test that blockdelete prefix is handled correctly."""
+        gcode = [
+            "/G1 X10.0",
+            "/G1 X20.0"
+        ]
+        result = deduplicate_repeated_commands(gcode)
+        # Blockdelete commands should still follow modal rules
+        expected = [
+            "/G1 X10.0",
+            "/G1 X20.0"  # Full line kept (blockdelete handling)
+        ]
+        self.assertEqual(result, expected)
