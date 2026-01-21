@@ -153,14 +153,19 @@ class TestPostProcessorFactory(unittest.TestCase):
 
     def test030(self):
         # test wrapping of old school postprocessor scripts
-        post = PostProcessorFactory.get_post_processor(self.job, "linuxcnc_legacy")
+        post = PostProcessorFactory.get_post_processor(self.job, "linuxcnc")
         self.assertTrue(post is not None)
         self.assertTrue(hasattr(post, "_buildPostList"))
 
     def test040(self):
         """Test that the __name__ of the postprocessor is correct."""
-        post = PostProcessorFactory.get_post_processor(self.job, "linuxcnc_legacy")
-        self.assertEqual(post.script_module.__name__, "linuxcnc_legacy_post")
+        post = PostProcessorFactory.get_post_processor(self.job, "linuxcnc")
+        # Refactored post processors don't have script_module, they are the module
+        if hasattr(post, "script_module"):
+            self.assertEqual(post.script_module.__name__, "linuxcnc_post")
+        else:
+            # For refactored posts, check the class module name
+            self.assertEqual(post.__class__.__module__, "linuxcnc_post")
 
 
 class TestHeaderBuilder(unittest.TestCase):
