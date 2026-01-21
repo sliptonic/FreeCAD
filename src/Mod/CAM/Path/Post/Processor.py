@@ -46,7 +46,7 @@ import FreeCAD
 import Path
 
 import Path.Post.Utils as PostUtils
-from Path.Machine.models.machine import (
+from Machine.models.machine import (
     Machine,
     Spindle,
     OutputOptions,
@@ -548,7 +548,7 @@ class PostProcessor:
             # Insert unit command (G20/G21) based on output_units setting
             unit_command_line = []
             if self._machine and hasattr(self._machine, 'output'):
-                from Path.Machine.models.machine import OutputUnits
+                from Machine.models.machine import OutputUnits
                 if self._machine.output.output_units == OutputUnits.METRIC:
                     unit_command_line = ["G21"]
                 elif self._machine.output.output_units == OutputUnits.IMPERIAL:
@@ -1064,7 +1064,7 @@ class PostProcessor:
             # Apply unit conversion based on machine output_units setting
             is_imperial = False
             if self._machine and hasattr(self._machine, 'output'):
-                from Path.Machine.models.machine import OutputUnits
+                from Machine.models.machine import OutputUnits
                 is_imperial = self._machine.output.output_units == OutputUnits.IMPERIAL
             else:
                 # Fallback to legacy UNITS value
@@ -1087,7 +1087,7 @@ class PostProcessor:
             # Apply unit conversion if imperial
             is_imperial = False
             if self._machine and hasattr(self._machine, 'output'):
-                from Path.Machine.models.machine import OutputUnits
+                from Machine.models.machine import OutputUnits
                 is_imperial = self._machine.output.output_units == OutputUnits.IMPERIAL
             else:
                 # Fallback to legacy UNITS value

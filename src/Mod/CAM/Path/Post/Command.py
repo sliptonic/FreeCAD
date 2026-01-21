@@ -32,7 +32,7 @@ from PathScripts import PathUtils
 from Path.Post.Utils import FilenameGenerator, GCodeEditorDialog
 import os
 from Path.Post.Processor import PostProcessor, PostProcessorFactory
-from Path.Machine.models.machine import MachineFactory
+from Machine.models.machine import MachineFactory
 from PySide import QtCore, QtGui
 from PySide.QtCore import QT_TRANSLATE_NOOP
 

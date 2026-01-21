@@ -24,7 +24,7 @@
 
 
 from Path.Post.Processor import PostProcessorFactory
-from Path.Machine.models.machine import Machine
+from Machine.models.machine import Machine
 import FreeCAD
 import Path
 import Path.Post.Command as PathCommand
@@ -412,7 +412,7 @@ class TestExport2Integration(unittest.TestCase):
 
     def _create_machine(self, **output_options):
         """Helper to create a machine with specified output options."""
-        from Path.Machine.models.machine import Machine, OutputUnits
+        from Machine.models.machine import Machine, OutputUnits
         machine = Machine.create_3axis_config()
         machine.name = "TestMachine"
         for key, value in output_options.items():
@@ -848,7 +848,7 @@ class TestExport2Integration(unittest.TestCase):
 
     def test084_gcode_blocks_insertion(self):
         """Test that all G-code blocks from machine config are properly inserted."""
-        from Path.Machine.models.machine import Machine
+        from Machine.models.machine import Machine
 
         machine_config = self._get_full_machine_config()
         machine = Machine.from_dict(machine_config)
@@ -870,7 +870,7 @@ class TestExport2Integration(unittest.TestCase):
 
     def test085_rotary_blocks_insertion(self):
         """Test that pre/post rotary blocks are inserted around rotary axis moves."""
-        from Path.Machine.models.machine import Machine
+        from Machine.models.machine import Machine
 
         machine_config = self._get_full_machine_config()
         machine = Machine.from_dict(machine_config)
@@ -905,7 +905,7 @@ class TestExport2Integration(unittest.TestCase):
 
     def test086_fixture_change_blocks_insertion(self):
         """Test that pre/post fixture change blocks are inserted when fixtures change."""
-        from Path.Machine.models.machine import Machine
+        from Machine.models.machine import Machine
 
         machine_config = self._get_full_machine_config()
         machine = Machine.from_dict(machine_config)
@@ -947,7 +947,7 @@ class TestExport2Integration(unittest.TestCase):
 
     def test087_tool_change_blocks_insertion(self):
         """Test that pre/post tool change blocks are inserted around tool changes."""
-        from Path.Machine.models.machine import Machine
+        from Machine.models.machine import Machine
         from Path.Tool.toolbit import ToolBit
 
         machine_config = self._get_full_machine_config()
