@@ -328,6 +328,9 @@ class Spindle:
     min_rpm: float = 0
     tool_change: str = "manual"
     tool_axis: Optional[FreeCAD.Vector] = None
+    coolant_flood: bool = False
+    coolant_mist: bool = False
+    coolant_delay: float = 0.0
 
     def __post_init__(self):
         """Set default tool axis if not provided"""
@@ -343,6 +346,9 @@ class Spindle:
             "min_rpm": self.min_rpm,
             "tool_change": self.tool_change,
             "tool_axis": [self.tool_axis.x, self.tool_axis.y, self.tool_axis.z],
+            "coolant_flood": self.coolant_flood,
+            "coolant_mist": self.coolant_mist,
+            "coolant_delay": self.coolant_delay,
         }
         if self.id is not None:
             data["id"] = self.id
@@ -361,6 +367,9 @@ class Spindle:
             data.get("min_rpm", 0),
             data.get("tool_change", "manual"),
             tool_axis,
+            data.get("coolant_flood", False),
+            data.get("coolant_mist", False),
+            data.get("coolant_delay", 0.0),
         )
 
 

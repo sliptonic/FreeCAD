@@ -1000,10 +1000,9 @@ class PostProcessor:
         )
 
         # reject unhandled commands
-        supported_commands = ["G0", "G00", "G1", "G01", "G2", "G02", "G3", "G03", "G4", "G04", "G73", "G74", "G80", "G81", "G82", "G83", "G84", "G38.2", "G88""G89", "G90", "G91", "G92", "G93", "G94", "G95", "G96", "G97", "G98", "G99"]
-        supported_fixtures = ["G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3", "G59.4", "G59.5", "G59.6", "G59.7", "G59.8", "G59.9"]
-        supported_mcodes = ["M0", "M00", "M1", "M01", "M3", "M03", "M4", "M04", "M6", "M06"]
-        supported = supported_commands + supported_fixtures + supported_mcodes
+        import CONSTANTS
+        
+        supported = CONSTANTS.GCODE_SUPPORTED + CONSTANTS.GCODE_FIXTURES + CONSTANTS.MCODE_SUPPORTED
 
         if command.Name not in supported and not command.Name.startswith("("):
             raise ValueError(f"Unsupported command: {command.Name}")
