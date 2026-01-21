@@ -107,12 +107,14 @@ class OutputOptions:
     list_fixtures_in_header: bool = True
     machine_name_in_header: bool = False  # Renamed from 'machine_name'
     description_in_header: bool = True
+    project_file_in_header: bool = True
+    output_units_in_header: bool = True
     date_in_header: bool = True
     document_name_in_header: bool = True
 
-    # Filter options
-    filter_double_parameters: bool = False  # Renamed from 'output_double_parameters'
-    filter_double_commands: bool = False  # Renamed from 'modal' (moved from ProcessingOptions)
+    # Duplicate output options (positive framing: True = output duplicates, False = suppress)
+    output_duplicate_parameters: bool = True  # When False, suppress repeated parameter values (modal)
+    output_duplicate_commands: bool = True  # When False, suppress repeated G/M codes (modal)
 
     # Numeric precision settings
     axis_precision: int = 3  # Decimal places for axis coordinates
@@ -168,11 +170,11 @@ class ProcessingOptions:
         default_factory=lambda: ["G73", "G81", "G82", "G83"]
     )
 
-    show_machine_units: bool = True
+    early_tool_prep: bool = False  # Prepare tool before operation (affects postlist ordering)
+    filter_inefficient_moves: bool = False  # Collapse redundant G0 rapid move chains
     spindle_wait: float = 0.0  # seconds
     split_arcs: bool = False
     suppress_commands: List[str] = field(default_factory=list)
-    tool_before_change: bool = False  # Output T before M6 (e.g., T1 M6 instead of M6 T1)
     tool_change: bool = True  # Enable tool change commands
     translate_drill_cycles: bool = False
 
@@ -443,14 +445,6 @@ class Machine:
                 f"configuration_units must be 'metric' or 'imperial', got '{self.configuration_units}'"
             )
 
-        # Backward compatibility for renamed fields
-        # Support old field names by creating aliases
-        if not hasattr(self.output, "filter_double_parameters"):
-            self.output.filter_double_parameters = getattr(
-                self.output, "output_double_parameters", False
-            )
-        if not hasattr(self.output, "filter_double_commands"):
-            self.output.filter_double_commands = getattr(self.processing, "modal", False)
 
     # ========================================================================
     # PROPERTIES - Bridge between physical machine and post-processor
@@ -799,10 +793,12 @@ class Machine:
             "list_fixtures_in_header": self.output.list_fixtures_in_header,
             "machine_name_in_header": self.output.machine_name_in_header,
             "description_in_header": self.output.description_in_header,
+            "project_file_in_header": self.output.project_file_in_header,
+            "output_units_in_header": self.output.output_units_in_header,
             "date_in_header": self.output.date_in_header,
             "document_name_in_header": self.output.document_name_in_header,
-            "filter_double_parameters": self.output.filter_double_parameters,
-            "filter_double_commands": self.output.filter_double_commands,
+            "output_duplicate_parameters": self.output.output_duplicate_parameters,
+            "output_duplicate_commands": self.output.output_duplicate_commands,
             "output_blank_lines": self.output.output_blank_lines,
             "output_bcnc_comments": self.output.output_bcnc_comments,
             "output_header": self.output.output_header,
@@ -851,11 +847,11 @@ class Machine:
         # Processing options
         data["processing"] = {
             "drill_cycles_to_translate": self.processing.drill_cycles_to_translate,
-            "show_machine_units": self.processing.show_machine_units,
+            "early_tool_prep": self.processing.early_tool_prep,
+            "filter_inefficient_moves": self.processing.filter_inefficient_moves,
             "spindle_wait": self.processing.spindle_wait,
             "split_arcs": self.processing.split_arcs,
             "suppress_commands": self.processing.suppress_commands,
-            "tool_before_change": self.processing.tool_before_change,
             "tool_change": self.processing.tool_change,
             "translate_drill_cycles": self.processing.translate_drill_cycles,
         }
@@ -1044,22 +1040,19 @@ class Machine:
                 "machine_name_in_header", output_data.get("machine_name", False)
             )
             config.output.description_in_header = output_data.get("description_in_header", True)
+            config.output.project_file_in_header = output_data.get("project_file_in_header", True)
+            config.output.output_units_in_header = output_data.get("output_units_in_header", True)
             config.output.date_in_header = output_data.get("date_in_header", True)
             config.output.document_name_in_header = output_data.get("document_name_in_header", True)
 
-            # Filter options (with backward compatibility)
-            config.output.filter_double_parameters = output_data.get(
-                "filter_double_parameters", output_data.get("output_double_parameters", False)
-            )
-            # filter_double_commands comes from processing.modal in old format
-            config.output.filter_double_commands = output_data.get("filter_double_commands", False)
+            # Duplicate output options
+            config.output.output_duplicate_parameters = output_data.get("output_duplicate_parameters", True)
+            config.output.output_duplicate_commands = output_data.get("output_duplicate_commands", True)
 
-            # Numeric precision settings (with backward compatibility)
+            # Numeric precision settings
             config.output.axis_precision = output_data.get("axis_precision", 3)
             config.output.feed_precision = output_data.get("feed_precision", 3)
-            config.output.spindle_precision = output_data.get(
-                "spindle_precision", output_data.get("spindle_decimals", 0)
-            )
+            config.output.spindle_precision = output_data.get("spindle_precision", 0)
 
             # Handle output_units conversion from string to enum
             output_units_str = output_data.get("output_units", "metric")
@@ -1067,9 +1060,6 @@ class Machine:
                 OutputUnits.METRIC if output_units_str == "metric" else OutputUnits.IMPERIAL
             )
 
-            # These fields are now in ProcessingOptions (backward compatibility)
-            if "tool_change" in output_data:
-                config.processing.tool_change = output_data["tool_change"]
 
         # Load processing options
         processing_data = data.get("processing", {})
@@ -1077,21 +1067,17 @@ class Machine:
             config.processing.drill_cycles_to_translate = processing_data.get(
                 "drill_cycles_to_translate", ["G73", "G81", "G82", "G83"]
             )
-            config.processing.show_machine_units = processing_data.get("show_machine_units", True)
+            config.processing.early_tool_prep = processing_data.get("early_tool_prep", False)
+            config.processing.filter_inefficient_moves = processing_data.get("filter_inefficient_moves", False)
             config.processing.spindle_wait = processing_data.get("spindle_wait", 0.0)
             config.processing.split_arcs = processing_data.get("split_arcs", False)
             config.processing.suppress_commands = processing_data.get("suppress_commands", [])
-            config.processing.tool_before_change = processing_data.get("tool_before_change", False)
             config.processing.tool_change = processing_data.get("tool_change", True)
             config.processing.translate_drill_cycles = processing_data.get(
                 "translate_drill_cycles", False
             )
             return_to = processing_data.get("return_to", None)
             config.processing.return_to = tuple(return_to) if return_to is not None else None
-
-            # Backward compatibility: modal moved to output.filter_double_commands
-            if "modal" in processing_data:
-                config.output.filter_double_commands = processing_data["modal"]
 
         # Load G-code blocks
         blocks_data = data.get("blocks", {})

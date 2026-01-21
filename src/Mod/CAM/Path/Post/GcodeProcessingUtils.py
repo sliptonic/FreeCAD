@@ -113,6 +113,20 @@ def suppress_redundant_axes_words(gcode: List[str]) -> List[str]:
         if not stripped or stripped.startswith('('):
             result.append(line)
             continue
+        
+        # Check for drill cycle commands - these need ALL parameters, don't suppress
+        # G80, G98, G99 have no parameters but should pass through
+        is_parametric_drill_cycle = any(stripped.startswith(cmd) for cmd in ['G73', 'G74', 'G81', 'G82', 'G83', 'G84', 'G85', 'G86', 'G87', 'G88', 'G89'])
+        is_drill_mode_command = any(stripped.startswith(cmd) for cmd in ['G80', 'G98', 'G99'])
+        
+        if is_parametric_drill_cycle:
+            # Parametric drill cycles need all parameters preserved
+            result.append(line)
+            continue
+        elif is_drill_mode_command:
+            # G80 (cancel), G98 (retract to initial), G99 (retract to R) have no parameters
+            result.append(line)
+            continue
             
         # Check for blockdelete slash
         has_blockdelete = line.lstrip().startswith('/')
@@ -249,7 +263,9 @@ def filter_inefficient_moves(gcode: List[str]) -> List[str]:
         # Check for M-codes and other side effect commands
         cmd = parsed_cmd['name']
         if cmd.startswith('M') or cmd in ('G28', 'G30', 'G53', 'G54', 'G55', 'G56', 'G57', 'G58', 'G59',
-                                         'G92', 'G10', 'T'):  # Tool change
+                                         'G92', 'G10', 'T',  # Tool change
+                                         'G73', 'G74', 'G80', 'G81', 'G82', 'G83', 'G84', 'G85', 'G86', 'G87', 'G88', 'G89',  # Drill cycles
+                                         'G98', 'G99'):  # Retract modes
             return True
             
         return False
@@ -333,14 +349,20 @@ def filter_inefficient_moves(gcode: List[str]) -> List[str]:
 def deduplicate_repeated_commands(gcode: List[str]) -> List[str]:
     """Deduplicate consecutive repeated commands from G-code.
 
-    Suppresses consecutive identical commands to reduce G-code size.
-    Note: This is a simple implementation that may not handle all modal cases.
+    Removes the command word from consecutive commands of the same type,
+    keeping only the parameters. This is modal G-code behavior.
+    
+    Example:
+        G1 X10 Y20
+        G1 X30 Y40  -> X30 Y40 (G1 removed)
+        G1 X50 Y60  -> X50 Y60 (G1 removed)
+        G0 Z5       -> G0 Z5 (different command, kept)
 
     Args:
         gcode: List of G-code strings
 
     Returns:
-        List of G-code strings with consecutive duplicates removed
+        List of G-code strings with modal command words removed
     """
     result = []
     last_cmd = None
@@ -361,10 +383,15 @@ def deduplicate_repeated_commands(gcode: List[str]) -> List[str]:
             if cmd.startswith("/"):
                 cmd = cmd[1:]
 
-            if cmd != last_cmd:
+            if cmd == last_cmd:
+                # Same command - output only parameters (remove command word)
+                params = ' '.join(words[1:])
+                if params:  # Only if there are parameters
+                    result.append(params)
+            else:
+                # Different command - output full line
                 result.append(line)
                 last_cmd = cmd
-            # Skip consecutive duplicates
         else:
             result.append(line)
 

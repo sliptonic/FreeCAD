@@ -175,6 +175,11 @@ class TestHeaderBuilder(unittest.TestCase):
         self.assertIsNone(builder._exporter)
         self.assertIsNone(builder._post_processor)
         self.assertIsNone(builder._cam_file)
+        self.assertIsNone(builder._project_file)
+        self.assertIsNone(builder._output_units)
+        self.assertIsNone(builder._document_name)
+        self.assertIsNone(builder._description)
+        self.assertIsNone(builder._author)
         self.assertIsNone(builder._output_time)
         self.assertEqual(builder._tools, [])
         self.assertEqual(builder._fixtures, [])
@@ -190,6 +195,10 @@ class TestHeaderBuilder(unittest.TestCase):
         builder.add_machine_info("TestMachine")
         builder.add_post_processor("test_post")
         builder.add_cam_file("test.fcstd")
+        builder.add_project_file("/path/to/project.FCStd")
+        builder.add_output_units("Metric - mm")
+        builder.add_document_name("TestDocument")
+        builder.add_description("Test job description")
         builder.add_author("Test Author")
         builder.add_output_time("2024-12-24 10:00:00")
         builder.add_tool(1, "End Mill")
@@ -203,6 +212,10 @@ class TestHeaderBuilder(unittest.TestCase):
         self.assertEqual(builder._machine, "TestMachine")
         self.assertEqual(builder._post_processor, "test_post")
         self.assertEqual(builder._cam_file, "test.fcstd")
+        self.assertEqual(builder._project_file, "/path/to/project.FCStd")
+        self.assertEqual(builder._output_units, "Metric - mm")
+        self.assertEqual(builder._document_name, "TestDocument")
+        self.assertEqual(builder._description, "Test job description")
         self.assertEqual(builder._author, "Test Author")
         self.assertEqual(builder._output_time, "2024-12-24 10:00:00")
         self.assertEqual(builder._tools, [(1, "End Mill"), (2, "Drill Bit")])
@@ -228,6 +241,10 @@ class TestHeaderBuilder(unittest.TestCase):
         builder.add_machine_info("CNC Router")
         builder.add_post_processor("linuxcnc")
         builder.add_cam_file("project.fcstd")
+        builder.add_project_file("/home/user/myproject.FCStd")
+        builder.add_output_units("Metric - mm")
+        builder.add_document_name("MyProject")
+        builder.add_description("CNC milling project")
         builder.add_author("John Doe")
         builder.add_output_time("2024-12-24 10:00:00")
         builder.add_tool(1, '1/4" End Mill')
@@ -245,6 +262,10 @@ class TestHeaderBuilder(unittest.TestCase):
             "(Machine: CNC Router)",
             "(Post Processor: linuxcnc)",
             "(Cam File: project.fcstd)",
+            "(Project File: /home/user/myproject.FCStd)",
+            "(Output Units: Metric - mm)",
+            "(Document: MyProject)",
+            "(Description: CNC milling project)",
             "(Author: John Doe)",
             "(Output Time: 2024-12-24 10:00:00)",
             '(T1=1/4" End Mill)',
