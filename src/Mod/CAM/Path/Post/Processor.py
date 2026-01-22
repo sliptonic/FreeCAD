@@ -36,6 +36,7 @@ import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple, Union
 from Path.Post.DrillCycleExpander import DrillCycleExpander, EXPANDABLE_DRILL_CYCLES
+import CONSTANTS
 
 import Path.Base.Util as PathUtil
 import Path.Post.UtilsArguments as PostUtilsArguments
@@ -423,13 +424,9 @@ class PostProcessor:
         if self._machine and hasattr(self._machine, 'processing'):
             early_tool_prep = getattr(self._machine.processing, 'early_tool_prep', False)
 
-        Path.Log.info(f"Early tool prep: {early_tool_prep}")
-        
         for job in self._jobs:
             # Build ordered postables for this job
             postables = self._buildPostList(early_tool_prep)
-            Path.Log.info(f"Postables for job {job.Name}: {postables}")
-
             
             # ===== STAGE 2: COMMAND EXPANSION =====
             # Expand commands and collect header information
@@ -480,7 +477,7 @@ class PostProcessor:
             
             # Process each section's postables
             for section_name, sublist in postables:
-                Path.Log.info(f"Processing section {section_name} with {len(sublist)} postables")
+                Path.Log.debug(f"Processing section {section_name} with {len(sublist)} postables")
                 for item in sublist:
                     # Canned cycle termination and expansion
                     # Check if this item has drill cycle commands
@@ -510,7 +507,22 @@ class PostProcessor:
                             for cmd in item.Path.Commands:
                                 new_commands.append(cmd)
                                 # After spindle start commands, inject G4 pause
-                                if cmd.Name in ('M3', 'M03', 'M4', 'M04'):
+                                if cmd.Name in CONSTANTS.MCODE_SPINDLE_ON:
+                                    # Create G4 dwell command with P parameter
+                                    pause_cmd = Path.Command('G4', {'P': wait_time})
+                                    new_commands.append(pause_cmd)
+                            # Replace Path with modified command list
+                            item.Path = Path.Path(new_commands)
+
+                    # coolant control
+                    if hasattr(item, 'Path') and item.Path:
+                        if self._machine and hasattr(self._machine, 'spindles') and self._machine.spindles[0].coolant_delay > 0:
+                            wait_time = self._machine.spindles[0].coolant_delay
+                            new_commands = []
+                            for cmd in item.Path.Commands:
+                                new_commands.append(cmd)
+                                # After spindle start commands, inject G4 pause
+                                if cmd.Name in CONSTANTS.MCODE_COOLANT_ON:
                                     # Create G4 dwell command with P parameter
                                     pause_cmd = Path.Command('G4', {'P': wait_time})
                                     new_commands.append(pause_cmd)
@@ -1149,12 +1161,12 @@ class PostProcessor:
                     # Update modal state for unhandled parameters too
                     self._modal_state[parameter] = params[parameter]
         
-        # Handle tool_before_change - swap T and M6 order for M6 commands
-        if command_name in ('M6', 'M06'):
-            if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.tool_before_change:
-                # Swap order: put T before M6
-                if len(command_line) >= 2 and command_line[1].startswith('T'):
-                    command_line = [command_line[1], command_line[0]] + command_line[2:]
+        # # Handle tool_before_change - swap T and M6 order for M6 commands
+        # if command_name in ('M6', 'M06'):
+        #     if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.tool_before_change:
+        #         # Swap order: put T before M6
+        #         if len(command_line) >= 2 and command_line[1].startswith('T'):
+        #             command_line = [command_line[1], command_line[0]] + command_line[2:]
         
         # Format the command line
         formatted_line = format_command_line(self.values, command_line)
