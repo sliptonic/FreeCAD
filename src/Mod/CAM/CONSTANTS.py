@@ -117,6 +117,7 @@ MCODE_END_RESET = ["M30"]  # Program end and reset
 # Spindle control
 MCODE_SPINDLE_CW = ["M3", "M03"]  # Spindle on clockwise
 MCODE_SPINDLE_CCW = ["M4", "M04"]  # Spindle on counter-clockwise
+MCODE_SPINDLE_ON = MCODE_SPINDLE_CW + MCODE_SPINDLE_CCW
 MCODE_SPINDLE_OFF = ["M5", "M05"]  # Spindle off
 
 # Tool change
@@ -125,6 +126,7 @@ MCODE_TOOL_CHANGE = ["M6", "M06"]
 # Coolant control
 MCODE_COOLANT_MIST = ["M7", "M07"]  # Mist coolant on
 MCODE_COOLANT_FLOOD = ["M8", "M08"]  # Flood coolant on
+MCODE_COOLANT_ON = MCODE_COOLANT_MIST + MCODE_COOLANT_FLOOD
 MCODE_COOLANT_OFF = ["M9", "M09"]  # All coolant off
 
 # =============================================================================
