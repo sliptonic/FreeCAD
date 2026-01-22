@@ -118,7 +118,7 @@
     },
     "postprocessor": {
         "args": "",
-        "file_name": "centroid"
+        "file_name": "generic"
     },
     "processing": {
         "drill_cycles_to_translate": [
