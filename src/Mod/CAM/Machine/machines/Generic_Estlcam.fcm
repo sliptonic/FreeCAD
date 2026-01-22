@@ -132,7 +132,8 @@
         "split_arcs": false,
         "suppress_commands": [],
         "tool_change": true,
-        "translate_drill_cycles": true
+        "translate_drill_cycles": true,
+        "translate_rapid_moves": false
     },
     "version": 1
 }
