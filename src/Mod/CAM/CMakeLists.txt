@@ -325,7 +325,6 @@ SET(PathPythonPostScripts_SRCS
     Path/Post/scripts/heidenhain_post.py
     Path/Post/scripts/jtech_post.py
     Path/Post/scripts/linuxcnc_post.py
-    Path/Post/scripts/mach3_mach4_post.py
     Path/Post/scripts/mach3_mach4_legacy_post.py
     Path/Post/scripts/marlin_post.py
     Path/Post/scripts/nccad_post.py
@@ -512,7 +511,6 @@ SET(Tests_SRCS
     CAMTests/TestLinuxCNCPost.py
     CAMTests/TestLinkingGenerator.py
     CAMTests/TestMachine.py
-    CAMTests/TestMach3Mach4Post.py
     CAMTests/TestMach3Mach4LegacyPost.py
     CAMTests/TestMassoG3Post.py
     CAMTests/TestPathAdaptive.py
