@@ -675,6 +675,11 @@ ADD_CUSTOM_TARGET(Tests ALL
 fc_copy_sources(PathScripts "${CMAKE_BINARY_DIR}/Mod/CAM" ${all_files})
 fc_copy_sources(Tests "${CMAKE_BINARY_DIR}/Mod/CAM" ${test_files})
 
+# Copy machine templates to build directory
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Machine/machines/
+     DESTINATION ${CMAKE_BINARY_DIR}/Mod/CAM/Machine/machines
+     FILES_MATCHING PATTERN "*.fcm")
+
 INSTALL(
     FILES
         ${PathScripts_SRCS}
