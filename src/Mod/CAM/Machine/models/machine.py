@@ -177,6 +177,7 @@ class ProcessingOptions:
     suppress_commands: List[str] = field(default_factory=list)
     tool_change: bool = True  # Enable tool change commands
     translate_drill_cycles: bool = False
+    translate_rapid_moves: bool = False
 
     return_to: Optional[Tuple[float, float, float]] = None  # (x, y, z) or None
 
@@ -863,6 +864,7 @@ class Machine:
             "suppress_commands": self.processing.suppress_commands,
             "tool_change": self.processing.tool_change,
             "translate_drill_cycles": self.processing.translate_drill_cycles,
+            "translate_rapid_moves": self.processing.translate_rapid_moves,
         }
         if self.processing.return_to:
             data["processing"]["return_to"] = list(self.processing.return_to)
@@ -1084,6 +1086,9 @@ class Machine:
             config.processing.tool_change = processing_data.get("tool_change", True)
             config.processing.translate_drill_cycles = processing_data.get(
                 "translate_drill_cycles", False
+            )
+            config.processing.translate_rapid_moves = processing_data.get(
+                "translate_rapid_moves", False
             )
             return_to = processing_data.get("return_to", None)
             config.processing.return_to = tuple(return_to) if return_to is not None else None

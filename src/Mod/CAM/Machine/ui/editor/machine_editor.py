@@ -87,6 +87,7 @@ class DataclassGUIGenerator:
         "end_of_line_chars": translate("CAM_MachineEditor", "End of Line Characters"),
         "modal": translate("CAM_MachineEditor", "Modal Output (Suppress Repeats)"),
         "translate_drill_cycles": translate("CAM_MachineEditor", "Translate Drill Cycles"),
+        "translate_rapid_moves": translate("CAM_MachineEditor", "Translate Rapid Moves"),
         "split_arcs": translate("CAM_MachineEditor", "Split Arcs"),
         "show_editor": translate("CAM_MachineEditor", "Show Editor After Generation"),
         "list_tools_in_preamble": translate("CAM_MachineEditor", "List Tools in Preamble"),

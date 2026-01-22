@@ -537,6 +537,18 @@ class PostProcessor:
                             if hasattr(item, 'Path') and item.Path and item.Path.Commands:
                                 fixture_name = item.Path.Commands[0].Name
                                 gcodeheader.add_fixture(fixture_name)
+
+                    # translate rapid moves
+                    # If machine processing.translate_rapid_moves is True, replace G0/G00 with G1 and use tool controller rapid rate.
+                    if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.translate_rapid_moves:
+                        new_commands = []
+                        Path.Log.debug(f"Translating rapid moves for {item.Label}")
+                        for cmd in item.Path.Commands:
+                            if cmd.Name in CONSTANTS.GCODE_MOVE_RAPID:
+                                cmd.Name = 'G1'
+                            new_commands.append(cmd)
+                        item.Path = Path.Path(new_commands)
+
             Path.Log.debug(postables)
             # ===== STAGE 3: COMMAND CONVERSION =====
             job_sections = []

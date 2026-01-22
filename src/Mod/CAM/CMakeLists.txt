@@ -314,7 +314,6 @@ SET(PathPythonPost_SRCS
 
 SET(PathPythonPostScripts_SRCS
     Path/Post/scripts/__init__.py
-    Path/Post/scripts/centroid_post.py
     Path/Post/scripts/centroid_legacy_post.py
     Path/Post/scripts/dxf_post.py
     Path/Post/scripts/dynapath_post.py
@@ -505,7 +504,6 @@ SET(Tests_SRCS
     CAMTests/test_geomop.fcstd
     CAMTests/test_holes00.fcstd
     CAMTests/TestCAMSanity.py
-    CAMTests/TestCentroidPost.py
     CAMTests/TestCentroidLegacyPost.py
     CAMTests/TestFanucPost.py
     CAMTests/TestGenericPost.py
