@@ -113,7 +113,9 @@ class OutputOptions:
     document_name_in_header: bool = True
 
     # Duplicate output options (positive framing: True = output duplicates, False = suppress)
-    output_duplicate_parameters: bool = True  # When False, suppress repeated parameter values (modal)
+    output_duplicate_parameters: bool = (
+        True  # When False, suppress repeated parameter values (modal)
+    )
     output_duplicate_commands: bool = True  # When False, suppress repeated G/M codes (modal)
 
     # Numeric precision settings
@@ -453,7 +455,6 @@ class Machine:
             raise ValueError(
                 f"configuration_units must be 'metric' or 'imperial', got '{self.configuration_units}'"
             )
-
 
     # ========================================================================
     # PROPERTIES - Bridge between physical machine and post-processor
@@ -1055,8 +1056,12 @@ class Machine:
             config.output.document_name_in_header = output_data.get("document_name_in_header", True)
 
             # Duplicate output options
-            config.output.output_duplicate_parameters = output_data.get("output_duplicate_parameters", True)
-            config.output.output_duplicate_commands = output_data.get("output_duplicate_commands", True)
+            config.output.output_duplicate_parameters = output_data.get(
+                "output_duplicate_parameters", True
+            )
+            config.output.output_duplicate_commands = output_data.get(
+                "output_duplicate_commands", True
+            )
 
             # Numeric precision settings
             config.output.axis_precision = output_data.get("axis_precision", 3)
@@ -1069,7 +1074,6 @@ class Machine:
                 OutputUnits.METRIC if output_units_str == "metric" else OutputUnits.IMPERIAL
             )
 
-
         # Load processing options
         processing_data = data.get("processing", {})
         if processing_data:
@@ -1077,7 +1081,9 @@ class Machine:
                 "drill_cycles_to_translate", ["G73", "G81", "G82", "G83"]
             )
             config.processing.early_tool_prep = processing_data.get("early_tool_prep", False)
-            config.processing.filter_inefficient_moves = processing_data.get("filter_inefficient_moves", False)
+            config.processing.filter_inefficient_moves = processing_data.get(
+                "filter_inefficient_moves", False
+            )
             config.processing.spindle_wait = processing_data.get("spindle_wait", 0.0)
             config.processing.split_arcs = processing_data.get("split_arcs", False)
             config.processing.suppress_commands = processing_data.get("suppress_commands", [])
@@ -1219,6 +1225,32 @@ class MachineFactory:
         """
         machine = Machine(name="New Machine")
         return machine.to_dict()
+
+    @classmethod
+    def list_builtin_templates(cls) -> list[tuple[str, str]]:
+        """Get list of built-in machine templates.
+
+        Scans the Machine/machines subdirectory for .fcm template files
+        and returns tuples of (display_name, full_file_path).
+
+        Returns:
+            list: List of (name, path) tuples for built-in template files
+        """
+        templates = []
+        try:
+            # Get the built-in machines directory from FreeCAD installation
+            machines_dir = (
+                pathlib.Path(FreeCAD.getHomePath()) / "Mod" / "CAM" / "Machine" / "machines"
+            )
+
+            if machines_dir.exists():
+                for machine_file in sorted(machines_dir.glob("*.fcm")):
+                    display_name = machine_file.stem.replace("_", " ")
+                    templates.append((display_name, str(machine_file)))
+        except Exception as e:
+            Path.Log.warning(f"Could not load built-in machine templates: {e}")
+
+        return templates
 
     @classmethod
     def list_configuration_files(cls) -> list[tuple[str, pathlib.Path]]:

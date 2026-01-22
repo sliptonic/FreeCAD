@@ -306,6 +306,7 @@ class MachineEditorDialog(QtGui.QDialog):
         self.resize(700, 900)
 
         self.current_units = "metric"
+        self.is_new_machine = machine_filename is None  # Track if creating new machine
 
         # Initialize machine object first (needed by setup methods)
         self.filename = machine_filename
@@ -616,6 +617,35 @@ class MachineEditorDialog(QtGui.QDialog):
         if self.machine:
             self.machine.description = text
 
+    def _on_template_changed(self, index):
+        """Handle template selection changes."""
+        template_path = self.template_combo.itemData(index)
+
+        if template_path is None:
+            # "Custom" selected - reset to default empty machine
+            self.machine = Machine(name="New Machine")
+        else:
+            # Load the selected template
+            try:
+                self.machine = MachineFactory.load_configuration(template_path)
+                # Clear the name so user can provide their own
+                self.machine.name = "New Machine"
+            except Exception as e:
+                Path.Log.error(f"Failed to load template: {e}")
+                QtGui.QMessageBox.warning(
+                    self,
+                    translate("CAM_MachineEditor", "Template Load Error"),
+                    translate("CAM_MachineEditor", f"Could not load template: {e}"),
+                )
+                return
+
+        # Repopulate the entire UI with the loaded machine
+        self.populate_from_machine(self.machine)
+
+        # Set focus to name field for editing
+        self.name_edit.setFocus()
+        self.name_edit.selectAll()
+
     def _on_units_changed(self, index):
         """Update units and refresh axes display."""
         if self.machine:
@@ -699,6 +729,37 @@ class MachineEditorDialog(QtGui.QDialog):
         self.name_edit = QtGui.QLineEdit()
         self.name_edit.textChanged.connect(self._on_name_changed)
         layout.addRow(translate("CAM_MachineEditor", "Name"), self.name_edit)
+
+        # Template selector (only for new machines)
+        if self.is_new_machine:
+            self.template_combo = QtGui.QComboBox()
+            self.template_combo.addItem(translate("CAM_MachineEditor", "Custom"), None)
+
+            # Add user's own machines
+            user_machines = MachineFactory.list_configuration_files()
+            if len(user_machines) > 1:  # More than just "<any>"
+                self.template_combo.insertSeparator(self.template_combo.count())
+                for name, filename in user_machines:
+                    if filename:  # Skip "<any>"
+                        # Get full path using the factory method
+                        config_dir = MachineFactory.get_config_directory()
+                        user_path = config_dir / filename
+                        display_name = f"📁 {name}"
+                        self.template_combo.addItem(display_name, str(user_path))
+
+            # Add built-in templates using MachineFactory method
+            builtin_templates = MachineFactory.list_builtin_templates()
+            if builtin_templates:
+                self.template_combo.insertSeparator(self.template_combo.count())
+                for name, filepath in builtin_templates:
+                    display_name = f"📋 {name}"
+                    self.template_combo.addItem(display_name, filepath)
+
+            self.template_combo.currentIndexChanged.connect(self._on_template_changed)
+            self.template_combo.setToolTip(
+                translate("CAM_MachineEditor", "Load settings from an existing machine template")
+            )
+            layout.addRow(translate("CAM_MachineEditor", "Template"), self.template_combo)
 
         self.manufacturer_edit = QtGui.QLineEdit()
         self.manufacturer_edit.textChanged.connect(self._on_manufacturer_changed)
