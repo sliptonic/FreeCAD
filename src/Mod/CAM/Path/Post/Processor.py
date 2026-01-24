@@ -516,18 +516,19 @@ class PostProcessor:
 
                     # coolant control
                     if hasattr(item, 'Path') and item.Path:
-                        if self._machine and hasattr(self._machine, 'spindles') and self._machine.spindles[0].coolant_delay > 0:
-                            wait_time = self._machine.spindles[0].coolant_delay
-                            new_commands = []
-                            for cmd in item.Path.Commands:
-                                new_commands.append(cmd)
-                                # After spindle start commands, inject G4 pause
+                        if self._machine:
+                            spindle = self._machine.get_spindle_by_index(0)
+                            if spindle.coolant_delay > 0:
+                                new_commands = []
+                                for cmd in item.Path.Commands:
+                                    new_commands.append(cmd)
+                                    # After spindle start commands, inject G4 pause
                                 if cmd.Name in CONSTANTS.MCODE_COOLANT_ON:
                                     # Create G4 dwell command with P parameter
-                                    pause_cmd = Path.Command('G4', {'P': wait_time})
+                                    pause_cmd = Path.Command('G4', {'P': spindle.coolant_delay})
                                     new_commands.append(pause_cmd)
-                            # Replace Path with modified command list
-                            item.Path = Path.Path(new_commands)
+                                # Replace Path with modified command list
+                                item.Path = Path.Path(new_commands)
                     
                     # Collect header information
                     if self.values.get('OUTPUT_HEADER', True):

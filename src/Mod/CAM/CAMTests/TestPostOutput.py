@@ -415,6 +415,17 @@ class TestExport2Integration(unittest.TestCase):
         from Machine.models.machine import Machine, OutputUnits
         machine = Machine.create_3axis_config()
         machine.name = "TestMachine"
+        
+        # Add a default spindle since post processor expects spindle index 0
+        machine.add_spindle(
+            name="Default Spindle",
+            id="spindle1",
+            max_power_kw=2.2,
+            max_rpm=24000,
+            min_rpm=6000,
+            tool_change="manual"
+        )
+        
         for key, value in output_options.items():
             # Convert string output_units to enum
             if key == 'output_units':
@@ -550,7 +561,10 @@ class TestExport2Integration(unittest.TestCase):
                         "min_rpm": 6000,
                         "name": "Spindle 1",
                         "tool_axis": [0.0, 0.0, -1.0],
-                        "tool_change": {"type": "manual"}
+                        "tool_change": "manual",
+                        "coolant_flood": False,
+                        "coolant_mist": False,
+                        "coolant_delay": 0.0
                     }
                 ],
                 "units": "metric"
