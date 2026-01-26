@@ -125,60 +125,15 @@ class OutputOptions:
 
 
 @dataclass
-class GCodeBlocks:
-    """
-    G-code block templates for various lifecycle hooks.
-
-    These templates are inserted at specific points during postprocessing
-    to provide customization points for machine-specific behavior.
-    """
-
-    safetyblock: str = ""  # Safety commands (G40, G49, etc.) Reset machine to known safe condition
-
-    # Legacy aliases (maintained for compatibility)
-    preamble: str = ""  # Typically inserted at start of job
-
-    # Job lifecycle
-    pre_job: str = ""
-
-    # Operation lifecycle
-    pre_operation: str = ""
-    post_operation: str = ""
-
-    # Tool change lifecycle
-    pre_tool_change: str = ""
-    post_tool_change: str = ""
-    tool_return: str = ""  # Return to tool change position
-
-    # Fixture/WCS change lifecycle
-    pre_fixture_change: str = ""
-    post_fixture_change: str = ""
-
-    # Rotary axis lifecycle
-    pre_rotary_move: str = ""
-    post_rotary_move: str = ""
-
-    post_job: str = ""
-    postamble: str = ""  # Typically inserted at end of job
-
-
-@dataclass
 class ProcessingOptions:
     """Processing and transformation options."""
 
     # Conversion and expansion of Path Objects. Does not affect final gcode generation
 
-    drill_cycles_to_translate: List[str] = field(
-        default_factory=lambda: ["G73", "G81", "G82", "G83"]
-    )
-
     early_tool_prep: bool = False  # Prepare tool before operation (affects postlist ordering)
     filter_inefficient_moves: bool = False  # Collapse redundant G0 rapid move chains
-    spindle_wait: float = 0.0  # seconds
     split_arcs: bool = False
-    suppress_commands: List[str] = field(default_factory=list)
     tool_change: bool = True  # Enable tool change commands
-    translate_drill_cycles: bool = False
     translate_rapid_moves: bool = False
 
     return_to: Optional[Tuple[float, float, float]] = None  # (x, y, z) or None
@@ -334,6 +289,7 @@ class Spindle:
     coolant_flood: bool = False
     coolant_mist: bool = False
     coolant_delay: float = 0.0
+    spindle_wait: float = 0.0  # seconds to wait after spindle start
 
     def __post_init__(self):
         """Set default tool axis if not provided"""
@@ -352,6 +308,7 @@ class Spindle:
             "coolant_flood": self.coolant_flood,
             "coolant_mist": self.coolant_mist,
             "coolant_delay": self.coolant_delay,
+            "spindle_wait": self.spindle_wait,
         }
         if self.id is not None:
             data["id"] = self.id
@@ -373,6 +330,7 @@ class Spindle:
             data.get("coolant_flood", False),
             data.get("coolant_mist", False),
             data.get("coolant_delay", 0.0),
+            data.get("spindle_wait", 0.0),
         )
 
 
@@ -436,12 +394,11 @@ class Machine:
 
     # Output options
     output: OutputOptions = field(default_factory=OutputOptions)
-    blocks: GCodeBlocks = field(default_factory=GCodeBlocks)
     processing: ProcessingOptions = field(default_factory=ProcessingOptions)
 
-    # Post-processor selection
+    # Post-processor selection and configuration
     postprocessor_file_name: str = ""
-    postprocessor_args: str = ""
+    postprocessor_properties: Dict[str, Any] = field(default_factory=dict)
 
     # Dynamic state (for runtime)
     parameter_functions: Dict[str, Callable] = field(default_factory=dict)
@@ -787,7 +744,7 @@ class Machine:
         # Add post-processor configuration
         data["postprocessor"] = {
             "file_name": self.postprocessor_file_name,
-            "args": self.postprocessor_args,
+            "properties": self.postprocessor_properties,
         }
 
         # Output options
@@ -821,50 +778,12 @@ class Machine:
             "spindle_precision": self.output.spindle_precision,
         }
 
-        # G-code blocks (only non-empty ones)
-        blocks = {}
-        if self.blocks.pre_job:
-            blocks["pre_job"] = self.blocks.pre_job
-        if self.blocks.post_job:
-            blocks["post_job"] = self.blocks.post_job
-        if self.blocks.preamble:
-            blocks["preamble"] = self.blocks.preamble
-        if self.blocks.postamble:
-            blocks["postamble"] = self.blocks.postamble
-        if self.blocks.safetyblock:
-            blocks["safetyblock"] = self.blocks.safetyblock
-        if self.blocks.pre_operation:
-            blocks["pre_operation"] = self.blocks.pre_operation
-        if self.blocks.post_operation:
-            blocks["post_operation"] = self.blocks.post_operation
-        if self.blocks.pre_tool_change:
-            blocks["pre_tool_change"] = self.blocks.pre_tool_change
-        if self.blocks.post_tool_change:
-            blocks["post_tool_change"] = self.blocks.post_tool_change
-        if self.blocks.tool_return:
-            blocks["tool_return"] = self.blocks.tool_return
-        if self.blocks.pre_fixture_change:
-            blocks["pre_fixture_change"] = self.blocks.pre_fixture_change
-        if self.blocks.post_fixture_change:
-            blocks["post_fixture_change"] = self.blocks.post_fixture_change
-        if self.blocks.pre_rotary_move:
-            blocks["pre_rotary_move"] = self.blocks.pre_rotary_move
-        if self.blocks.post_rotary_move:
-            blocks["post_rotary_move"] = self.blocks.post_rotary_move
-
-        if blocks:
-            data["blocks"] = blocks
-
         # Processing options
         data["processing"] = {
-            "drill_cycles_to_translate": self.processing.drill_cycles_to_translate,
             "early_tool_prep": self.processing.early_tool_prep,
             "filter_inefficient_moves": self.processing.filter_inefficient_moves,
-            "spindle_wait": self.processing.spindle_wait,
             "split_arcs": self.processing.split_arcs,
-            "suppress_commands": self.processing.suppress_commands,
             "tool_change": self.processing.tool_change,
-            "translate_drill_cycles": self.processing.translate_drill_cycles,
             "translate_rapid_moves": self.processing.translate_rapid_moves,
         }
         if self.processing.return_to:
@@ -1012,6 +931,7 @@ class Machine:
         if post_data:
             config.postprocessor_file_name = post_data.get("file_name", "")
             config.postprocessor_args = post_data.get("args", "")
+            config.postprocessor_properties = post_data.get("properties", {})
 
         # Load output options
         output_data = data.get("output", {})
@@ -1079,50 +999,17 @@ class Machine:
         # Load processing options
         processing_data = data.get("processing", {})
         if processing_data:
-            config.processing.drill_cycles_to_translate = processing_data.get(
-                "drill_cycles_to_translate", ["G73", "G81", "G82", "G83"]
-            )
             config.processing.early_tool_prep = processing_data.get("early_tool_prep", False)
             config.processing.filter_inefficient_moves = processing_data.get(
                 "filter_inefficient_moves", False
             )
-            config.processing.spindle_wait = processing_data.get("spindle_wait", 0.0)
             config.processing.split_arcs = processing_data.get("split_arcs", False)
-            config.processing.suppress_commands = processing_data.get("suppress_commands", [])
             config.processing.tool_change = processing_data.get("tool_change", True)
-            config.processing.translate_drill_cycles = processing_data.get(
-                "translate_drill_cycles", False
-            )
             config.processing.translate_rapid_moves = processing_data.get(
                 "translate_rapid_moves", False
             )
             return_to = processing_data.get("return_to", None)
             config.processing.return_to = tuple(return_to) if return_to is not None else None
-
-        # Load G-code blocks
-        blocks_data = data.get("blocks", {})
-        if blocks_data:
-            for block_name in [
-                "pre_job",
-                "post_job",
-                "preamble",
-                "postamble",
-                "safetyblock",
-                "pre_operation",
-                "post_operation",
-                "pre_tool_change",
-                "post_tool_change",
-                "tool_return",
-                "pre_fixture_change",
-                "post_fixture_change",
-                "pre_rotary_move",
-                "post_rotary_move",
-                "pre_spindle_change",
-                "post_spindle_change",
-                "finish_label",
-            ]:
-                if block_name in blocks_data:
-                    setattr(config.blocks, block_name, blocks_data[block_name])
 
         return config
 

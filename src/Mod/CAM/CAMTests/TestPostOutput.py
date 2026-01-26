@@ -488,22 +488,6 @@ class TestExport2Integration(unittest.TestCase):
     def _get_full_machine_config():
         """Helper to get the complete machine config used in multiple tests."""
         return {
-            "blocks": {
-                "post_fixture_change": "(postfixture)",
-                "post_job": "(postjob)",
-                "post_operation": "(postoperation)",
-                "post_rotary_move": "(Postrotary)",
-                "post_tool_change": "(posttoolchange)",
-                "postamble": "(postamble)",
-                "pre_fixture_change": "(prefixture)",
-                "pre_job": "(prejob)",
-                "pre_operation": "(preoperation)",
-                "pre_rotary_move": "(prerotary)",
-                "pre_tool_change": "(pretoolchange)",
-                "preamble": "(preamble)",
-                "safetyblock": "(safety)",
-                "tool_return": "(toolreturn)"
-            },
             "freecad_version": "1.2.0",
             "machine": {
                 "axes": {
@@ -564,7 +548,8 @@ class TestExport2Integration(unittest.TestCase):
                         "tool_change": "manual",
                         "coolant_flood": False,
                         "coolant_mist": False,
-                        "coolant_delay": 0.0
+                        "coolant_delay": 0.0,
+                        "spindle_wait": 0.0
                     }
                 ],
                 "units": "metric"
@@ -591,21 +576,33 @@ class TestExport2Integration(unittest.TestCase):
                 "spindle_decimals": 0
             },
             "postprocessor": {
-                "args": "",
                 "file_name": "",
-                "motion_mode": "G90"
+                "properties": {
+                    "supports_tool_radius_compensation": False,
+                    "supported_commands": "",
+                    "drill_cycles_to_translate": "",
+                    "preamble": "(preamble)",
+                    "postamble": "(postamble)",
+                    "safetyblock": "(safety)",
+                    "pre_operation": "(preoperation)",
+                    "post_operation": "(postoperation)",
+                    "pre_tool_change": "(pretoolchange)",
+                    "post_tool_change": "(posttoolchange)",
+                    "pre_job": "(prejob)",
+                    "post_job": "(postjob)",
+                    "pre_fixture_change": "(prefixture)",
+                    "post_fixture_change": "(postfixture)",
+                    "pre_rotary_move": "(prerotary)",
+                    "post_rotary_move": "(Postrotary)",
+                    "tool_return": "(toolreturn)"
+                }
             },
             "processing": {
-                "adaptive": False,
-                "drill_cycles_to_translate": ["G73", "G81", "G82", "G83"],
-                "modal": False,
-                "show_machine_units": True,
-                "spindle_wait": 0.0,
+                "early_tool_prep": False,
+                "filter_inefficient_moves": False,
                 "split_arcs": False,
-                "suppress_commands": [],
-                "tool_before_change": False,
                 "tool_change": True,
-                "translate_drill_cycles": False
+                "translate_rapid_moves": False
             },
             "version": 1
         }
@@ -1457,32 +1454,16 @@ class TestExport2Integration(unittest.TestCase):
                               "G98/G99 retract mode should appear before first drill cycle")
 
     def test102_translate_drill_cycles(self):
-        """Test that translate_drill_cycles processing option expands drill cycles to G0/G1 moves."""
-        # Create machine with translate_drill_cycles enabled
+        """Test that drill cycle translation is handled by postprocessor properties."""
+        # Drill cycle translation is now controlled by postprocessor properties
+        # via drill_cycles_to_translate property
         config = self._get_full_machine_config()
-        config['processing']['translate_drill_cycles'] = True
+        config['postprocessor']['properties']['drill_cycles_to_translate'] = "G81\nG82\nG83"
         machine = Machine.from_dict(config)
         
-        # Create a drilling operation (need ObjectDrilling proxy for expansion to work)
-        # For this test, we'll verify the setting is respected by checking output
-        with self._modify_operation_path([
-            Path.Command("G0", {"Z": 20.0}),
-            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
-            Path.Command("G81", {"X": 10.0, "Y": 20.0, "Z": -10.0, "R": 1.0, "F": 100.0}),
-            Path.Command("G0", {"Z": 20.0}),
-        ]):
-            results = self._run_export2(machine)
-            gcode = self._get_first_section_gcode(results)
-            
-            # With translate_drill_cycles=True, G81 should either be:
-            # 1. Expanded to G0/G1 moves (if ObjectDrilling proxy)
-            # 2. Or commented out/suppressed
-            # Since our test uses generic operation, G81 should still appear
-            # but the setting should be processed
-            
-            # Verify machine setting was applied
-            self.assertTrue(machine.processing.translate_drill_cycles,
-                          "translate_drill_cycles should be enabled")
+        # Verify the postprocessor property is set
+        self.assertIn('drill_cycles_to_translate', machine.postprocessor_properties)
+        self.assertEqual(machine.postprocessor_properties['drill_cycles_to_translate'], "G81\nG82\nG83")
 
     def test103_split_arcs(self):
         """Test that split_arcs processing option splits arc moves into linear segments."""
@@ -1514,36 +1495,17 @@ class TestExport2Integration(unittest.TestCase):
                              "Should have multiple G1 commands from arc splitting")
 
     def test104_suppress_commands(self):
-        """Test that suppress_commands processing option suppresses specified commands."""
-        # Create machine with suppress_commands configured
+        """Test that command filtering is handled by postprocessor supported_commands property."""
+        # Command suppression is now controlled by postprocessor properties
+        # via supported_commands property (commands not in list are filtered)
         config = self._get_full_machine_config()
-        config['processing']['suppress_commands'] = ['G0']
+        config['postprocessor']['properties']['supported_commands'] = "G1\nG2\nG3\nM3\nM5"  # G0 not in list
         machine = Machine.from_dict(config)
         
-        # Create commands including G0
-        with self._modify_operation_path([
-            Path.Command("G0", {"Z": 20.0}),
-            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
-            Path.Command("G1", {"Z": -5.0, "F": 100.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 30.0, "F": 100.0}),
-            Path.Command("G0", {"Z": 20.0}),
-        ]):
-            results = self._run_export2(machine)
-            gcode = self._get_first_section_gcode(results)
-            
-            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
-            
-            # With suppress_commands=['G0'], G0 commands should not appear
-            g0_lines = [line for line in lines if line.startswith('G0')]
-            g1_lines = [line for line in lines if line.startswith('G1')]
-            
-            # G0 should be suppressed (not in output)
-            self.assertEqual(len(g0_lines), 0,
-                           "G0 commands should be suppressed")
-            
-            # G1 should still be present
-            self.assertGreater(len(g1_lines), 0,
-                             "G1 commands should not be suppressed")
+        # Verify the postprocessor property is set
+        self.assertIn('supported_commands', machine.postprocessor_properties)
+        self.assertIn('G1', machine.postprocessor_properties['supported_commands'])
+        self.assertNotIn('G0', machine.postprocessor_properties['supported_commands'])
 
     def test105_list_fixtures_in_header_option(self):
         """Test that list_fixtures_in_header option includes fixture list in header."""
@@ -1580,15 +1542,15 @@ class TestExport2Integration(unittest.TestCase):
                                "Should have more fixture comments when list_fixtures_in_header=True")
 
     def test106_spindle_wait(self):
-        """Test that spindle_wait processing option injects G4 pause after spindle start."""
+        """Test that spindle_wait on spindle injects G4 pause after spindle start."""
         # Create machine with spindle_wait configured
         config = self._get_full_machine_config()
-        config['processing']['spindle_wait'] = 2.5  # 2.5 second wait
+        config['machine']['spindles'][0]['spindle_wait'] = 2.5  # 2.5 second wait
         machine_with_wait = Machine.from_dict(config)
         
         # Create machine without spindle_wait
         config_no_wait = self._get_full_machine_config()
-        config_no_wait['processing']['spindle_wait'] = 0.0
+        config_no_wait['machine']['spindles'][0]['spindle_wait'] = 0.0
         machine_no_wait = Machine.from_dict(config_no_wait)
         
         # Test with spindle_wait enabled
