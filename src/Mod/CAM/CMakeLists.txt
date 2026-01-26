@@ -316,30 +316,31 @@ SET(PathPythonPost_SRCS
 SET(PathPythonPostScripts_SRCS
     Path/Post/scripts/__init__.py
     Path/Post/scripts/centroid_legacy_post.py
+    Path/Post/scripts/centroid_post.py
     Path/Post/scripts/dxf_post.py
-    Path/Post/scripts/dynapath_post.py
-    Path/Post/scripts/dynapath_4060_post.py
-    Path/Post/scripts/fanuc_post.py
-    Path/Post/scripts/fangling_post.py
+    Path/Post/scripts/dynapath_legacy_post.py
+    Path/Post/scripts/dynapath_4060_legacy_post.py
+    Path/Post/scripts/fanuc_legacy_post.py
+    Path/Post/scripts/fangling_legacy_post.py
     Path/Post/scripts/gcode_pre.py
     Path/Post/scripts/generic_post.py
-    Path/Post/scripts/heidenhain_post.py
-    Path/Post/scripts/jtech_post.py
+    Path/Post/scripts/heidenhain_legacy_post.py
     Path/Post/scripts/linuxcnc_post.py
+    Path/Post/scripts/jtech_legacy_post.py
     Path/Post/scripts/mach3_mach4_legacy_post.py
-    Path/Post/scripts/marlin_post.py
-    Path/Post/scripts/nccad_post.py
-    Path/Post/scripts/opensbp_post.py
+    Path/Post/scripts/marlin_legacy_post.py
+    Path/Post/scripts/nccad_legacy_post.py
+    Path/Post/scripts/opensbp_legacy_post.py
     Path/Post/scripts/opensbp_pre.py
-    Path/Post/scripts/philips_post.py
+    Path/Post/scripts/philips_legacy_post.py
     Path/Post/scripts/test_post.py
-    Path/Post/scripts/rml_post.py
-    Path/Post/scripts/rrf_post.py
+    Path/Post/scripts/rml_legacy_post.py
+    Path/Post/scripts/rrf_legacy_post.py
     Path/Post/scripts/slic3r_pre.py
     Path/Post/scripts/smoothie_post.py
-    Path/Post/scripts/snapmaker_post.py
+    Path/Post/scripts/snapmaker_legacy_post.py
     Path/Post/scripts/svg_post.py
-    Path/Post/scripts/wedm_post.py
+    Path/Post/scripts/wedm_legacy_post.py
 )
 
 SET(PathPythonOp_SRCS
@@ -507,8 +508,6 @@ SET(Tests_SRCS
     CAMTests/TestCentroidLegacyPost.py
     CAMTests/TestFanucPost.py
     CAMTests/TestGenericPost.py
-    CAMTests/TestGrblPost.py
-    CAMTests/TestGrblLegacyPost.py
     CAMTests/TestLinuxCNCPost.py
     CAMTests/TestLinkingGenerator.py
     CAMTests/TestMachine.py
