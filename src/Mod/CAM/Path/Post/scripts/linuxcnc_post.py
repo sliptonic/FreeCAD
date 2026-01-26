@@ -66,6 +66,52 @@ class Linuxcnc(PostProcessor):
 
     """
 
+    @classmethod
+    def get_common_property_schema(cls):
+        """Override common properties with LinuxCNC-specific defaults."""
+        common_props = super().get_common_property_schema()
+        
+        # Override defaults for LinuxCNC
+        for prop in common_props:
+            if prop["name"] == "supports_tool_radius_compensation":
+                prop["default"] = True
+            elif prop["name"] == "preamble":
+                prop["default"] = "G17 G54 G40 G49 G80 G90"
+            elif prop["name"] == "postamble":
+                prop["default"] = "M05\nG17 G54 G90 G80 G40\nM2"
+            elif prop["name"] == "safetyblock":
+                prop["default"] = "G40 G49 G80"
+        
+        return common_props
+
+    @classmethod
+    def get_property_schema(cls):
+        """Return schema for LinuxCNC-specific configurable properties."""
+        return [
+            {
+                "name": "blend_mode",
+                "type": "choice",
+                "label": translate("CAM", "Path Blending Mode"),
+                "default": "BLEND",
+                "choices": ["EXACT_PATH", "EXACT_STOP", "BLEND"],
+                "help": translate("CAM", 
+                    "Path blending mode: EXACT_PATH (G61) stops at each point, "
+                    "EXACT_STOP (G61.1) stops at path ends, BLEND (G64) allows smooth motion")
+            },
+            {
+                "name": "blend_tolerance",
+                "type": "float",
+                "label": translate("CAM", "Blend Tolerance"),
+                "default": 0.0,
+                "min": 0.0,
+                "max": 10.0,
+                "decimals": 4,
+                "help": translate("CAM",
+                    "Tolerance for BLEND mode (P value): 0 = no tolerance (G64), "
+                    ">0 = tolerance (G64 P-), in current units")
+            }
+        ]
+
     def __init__(
         self,
         job,
@@ -130,9 +176,16 @@ M2"""
         values["POSTPROCESSOR_FILE_NAME"] = __name__
         #
         # Path blending mode configuration (LinuxCNC-specific)
+        # Load from machine configuration if available, otherwise use defaults
         #
-        values["BLEND_MODE"] = "BLEND"  # Options: EXACT_PATH, EXACT_STOP, BLEND
-        values["BLEND_TOLERANCE"] = 0.0  # P value for BLEND mode (0 = G64, >0 = G64 P-)
+        if self._machine and hasattr(self._machine, 'postprocessor_properties'):
+            props = self._machine.postprocessor_properties
+            values["BLEND_MODE"] = props.get("blend_mode", "BLEND")
+            values["BLEND_TOLERANCE"] = props.get("blend_tolerance", 0.0)
+        else:
+            # Fallback to defaults if no machine configuration
+            values["BLEND_MODE"] = "BLEND"
+            values["BLEND_TOLERANCE"] = 0.0
         #
         # Any commands in this value will be output after the header and
         # safety block at the beginning of the G-code file.

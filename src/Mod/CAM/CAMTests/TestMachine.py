@@ -18,7 +18,6 @@ from Machine.models.machine import (
     Machine,
     Spindle,
     OutputOptions,
-    GCodeBlocks,
     ProcessingOptions,
     MachineFactory,
 )
@@ -71,8 +70,9 @@ class TestMachineDataclass(PathTestUtils.PathTestBase):
 
         # Post-processor defaults
         self.assertIsInstance(machine.output, OutputOptions)
-        self.assertIsInstance(machine.blocks, GCodeBlocks)
         self.assertIsInstance(machine.processing, ProcessingOptions)
+        self.assertEqual(machine.postprocessor_file_name, "")
+        self.assertIsInstance(machine.postprocessor_properties, dict)
 
     def test_custom_initialization(self):
         """Test Machine initialization with custom values and verify machine_type is derived"""
@@ -223,39 +223,30 @@ class TestProcessingOptions(PathTestUtils.PathTestBase):
         opts = ProcessingOptions()
 
         # Default values
-        self.assertEqual(opts.drill_cycles_to_translate, ["G73", "G81", "G82", "G83"])
         self.assertFalse(opts.early_tool_prep)
         self.assertFalse(opts.filter_inefficient_moves)
-        self.assertEqual(opts.spindle_wait, 0.0)
         self.assertFalse(opts.split_arcs)
-        self.assertEqual(opts.suppress_commands, [])
         self.assertTrue(opts.tool_change)
-        self.assertFalse(opts.translate_drill_cycles)
+        self.assertFalse(opts.translate_rapid_moves)
         self.assertIsNone(opts.return_to)
 
     def test_custom_initialization(self):
         """Test ProcessingOptions initialization with custom values"""
         opts = ProcessingOptions(
-            drill_cycles_to_translate=["G81", "G82"],
             early_tool_prep=True,
             filter_inefficient_moves=True,
-            spindle_wait=2.5,
             split_arcs=True,
-            suppress_commands=["G0", "G1"],
             tool_change=False,
-            translate_drill_cycles=True,
+            translate_rapid_moves=True,
             return_to=(10.0, 20.0, 30.0),
         )
 
         # Verify custom values
-        self.assertEqual(opts.drill_cycles_to_translate, ["G81", "G82"])
         self.assertTrue(opts.early_tool_prep)
         self.assertTrue(opts.filter_inefficient_moves)
-        self.assertEqual(opts.spindle_wait, 2.5)
         self.assertTrue(opts.split_arcs)
-        self.assertEqual(opts.suppress_commands, ["G0", "G1"])
         self.assertFalse(opts.tool_change)
-        self.assertTrue(opts.translate_drill_cycles)
+        self.assertTrue(opts.translate_rapid_moves)
         self.assertEqual(opts.return_to, (10.0, 20.0, 30.0))
 
     def test_equality(self):
@@ -266,74 +257,6 @@ class TestProcessingOptions(PathTestUtils.PathTestBase):
 
         opts2.filter_inefficient_moves = True
         self.assertNotEqual(opts1, opts2)
-
-
-class TestGCodeBlocks(PathTestUtils.PathTestBase):
-    """Test GCodeBlocks dataclass"""
-
-    def test_default_initialization(self):
-        """Test GCodeBlocks initialization with defaults"""
-        blocks = GCodeBlocks()
-
-        # All blocks should default to empty strings
-        self.assertEqual(blocks.safetyblock, "")
-        self.assertEqual(blocks.preamble, "")
-        self.assertEqual(blocks.pre_job, "")
-        self.assertEqual(blocks.pre_operation, "")
-        self.assertEqual(blocks.post_operation, "")
-        self.assertEqual(blocks.pre_tool_change, "")
-        self.assertEqual(blocks.post_tool_change, "")
-        self.assertEqual(blocks.tool_return, "")
-        self.assertEqual(blocks.pre_fixture_change, "")
-        self.assertEqual(blocks.post_fixture_change, "")
-        self.assertEqual(blocks.pre_rotary_move, "")
-        self.assertEqual(blocks.post_rotary_move, "")
-        self.assertEqual(blocks.post_job, "")
-        self.assertEqual(blocks.postamble, "")
-
-    def test_custom_initialization(self):
-        """Test GCodeBlocks initialization with custom values"""
-        blocks = GCodeBlocks(
-            safetyblock="G40 G49",
-            preamble="G17 G90",
-            pre_job="M8",
-            pre_operation="(Starting operation)",
-            post_operation="(Finished operation)",
-            pre_tool_change="M5",
-            post_tool_change="M3 S12000",
-            tool_return="G53 G0 Z0",
-            pre_fixture_change="(Changing fixture)",
-            post_fixture_change="G54",
-            pre_rotary_move="(Rotary move start)",
-            post_rotary_move="(Rotary move end)",
-            post_job="M9",
-            postamble="M30",
-        )
-
-        # Verify custom values
-        self.assertEqual(blocks.safetyblock, "G40 G49")
-        self.assertEqual(blocks.preamble, "G17 G90")
-        self.assertEqual(blocks.pre_job, "M8")
-        self.assertEqual(blocks.pre_operation, "(Starting operation)")
-        self.assertEqual(blocks.post_operation, "(Finished operation)")
-        self.assertEqual(blocks.pre_tool_change, "M5")
-        self.assertEqual(blocks.post_tool_change, "M3 S12000")
-        self.assertEqual(blocks.tool_return, "G53 G0 Z0")
-        self.assertEqual(blocks.pre_fixture_change, "(Changing fixture)")
-        self.assertEqual(blocks.post_fixture_change, "G54")
-        self.assertEqual(blocks.pre_rotary_move, "(Rotary move start)")
-        self.assertEqual(blocks.post_rotary_move, "(Rotary move end)")
-        self.assertEqual(blocks.post_job, "M9")
-        self.assertEqual(blocks.postamble, "M30")
-
-    def test_equality(self):
-        """Test GCodeBlocks equality comparison"""
-        blocks1 = GCodeBlocks()
-        blocks2 = GCodeBlocks()
-        self.assertEqual(blocks1, blocks2)
-
-        blocks2.preamble = "G17"
-        self.assertNotEqual(blocks1, blocks2)
 
 
 class TestSpindle(PathTestUtils.PathTestBase):
@@ -356,6 +279,8 @@ class TestSpindle(PathTestUtils.PathTestBase):
         self.assertEqual(spindle.tool_change, "automatic")
         # Default tool axis should be set
         self.assertEqual(spindle.tool_axis, FreeCAD.Vector(0, 0, -1))
+        # Default spindle_wait should be 0.0
+        self.assertEqual(spindle.spindle_wait, 0.0)
 
     def test_spindle_custom_tool_axis(self):
         """Test Spindle with custom tool axis"""
@@ -376,6 +301,7 @@ class TestSpindle(PathTestUtils.PathTestBase):
             min_rpm=500,
             tool_change="manual",
             tool_axis=FreeCAD.Vector(0, 1, 0),
+            spindle_wait=1.5,
         )
 
         data = spindle.to_dict()
@@ -383,12 +309,14 @@ class TestSpindle(PathTestUtils.PathTestBase):
         self.assertEqual(data["id"], "spindle-001")
         self.assertEqual(data["max_power_kw"], 3.0)
         self.assertEqual(data["tool_axis"], [0, 1, 0])
+        self.assertEqual(data["spindle_wait"], 1.5)
 
         restored = Spindle.from_dict(data)
         self.assertEqual(restored.name, spindle.name)
         self.assertEqual(restored.id, spindle.id)
         self.assertEqual(restored.max_power_kw, spindle.max_power_kw)
         self.assertEqual(restored.tool_axis, spindle.tool_axis)
+        self.assertEqual(restored.spindle_wait, spindle.spindle_wait)
 
 
 class TestMachineFactory(PathTestUtils.PathTestBase):

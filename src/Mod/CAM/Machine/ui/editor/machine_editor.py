@@ -30,6 +30,7 @@ from enum import Enum
 from Machine.models.machine import Machine, MachineFactory, LinearAxis, RotaryAxis, Spindle
 from Path.Main.Gui.Editor import CodeEditor
 from Path.Post.Processor import PostProcessorFactory
+from Machine.ui.editor.postprocessor_properties import PostProcessorPropertyManager
 import re
 
 translate = FreeCAD.Qt.translate
@@ -339,15 +340,15 @@ class MachineEditorDialog(QtGui.QDialog):
         self.tabs.addTab(self.machine_tab, translate("CAM_MachineEditor", "Machine"))
         self.setup_machine_tab()
 
+        # Postprocessor tab
+        self.postprocessor_tab = QtGui.QWidget()
+        self.tabs.addTab(self.postprocessor_tab, translate("CAM_MachineEditor", "Postprocessor"))
+        self.setup_postprocessor_tab()
+
         # Output Options tab
         self.output_tab = QtGui.QWidget()
         self.tabs.addTab(self.output_tab, translate("CAM_MachineEditor", "Output Options"))
         self.setup_output_tab()
-
-        # G-Code Blocks tab
-        self.blocks_tab = QtGui.QWidget()
-        self.tabs.addTab(self.blocks_tab, translate("CAM_MachineEditor", "G-Code Blocks"))
-        self.setup_blocks_tab()
 
         # Processing Options tab
         self.processing_tab = QtGui.QWidget()
@@ -358,10 +359,10 @@ class MachineEditorDialog(QtGui.QDialog):
         param = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
         self.enable_machine_postprocessor = param.GetBool("EnableMachinePostprocessor", True)
         self.tabs.setTabVisible(
-            self.tabs.indexOf(self.output_tab), self.enable_machine_postprocessor
+            self.tabs.indexOf(self.postprocessor_tab), self.enable_machine_postprocessor
         )
         self.tabs.setTabVisible(
-            self.tabs.indexOf(self.blocks_tab), self.enable_machine_postprocessor
+            self.tabs.indexOf(self.output_tab), self.enable_machine_postprocessor
         )
         self.tabs.setTabVisible(
             self.tabs.indexOf(self.processing_tab), self.enable_machine_postprocessor
@@ -782,31 +783,6 @@ class MachineEditorDialog(QtGui.QDialog):
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         layout.addRow(translate("CAM_MachineEditor", "Type"), self.type_combo)
 
-        # Post Processor Selection
-        self.post_processor_combo = QtGui.QComboBox()
-        postProcessors = Path.Preferences.allEnabledPostProcessors([""])
-        for post in postProcessors:
-            self.post_processor_combo.addItem(post)
-        self.post_processor_combo.currentIndexChanged.connect(self.updatePostProcessorTooltip)
-        self.post_processor_combo.currentIndexChanged.connect(
-            lambda: self._update_machine_field(
-                "postprocessor_file_name", self.post_processor_combo.currentText()
-            )
-        )
-        self.postProcessorDefaultTooltip = translate("CAM_MachineEditor", "Select a post processor")
-        self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
-        layout.addRow(translate("CAM_MachineEditor", "Post Processor"), self.post_processor_combo)
-
-        # self.post_processor_args_edit = QtGui.QLineEdit()
-        # self.post_processor_args_edit.textChanged.connect(
-        #     lambda text: self._update_machine_field("postprocessor_args", text)
-        # )
-        # self.postProcessorArgsDefaultTooltip = translate(
-        #     "CAM_MachineEditor", "Additional arguments"
-        # )
-        # self.post_processor_args_edit.setToolTip(self.postProcessorArgsDefaultTooltip)
-        # layout.addRow(translate("CAM_MachineEditor", "Arguments"), self.post_processor_args_edit)
-
         # Axes group
         self.axes_group = QtGui.QGroupBox(translate("CAM_MachineEditor", "Axes"))
         self.axes_layout = QtGui.QVBoxLayout(self.axes_group)
@@ -1177,8 +1153,8 @@ class MachineEditorDialog(QtGui.QDialog):
 
         layout.addStretch()
 
-    def setup_blocks_tab(self):
-        """Set up the G-Code blocks configuration tab."""
+    def setup_postprocessor_tab(self):
+        """Set up the postprocessor configuration tab with selector and properties."""
         # Use scroll area for all the options
         scroll = QtGui.QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1186,16 +1162,50 @@ class MachineEditorDialog(QtGui.QDialog):
         layout = QtGui.QVBoxLayout(scroll_widget)
         scroll.setWidget(scroll_widget)
 
-        main_layout = QtGui.QVBoxLayout(self.blocks_tab)
+        main_layout = QtGui.QVBoxLayout(self.postprocessor_tab)
         main_layout.addWidget(scroll)
 
-        # === G-Code Blocks ===
-        if self.machine:
-            blocks_group, blocks_widgets = DataclassGUIGenerator.create_group_for_dataclass(
-                self.machine.blocks, "G-Code Blocks"
+        # === Postprocessor Selection ===
+        selector_group = QtGui.QGroupBox(translate("CAM_MachineEditor", "Postprocessor Selection"))
+        selector_layout = QtGui.QFormLayout(selector_group)
+        layout.addWidget(selector_group)
+
+        # Postprocessor combo box
+        self.post_processor_combo = QtGui.QComboBox()
+        self.post_processor_combo.setEditable(False)
+        self.postProcessorDefaultTooltip = translate(
+            "CAM_MachineEditor",
+            "Select the postprocessor file for this machine"
+        )
+        self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
+        
+        # Populate postprocessor list
+        postProcessors = Path.Preferences.allEnabledPostProcessors([""])
+        for post in postProcessors:
+            self.post_processor_combo.addItem(post)
+        
+        # Connect signals
+        self.post_processor_combo.currentIndexChanged.connect(self.updatePostProcessorTooltip)
+        self.post_processor_combo.currentIndexChanged.connect(self.updatePostProcessorProperties)
+        self.post_processor_combo.currentIndexChanged.connect(
+            lambda: self._update_machine_field(
+                "postprocessor_file_name", self.post_processor_combo.currentText()
             )
-            layout.addWidget(blocks_group)
-            self._connect_widgets_to_machine(blocks_widgets, "blocks")
+        )
+        
+        selector_layout.addRow(
+            translate("CAM_MachineEditor", "Post Processor:"), 
+            self.post_processor_combo
+        )
+
+        # === Postprocessor Properties ===
+        self.post_properties_group = QtGui.QGroupBox(
+            translate("CAM_MachineEditor", "Postprocessor Configuration")
+        )
+        self.post_properties_layout = QtGui.QFormLayout(self.post_properties_group)
+        self.post_properties_widgets = {}  # Store widgets for property access
+        self.post_properties_group.setVisible(False)  # Hidden until postprocessor selected
+        layout.addWidget(self.post_properties_group)
 
         layout.addStretch()
 
@@ -1357,7 +1367,6 @@ class MachineEditorDialog(QtGui.QDialog):
         # Update nested dataclass fields
         dataclass_groups = [
             ("output", machine.output),
-            ("blocks", machine.blocks),
             ("processing", machine.processing),
         ]
 
@@ -1425,6 +1434,77 @@ class MachineEditorDialog(QtGui.QDialog):
             self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
             # self.post_processor_args_edit.setToolTip(self.postProcessorArgsDefaultTooltip)
 
+    def updatePostProcessorProperties(self):
+        """Dynamically update postprocessor properties UI based on selected postprocessor's schema."""
+        # Clear existing property widgets
+        for i in reversed(range(self.post_properties_layout.count())):
+            item = self.post_properties_layout.itemAt(i)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self.post_properties_layout.removeItem(item)
+        
+        self.post_properties_widgets.clear()
+        
+        # Get selected postprocessor
+        post_name = str(self.post_processor_combo.currentText())
+        if not post_name:
+            self.post_properties_group.setVisible(False)
+            return
+        
+        # Try to get the postprocessor class and its property schema
+        try:
+            processor = self.getPostProcessor(post_name)
+            if processor is None:
+                self.post_properties_group.setVisible(False)
+                return
+            
+            # Get property schema from the processor class
+            processor_class = processor.__class__
+            
+            # Use get_full_property_schema if available (includes common + specific properties)
+            # Fall back to get_property_schema for backward compatibility
+            if hasattr(processor_class, 'get_full_property_schema'):
+                schema = processor_class.get_full_property_schema()
+            elif hasattr(processor_class, 'get_property_schema'):
+                schema = processor_class.get_property_schema()
+            else:
+                self.post_properties_group.setVisible(False)
+                return
+            
+            if not schema:
+                self.post_properties_group.setVisible(False)
+                return
+            
+            # Create widgets for each property in the schema
+            for prop in schema:
+                prop_name = prop.get('name')
+                prop_label = prop.get('label', prop_name)
+                prop_default = prop.get('default')
+                prop_help = prop.get('help', '')
+                prop_type = prop.get('type')
+                
+                # Get current value from machine config or use default
+                current_value = self.machine.postprocessor_properties.get(prop_name, prop_default)
+                
+                # Create appropriate widget based on type
+                widget = PostProcessorPropertyManager.create_property_widget(prop, current_value)
+                if widget:
+                    widget.setToolTip(prop_help)
+                    self.post_properties_layout.addRow(prop_label, widget)
+                    self.post_properties_widgets[prop_name] = widget
+                    
+                    # Connect widget to update machine properties
+                    PostProcessorPropertyManager.connect_property_widget(
+                        widget, prop_name, prop_type, self.machine
+                    )
+            
+            self.post_properties_group.setVisible(True)
+            
+        except Exception as e:
+            Path.Log.warning(f"Failed to load postprocessor properties for {post_name}: {e}")
+            self.post_properties_group.setVisible(False)
+
     def populate_from_machine(self, machine: Machine):
         """Populate UI fields from Machine object.
 
@@ -1448,18 +1528,20 @@ class MachineEditorDialog(QtGui.QDialog):
             self.type_combo.setCurrentIndex(index)
         self.type_combo.blockSignals(False)
 
-        # Post processor selection
+        # Post processor selection (in Postprocessor tab)
         if self.enable_machine_postprocessor:
             post_processor = machine.postprocessor_file_name
+            self.post_processor_combo.blockSignals(True)
             index = self.post_processor_combo.findText(post_processor, QtCore.Qt.MatchFixedString)
             if index >= 0:
                 self.post_processor_combo.setCurrentIndex(index)
             else:
                 self.post_processor_combo.setCurrentIndex(0)
+            self.post_processor_combo.blockSignals(False)
+            
+            # Trigger property loading after setting postprocessor
             self.updatePostProcessorTooltip()
-
-            # Post processor arguments
-            # self.post_processor_args_edit.setText(machine.postprocessor_args)
+            self.updatePostProcessorProperties()
 
         # Get units for suffixes in populate
         units = self.units_combo.itemData(self.units_combo.currentIndex())

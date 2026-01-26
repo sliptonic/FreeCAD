@@ -30,7 +30,6 @@ from .machine import (
     MachineUnits,
     OutputUnits,
     OutputOptions,
-    GCodeBlocks,
     ProcessingOptions,
 )
 
@@ -43,6 +42,5 @@ __all__ = [
     "MachineUnits",
     "OutputUnits",
     "OutputOptions",
-    "GCodeBlocks",
     "ProcessingOptions",
 ]
