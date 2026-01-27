@@ -62,8 +62,15 @@ GCODE_MOVE_ALL = GCODE_MOVE + GCODE_MOVE_RAPID
 # G-Code Modal Commands
 # =============================================================================
 
+# Units mode
+GCODE_UNITS = ["G20", "G21"]
+GCODE_UNITS_METRIC = ["G21"]
+GCODE_UNITS_INCHES = ["G20"]
+
 # Dwell
 GCODE_DWELL = ["G4", "G04"]
+
+GCODE_CUTTER_COMPENSATION = ["G40", "G41", "G42"]
 
 # Canned cycle cancel
 GCODE_CYCLE_CANCEL = ["G80"]
@@ -77,6 +84,7 @@ GCODE_PROBE = ["G38.2"]
 # Distance modes
 GCODE_ABSOLUTE = ["G90"]
 GCODE_INCREMENTAL = ["G91"]
+GCODE_DISTANCE_MODE = GCODE_ABSOLUTE + GCODE_INCREMENTAL
 
 # Coordinate system offset
 GCODE_OFFSET = ["G92"]
@@ -93,6 +101,7 @@ GCODE_SPINDLE_RPM = ["G97"]  # RPM mode
 # Canned cycle return modes
 GCODE_RETURN_INITIAL = ["G98"]  # Return to initial Z level
 GCODE_RETURN_R = ["G99"]  # Return to R level
+GCODE_RETURN_MODE = GCODE_RETURN_INITIAL + GCODE_RETURN_R
 
 # =============================================================================
 # Work Coordinate Systems (Fixtures)
@@ -169,3 +178,18 @@ MCODE_SUPPORTED = (
 
 # All coolant M-codes
 MCODE_COOLANT = MCODE_COOLANT_MIST + MCODE_COOLANT_FLOOD + MCODE_COOLANT_OFF
+
+# =============================================================================
+# Non-Conforming Commands (per ADR-002)
+# =============================================================================
+
+# These commands should not be used in operations.  They follow a valid format and 
+# will be accepted by the Command system.  They are valid for use in post processing.
+
+GCODE_NON_CONFORMING = (
+    GCODE_CUTTER_COMPENSATION +
+    GCODE_DISTANCE_MODE +
+    GCODE_UNITS +
+    GCODE_RETURN_MODE +
+    GCODE_CYCLE_CANCEL
+)
