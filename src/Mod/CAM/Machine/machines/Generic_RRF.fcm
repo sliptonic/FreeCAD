@@ -112,7 +112,7 @@
         "spindle_precision": 0
     },
     "postprocessor": {
-        "file_name": "rrf",
+        "file_name": "generic",
         "properties": {
             "supports_tool_radius_compensation": false,
             "supported_commands": "G0\nG00\nG1\nG01\nG2\nG02\nG3\nG03\nG73\nG74\nG81\nG82\nG83\nG84\nG38.2\nG54\nG55\nG56\nG57\nG58\nG59\nG59.1\nG59.2\nG59.3\nG59.4\nG59.5\nG59.6\nG59.7\nG59.8\nG59.9\nM0\nM00\nM1\nM01\nM3\nM03\nM4\nM04\nM6\nM06",

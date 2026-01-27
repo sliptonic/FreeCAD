@@ -277,19 +277,8 @@ class PostProcessor:
         Returns:
             List of common property schema dictionaries.
         """
-        # List of all supported G-code commands based on ADR-002
-        all_supported_commands = [
-            "G0", "G00", "G1", "G01", "G2", "G02", "G3", "G03",
-            "G73", "G74", "G81", "G82", "G83", "G84", "G38.2",
-            "G54", "G55", "G56", "G57", "G58", "G59",
-            "G59.1", "G59.2", "G59.3", "G59.4", "G59.5", "G59.6", "G59.7", "G59.8", "G59.9",
-            "M0", "M00", "M1", "M01", "M3", "M03", "M4", "M04", "M6", "M06"
-        ]
-        
-        # Non-conforming commands (subject to deprecation per ADR-002)
-        non_conforming_commands = [
-            "G40", "G41", "G42", "G80", "G90", "G91", "G98", "G99"
-        ]
+        # Use centralized command lists from CONSTANTS
+        all_supported_commands = CONSTANTS.GCODE_SUPPORTED + CONSTANTS.MCODE_SUPPORTED + CONSTANTS.GCODE_NON_CONFORMING
         
         return [
             {
@@ -314,10 +303,11 @@ class PostProcessor:
                 "name": "drill_cycles_to_translate",
                 "type": "text",
                 "label": translate("CAM", "Drill Cycles to Translate"),
-                "default": "",
+                "default": "\n".join(CONSTANTS.GCODE_MOVE_DRILL),
                 "help": translate("CAM",
                     "List of drill cycle commands to translate to G0/G1 moves (one per line). "
-                    "Common values: G73, G81, G82, G83. Leave empty if postprocessor supports drill cycles natively.")
+                    f"Standard drill cycles: {', '.join(CONSTANTS.GCODE_MOVE_DRILL)}. "
+                    "Leave empty if postprocessor supports drill cycles natively.")
             },
             {
                 "name": "preamble",
