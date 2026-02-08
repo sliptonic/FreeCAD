@@ -506,11 +506,13 @@ class PostProcessor:
         Assumes Stage 0 (Configuration) is complete.
         
         Stages:
+        0. Pre-processing Dialog - Collect user input before processing
         1. Ordering - Build ordered list of postables
         2. Command Expansion - Canned cycles, arc splitting
         3. Command Conversion - Convert Path.Commands to G-code strings
         4. G-code Optimization - Deduplication, line numbering
         5. Output Production - Assemble final structure
+        6. Remote Posting - Post-processing network operations
         """
         from Path.Op.Drilling import ObjectDrilling
         from Path.Post.GcodeProcessingUtils import (
@@ -521,6 +523,12 @@ class PostProcessor:
         )
 
         Path.Log.debug("Starting export2()")
+        
+        # ===== STAGE 0: PRE-PROCESSING DIALOG =====
+        # Allow post processors to collect user input before processing begins
+        if not self.pre_processing_dialog():
+            Path.Log.info("Pre-processing dialog cancelled - aborting export")
+            return None
         
         # Merge machine configuration into values dict
         if self._machine and hasattr(self._machine, 'output'):
@@ -559,6 +567,10 @@ class PostProcessor:
                 Path.Log.debug(f"Found output_bcnc_comments: {output_options.output_bcnc_comments}")
                 self.values['OUTPUT_BCNC'] = output_options.output_bcnc_comments
                 Path.Log.debug(f"Set OUTPUT_BCNC to: {self.values['OUTPUT_BCNC']}")
+            if hasattr(output_options, 'output_tool_length_offset'):
+                self.values['OUTPUT_TOOL_LENGTH_OFFSET'] = output_options.output_tool_length_offset
+            if hasattr(output_options, 'remote_post'):
+                self.values['REMOTE_POST'] = output_options.remote_post
         
         # ===== STAGE 1: ORDERING =====
         # Process all jobs (currently only first job supported)
@@ -778,6 +790,81 @@ class PostProcessor:
                             if len(filtered_commands) != len(item.Path.Commands):
                                 item.Path = Path.Path(filtered_commands)
             
+            # ===== STAGE 2.6: TOOL LENGTH OFFSET COMMAND CREATION =====
+            # Create G43 tool length offset commands if enabled
+            output_tool_length_offset = self.values.get('OUTPUT_TOOL_LENGTH_OFFSET', True)
+            Path.Log.debug(f"OUTPUT_TOOL_LENGTH_OFFSET value: {output_tool_length_offset}")
+            
+            # Dictionary to store G43 commands for tool change items
+            self._tool_change_g43_commands = {}
+            # Track which tool changes should be suppressed (because operation has M6)
+            self._suppress_tool_change_m6 = set()
+            
+            if output_tool_length_offset:
+                Path.Log.debug("Creating G43 tool length offset commands")
+                for section_name, sublist in postables:
+                    # First pass: check if operations have M6 commands and add G43 to them
+                    for item in sublist:
+                        if hasattr(item, 'Proxy'):  # OPERATION
+                            if hasattr(item, 'Path') and item.Path:
+                                commands_with_g43 = []
+                                for cmd in item.Path.Commands:
+                                    commands_with_g43.append(cmd)
+                                    # If this is an M6 command, add G43 after it
+                                    if cmd.Name in ('M6', 'M06') and 'T' in cmd.Parameters:
+                                        tool_num = cmd.Parameters['T']
+                                        g43_cmd = Path.Command('G43', {'H': tool_num})
+                                        g43_cmd.Annotations = {'tool_length_offset': True}
+                                        commands_with_g43.append(g43_cmd)
+                                        Path.Log.debug(f"Added G43 H{tool_num} after M6 in operation {item.Label}")
+                                
+                                # Update the operation's Path with G43 commands inserted
+                                if len(commands_with_g43) != len(item.Path.Commands):
+                                    item.Path = Path.Path(commands_with_g43)
+                    
+                    # Second pass: handle tool change items and mark suppression
+                    operations_with_m6 = set()
+                    for item in sublist:
+                        if hasattr(item, 'Proxy'):  # OPERATION
+                            if hasattr(item, 'Path') and item.Path:
+                                for cmd in item.Path.Commands:
+                                    if cmd.Name in ('M6', 'M06') and 'T' in cmd.Parameters:
+                                        tool_num = cmd.Parameters['T']
+                                        operations_with_m6.add(tool_num)
+                    
+                    for item in sublist:
+                        if hasattr(item, 'ToolNumber'):  # TOOLCHANGE
+                            tool_num = item.ToolNumber
+                            if tool_num in operations_with_m6:
+                                # Suppress M6 generation for this tool change since operation has it
+                                self._suppress_tool_change_m6.add(id(item))
+                                Path.Log.debug(f"Suppressing M6 generation for tool change T{tool_num}")
+                            else:
+                                # Add G43 command to tool change item
+                                g43_cmd = Path.Command('G43', {'H': tool_num})
+                                g43_cmd.Annotations = {'tool_length_offset': True}
+                                self._tool_change_g43_commands[id(item)] = [g43_cmd]
+            else:
+                # OUTPUT_TOOL_LENGTH_OFFSET is False - remove G43 commands from operation Paths
+                Path.Log.debug("G43 tool length offset commands disabled")
+                self._tool_change_g43_commands = {}
+                self._suppress_tool_change_m6 = set()
+                
+                # Remove any existing G43 commands from operation Paths
+                for section_name, sublist in postables:
+                    for item in sublist:
+                        if hasattr(item, 'Proxy') and hasattr(item, 'Path') and item.Path:
+                            # Filter out any existing G43 commands
+                            filtered_commands = []
+                            for cmd in item.Path.Commands:
+                                if not (cmd.Name == 'G43' and 
+                                       cmd.Annotations.get('tool_length_offset')):
+                                    filtered_commands.append(cmd)
+                            
+                            # Create new Path without G43 commands
+                            if len(filtered_commands) != len(item.Path.Commands):
+                                item.Path = Path.Path(filtered_commands)
+            
             # ===== STAGE 3: COMMAND CONVERSION =====
             job_sections = []
             
@@ -838,10 +925,22 @@ class PostProcessor:
                         # Generate M6 tool change command
                         if self._machine and hasattr(self._machine, 'processing'):
                             if self._machine.processing.tool_change:
-                                # Generate M6 T{ToolNumber} command
-                                tool_num = item.ToolNumber
-                                m6_cmd = f"M6 T{tool_num}"
-                                gcode_lines.append(m6_cmd)
+                                # Check if M6 generation should be suppressed (operation already has M6)
+                                if id(item) not in self._suppress_tool_change_m6:
+                                    # Generate M6 T{ToolNumber} command
+                                    tool_num = item.ToolNumber
+                                    m6_cmd = f"M6 T{tool_num}"
+                                    gcode_lines.append(m6_cmd)
+                                    
+                                    # Output G43 commands if they were added in Stage 2.6
+                                    g43_commands = self._tool_change_g43_commands.get(id(item), [])
+                                    for g43_cmd in g43_commands:
+                                        gcode_g43 = self.convert_command_to_gcode(g43_cmd)
+                                        if gcode_g43 is not None and gcode_g43.strip():
+                                            gcode_lines.append(gcode_g43)
+                                else:
+                                    # M6 suppressed - operation already handles it
+                                    Path.Log.debug(f"M6 T{item.ToolNumber} suppressed - handled by operation")
                             else:
                                 # Tool change disabled - output as comment
                                 comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
@@ -851,10 +950,18 @@ class PostProcessor:
                                 else:
                                     gcode_lines.append(f"{comment_symbol} Tool change suppressed: M6 T{tool_num}")
                         else:
-                            # No machine config - output M6 by default
-                            tool_num = item.ToolNumber
-                            m6_cmd = f"M6 T{tool_num}"
-                            gcode_lines.append(m6_cmd)
+                            # No machine config - check suppression before outputting M6
+                            if id(item) not in self._suppress_tool_change_m6:
+                                tool_num = item.ToolNumber
+                                m6_cmd = f"M6 T{tool_num}"
+                                gcode_lines.append(m6_cmd)
+                                
+                                # Output G43 commands if they were added in Stage 2.6
+                                g43_commands = self._tool_change_g43_commands.get(id(item), [])
+                                for g43_cmd in g43_commands:
+                                    gcode_g43 = self.convert_command_to_gcode(g43_cmd)
+                                    if gcode_g43 is not None and gcode_g43.strip():
+                                        gcode_lines.append(gcode_g43)
                     elif hasattr(item, 'Label') and item.Label == "Fixture":  # FIXTURE
                         if self._machine and self._machine.postprocessor_properties.get('pre_fixture_change'):
                             pre_lines = [line for line in self._machine.postprocessor_properties['pre_fixture_change'].split('\n') if line.strip()]
@@ -1067,6 +1174,14 @@ class PostProcessor:
         Path.Log.debug(f"Returning {len(all_job_sections)} sections")
         Path.Log.debug(f"Sections: {all_job_sections}")
 
+        # ===== STAGE 6: REMOTE POSTING =====
+        # Call remote_post method for subclasses to override
+        try:
+            self.remote_post(all_job_sections)
+        except Exception as e:
+            Path.Log.error(f"Remote posting failed: {e}")
+            # Don't fail the entire post-processing for remote posting errors
+
         return all_job_sections 
         
 
@@ -1237,6 +1352,34 @@ class PostProcessor:
         self.all_visible: Parser = self.init_arguments(
             self.values, self.argument_defaults, self.all_arguments_visible
         )
+
+
+    def remote_post(self, gcode_sections):
+        """
+        Hook for remote posting functionality.
+        
+        This method is called after all G-code has been generated and written.
+        Base implementation does nothing, but subclasses can override to implement
+        remote posting, file uploads, or other post-processing actions.
+        
+        Args:
+            gcode_sections: List of (section_name, gcode) tuples containing all generated G-code
+        """
+        pass
+
+    def pre_processing_dialog(self):
+        """
+        Hook for pre-processing dialog functionality.
+        
+        This method is called before any post-processing begins, allowing post processors
+        to collect user input through dialogs or other interactive means.
+        Base implementation does nothing, but subclasses can override to implement
+        configuration dialogs, validation checks, or user input collection.
+        
+        Returns:
+            bool: True to continue with post-processing, False to cancel
+        """
+        return True
 
 
     def convert_command_to_gcode(self, command: Path.Command) -> str:
@@ -1413,6 +1556,12 @@ class PostProcessor:
         #         # Swap order: put T before M6
         #         if len(command_line) >= 2 and command_line[1].startswith('T'):
         #             command_line = [command_line[1], command_line[0]] + command_line[2:]
+        
+        # Handle tool length offset (G43) suppression
+        if command_name in ('G43',):
+            if not self.values.get('OUTPUT_TOOL_LENGTH_OFFSET', True):
+                # Tool length offset disabled - suppress G43 command
+                return None
         
         # Format the command line
         formatted_line = format_command_line(self.values, command_line)

@@ -123,6 +123,12 @@ class OutputOptions:
     feed_precision: int = 3  # Decimal places for feed rates
     spindle_precision: int = 0  # Renamed from 'spindle_decimals'
 
+    # Tool length offset control
+    output_tool_length_offset: bool = True  # Output G43 H{tool} after M6 tool changes
+    
+    # Remote posting options
+    remote_post: bool = False  # Enable remote posting to network endpoint
+
 
 @dataclass
 class ProcessingOptions:
@@ -776,6 +782,7 @@ class Machine:
             "axis_precision": self.output.axis_precision,
             "feed_precision": self.output.feed_precision,
             "spindle_precision": self.output.spindle_precision,
+            "output_tool_length_offset": self.output.output_tool_length_offset,
         }
 
         # Processing options
@@ -989,6 +996,7 @@ class Machine:
             config.output.axis_precision = output_data.get("axis_precision", 3)
             config.output.feed_precision = output_data.get("feed_precision", 3)
             config.output.spindle_precision = output_data.get("spindle_precision", 0)
+            config.output.output_tool_length_offset = output_data.get("output_tool_length_offset", True)
 
             # Handle output_units conversion from string to enum
             output_units_str = output_data.get("output_units", "metric")

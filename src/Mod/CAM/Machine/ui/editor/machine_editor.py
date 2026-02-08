@@ -100,6 +100,8 @@ class DataclassGUIGenerator:
         "postprocessor_file_name": translate("CAM_MachineEditor", "Post Processor"),
         "postprocessor_args": translate("CAM_MachineEditor", "Post Processor Arguments"),
         "use_tlo": translate("CAM_MachineEditor", "Use Tool Length Offset"),
+        "output_tool_length_offset": translate("CAM_MachineEditor", "Output Tool Length Offset (G43)"),
+        "remote_post": translate("CAM_MachineEditor", "Enable Remote Posting"),
         "stop_spindle_for_tool_change": translate(
             "CAM_MachineEditor", "Stop Spindle for Tool Change"
         ),
