@@ -54,7 +54,7 @@ from CAMTests.TestPathHelix import TestPathHelix
 from CAMTests.TestPathHelixGenerator import TestPathHelixGenerator
 from CAMTests.TestPathLog import TestPathLog
 from CAMTests.TestPathOpUtil import TestPathOpUtil
-from CAMTests.TestToolPostProcessing import (
+from CAMTests.TestPostToolProcessing import (
     TestToolLengthOffset,
     TestToolProcessing
 )

@@ -64,7 +64,7 @@ class Smoothie(PostProcessor):
         units="Metric",
     ) -> None:
         super().__init__(
-            job_or_jobs=job,
+            job=job,
             tooltip=tooltip,
             tooltipargs=tooltipargs,
             units=units,

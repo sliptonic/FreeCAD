@@ -78,56 +78,75 @@ class OutputUnits(Enum):
 
 
 @dataclass
+class HeaderOptions:
+    """Controls what gets included in the G-code header."""
+    
+    include_date: bool = True
+    include_description: bool = True
+    include_document_name: bool = True
+    include_machine_name: bool = True
+    include_project_file: bool = True
+    include_units: bool = True
+    include_tool_list: bool = True
+    include_fixture_list: bool = True
+
+
+@dataclass
+class CommentOptions:
+    """Controls comment formatting and inclusion."""
+    
+    enabled: bool = True
+    symbol: str = "("
+    include_operation_labels: bool = False
+    include_blank_lines: bool = True
+    output_bcnc_comments: bool = False
+
+
+@dataclass
+class FormattingOptions:
+    """Controls line numbering and spacing."""
+    
+    line_numbers: bool = False
+    line_number_start: int = 100
+    line_number_prefix: str = "N"
+    line_increment: int = 10
+    command_space: str = " "
+    end_of_line_chars: str = "\n"
+
+
+@dataclass
+class PrecisionOptions:
+    """Controls numeric precision settings."""
+    
+    axis: int = 3
+    feed: int = 3
+    spindle: int = 0
+
+
+@dataclass
+class DuplicateOptions:
+    """Controls duplicate output (positive framing: True = output duplicates, False = suppress)."""
+    
+    commands: bool = True  # When False, suppress repeated G/M codes (modal)
+    parameters: bool = True  # When False, suppress repeated parameter values (modal)
+
+
+@dataclass
 class OutputOptions:
     """Controls what gets included in the G-code output and its formatting."""
 
-    # These options control conversion of Path Objects to actual gcode.
-
-    output_units: OutputUnits = OutputUnits.METRIC  # G-code output units
-
-    # Line formatting options
-    command_space: str = " "
-    comment_symbol: str = "("
-    end_of_line_chars: str = "\n"
-    line_increment: int = 10
-    line_number_start: int = 100
-    line_numbers: bool = False
-    line_number_prefix: str = "N"
-
-    # Output content options
-    output_comments: bool = True  # Renamed from 'comments'
-    output_blank_lines: bool = True  # Renamed from 'blank_lines'
-    output_bcnc_comments: bool = True
-    output_header: bool = True  # Renamed from 'header'
-    output_labels: bool = False  # Renamed from 'path_labels'
-    output_operation_labels: bool = True  # Renamed from 'show_operation_labels'
-
-    # Header content options
-    list_tools_in_header: bool = False  # Renamed from 'list_tools_in_preamble'
-    list_fixtures_in_header: bool = True
-    machine_name_in_header: bool = False  # Renamed from 'machine_name'
-    description_in_header: bool = True
-    project_file_in_header: bool = True
-    output_units_in_header: bool = True
-    date_in_header: bool = True
-    document_name_in_header: bool = True
-
-    # Duplicate output options (positive framing: True = output duplicates, False = suppress)
-    output_duplicate_parameters: bool = (
-        True  # When False, suppress repeated parameter values (modal)
-    )
-    output_duplicate_commands: bool = True  # When False, suppress repeated G/M codes (modal)
-
-    # Numeric precision settings
-    axis_precision: int = 3  # Decimal places for axis coordinates
-    feed_precision: int = 3  # Decimal places for feed rates
-    spindle_precision: int = 0  # Renamed from 'spindle_decimals'
-
-    # Tool length offset control
+    # Main output options
+    units: OutputUnits = OutputUnits.METRIC  # G-code output units
     output_tool_length_offset: bool = True  # Output G43 H{tool} after M6 tool changes
-    
-    # Remote posting options
     remote_post: bool = False  # Enable remote posting to network endpoint
+    output_header: bool = True  # Control entire header output independently of comments
+
+    # Nested configuration sections
+    header: HeaderOptions = field(default_factory=HeaderOptions)
+    comments: CommentOptions = field(default_factory=CommentOptions)
+    formatting: FormattingOptions = field(default_factory=FormattingOptions)
+    precision: PrecisionOptions = field(default_factory=PrecisionOptions)
+    duplicates: DuplicateOptions = field(default_factory=DuplicateOptions)
 
 
 @dataclass
@@ -281,31 +300,161 @@ class RotaryAxis:
         )
 
 
+from enum import Enum
+
+
+class SpindleType(Enum):
+    """Types of spindles/tools supported by the machine."""
+    ROTARY = "rotary"           # Traditional rotary spindle (router, drill, etc.)
+    LASER = "laser"            # Laser cutting/engraving
+    WATERJET = "waterjet"      # Waterjet cutting
+    PLASMA = "plasma"          # Plasma cutting
+
+
+
+@dataclass
+class SpindleCapabilities:
+    """Defines the capabilities of a spindle based on its type."""
+    
+    # Motion capabilities
+    can_rotate: bool = True
+    can_move_z: bool = True
+    can_move_xy: bool = False
+    
+    # Power control
+    has_power_control: bool = True
+    has_speed_control: bool = True
+    has_pulse_control: bool = False  # For lasers
+    
+    # Coolant/support systems
+    uses_coolant: bool = False
+    uses_assist_gas: bool = False    # For plasma/laser
+    uses_water: bool = False          # For waterjet
+    
+    # Special capabilities
+    can_turn_on_off: bool = True
+    has_probing: bool = False
+    has_auto_focus: bool = False     # For lasers
+    
+    @classmethod
+    def for_type(cls, spindle_type: SpindleType) -> "SpindleCapabilities":
+        """Get default capabilities for a given spindle type."""
+        capabilities = {
+            SpindleType.ROTARY: cls(
+                can_rotate=True, can_move_z=True, can_move_xy=False,
+                has_power_control=True, has_speed_control=True, has_pulse_control=False,
+                uses_coolant=True, uses_assist_gas=False, uses_water=False,
+                can_turn_on_off=True, has_probing=False, has_auto_focus=False
+            ),
+            SpindleType.LASER: cls(
+                can_rotate=False, can_move_z=True, can_move_xy=False,
+                has_power_control=True, has_speed_control=False, has_pulse_control=True,
+                uses_coolant=False, uses_assist_gas=True, uses_water=False,
+                can_turn_on_off=True, has_probing=False, has_auto_focus=True
+            ),
+            SpindleType.WATERJET: cls(
+                can_rotate=False, can_move_z=True, can_move_xy=False,
+                has_power_control=True, has_speed_control=False, has_pulse_control=False,
+                uses_coolant=False, uses_assist_gas=False, uses_water=True,
+                can_turn_on_off=True, has_probing=False, has_auto_focus=False
+            ),
+            SpindleType.PLASMA: cls(
+                can_rotate=False, can_move_z=True, can_move_xy=False,
+                has_power_control=True, has_speed_control=False, has_pulse_control=False,
+                uses_coolant=False, uses_assist_gas=True, uses_water=False,
+                can_turn_on_off=True, has_probing=False, has_auto_focus=False
+            ),
+        }
+        return capabilities.get(spindle_type, capabilities[SpindleType.ROTARY])
+
+
 @dataclass
 class Spindle:
-    """Represents a single spindle in a machine configuration"""
+    """Represents a single spindle/tool in a machine configuration"""
 
     name: str
+    spindle_type: SpindleType = SpindleType.ROTARY
     id: Optional[str] = None
+    
+    # Power and performance specifications
     max_power_kw: float = 0
-    max_rpm: float = 0
-    min_rpm: float = 0
+    max_rpm: float = 0  # Only relevant for rotary spindles
+    min_rpm: float = 0  # Only relevant for rotary spindles
+    
+    # Tool change and handling
     tool_change: str = "manual"
     tool_axis: Optional[FreeCAD.Vector] = None
+    
+    # Coolant and support systems
     coolant_flood: bool = False
     coolant_mist: bool = False
     coolant_delay: float = 0.0
+    
+    # Timing and control
     spindle_wait: float = 0.0  # seconds to wait after spindle start
+    power_on_delay: float = 0.0  # seconds to wait for power stabilization
+    
+    # Type-specific parameters
+    laser_wavelength: Optional[float] = None  # nm, for lasers
+    laser_focus_range: Optional[Tuple[float, float]] = None  # min/max focus distance
+    waterjet_pressure: Optional[float] = None  # bar, for waterjets
+    plasma_amperage: Optional[float] = None  # amps, for plasma
+    
+    # Capabilities (auto-generated based on type)
+    capabilities: Optional[SpindleCapabilities] = None
 
     def __post_init__(self):
-        """Set default tool axis if not provided"""
+        """Set default values and capabilities"""
         if self.tool_axis is None:
             self.tool_axis = FreeCAD.Vector(0, 0, -1)
+        
+        if self.capabilities is None:
+            self.capabilities = SpindleCapabilities.for_type(self.spindle_type)
+        
+        # Set type-specific defaults
+        if self.spindle_type == SpindleType.LASER:
+            if self.laser_wavelength is None:
+                self.laser_wavelength = 1064.0  # Default fiber laser wavelength
+        elif self.spindle_type == SpindleType.WATERJET:
+            if self.waterjet_pressure is None:
+                self.waterjet_pressure = 4000.0  # Default 4000 bar
+        elif self.spindle_type == SpindleType.PLASMA:
+            if self.plasma_amperage is None:
+                self.plasma_amperage = 45.0  # Default 45 amps
+
+    def is_rotary(self) -> bool:
+        """Check if this is a rotary spindle."""
+        return self.spindle_type == SpindleType.ROTARY
+
+    def is_laser(self) -> bool:
+        """Check if this is a laser spindle."""
+        return self.spindle_type == SpindleType.LASER
+
+    def is_waterjet(self) -> bool:
+        """Check if this is a waterjet spindle."""
+        return self.spindle_type == SpindleType.WATERJET
+
+    def is_plasma(self) -> bool:
+        """Check if this is a plasma spindle."""
+        return self.spindle_type == SpindleType.PLASMA
+
+    def can_use_coolant(self) -> bool:
+        """Check if this spindle can use coolant."""
+        return self.capabilities.uses_coolant if self.capabilities else False
+
+    def can_control_speed(self) -> bool:
+        """Check if this spindle can control speed."""
+        return self.capabilities.has_speed_control if self.capabilities else False
+
+    def can_control_power(self) -> bool:
+        """Check if this spindle can control power."""
+        return self.capabilities.has_power_control if self.capabilities else False
 
     def to_dict(self):
         """Serialize to dictionary for JSON persistence"""
         data = {
             "name": self.name,
+            "spindle_type": self.spindle_type.value,
             "max_power_kw": self.max_power_kw,
             "max_rpm": self.max_rpm,
             "min_rpm": self.min_rpm,
@@ -315,9 +464,22 @@ class Spindle:
             "coolant_mist": self.coolant_mist,
             "coolant_delay": self.coolant_delay,
             "spindle_wait": self.spindle_wait,
+            "power_on_delay": self.power_on_delay,
         }
+        
+        # Add type-specific parameters
+        if self.laser_wavelength is not None:
+            data["laser_wavelength"] = self.laser_wavelength
+        if self.laser_focus_range is not None:
+            data["laser_focus_range"] = list(self.laser_focus_range)
+        if self.waterjet_pressure is not None:
+            data["waterjet_pressure"] = self.waterjet_pressure
+        if self.plasma_amperage is not None:
+            data["plasma_amperage"] = self.plasma_amperage
+        
         if self.id is not None:
             data["id"] = self.id
+            
         return data
 
     @classmethod
@@ -325,8 +487,20 @@ class Spindle:
         """Deserialize from dictionary"""
         tool_axis_data = data.get("tool_axis", [0, 0, -1])
         tool_axis = FreeCAD.Vector(tool_axis_data[0], tool_axis_data[1], tool_axis_data[2])
+        
+        # Parse spindle type
+        spindle_type_str = data.get("spindle_type", "rotary")
+        spindle_type = SpindleType(spindle_type_str)
+        
+        # Parse laser focus range
+        laser_focus_range = None
+        if "laser_focus_range" in data:
+            focus_data = data["laser_focus_range"]
+            laser_focus_range = (focus_data[0], focus_data[1])
+        
         return cls(
             data["name"],
+            spindle_type,
             data.get("id"),
             data.get("max_power_kw", 0),
             data.get("max_rpm", 0),
@@ -337,6 +511,11 @@ class Spindle:
             data.get("coolant_mist", False),
             data.get("coolant_delay", 0.0),
             data.get("spindle_wait", 0.0),
+            data.get("power_on_delay", 0.0),
+            data.get("laser_wavelength"),
+            laser_focus_range,
+            data.get("waterjet_pressure"),
+            data.get("plasma_amperage"),
         )
 
 
@@ -755,34 +934,43 @@ class Machine:
 
         # Output options
         data["output"] = {
-            "command_space": self.output.command_space,
-            "comment_symbol": self.output.comment_symbol,
-            "output_comments": self.output.output_comments,
-            "end_of_line_chars": self.output.end_of_line_chars,
-            "line_increment": self.output.line_increment,
-            "line_number_start": self.output.line_number_start,
-            "line_numbers": self.output.line_numbers,
-            "line_number_prefix": self.output.line_number_prefix,
-            "list_tools_in_header": self.output.list_tools_in_header,
-            "list_fixtures_in_header": self.output.list_fixtures_in_header,
-            "machine_name_in_header": self.output.machine_name_in_header,
-            "description_in_header": self.output.description_in_header,
-            "project_file_in_header": self.output.project_file_in_header,
-            "output_units_in_header": self.output.output_units_in_header,
-            "date_in_header": self.output.date_in_header,
-            "document_name_in_header": self.output.document_name_in_header,
-            "output_duplicate_parameters": self.output.output_duplicate_parameters,
-            "output_duplicate_commands": self.output.output_duplicate_commands,
-            "output_blank_lines": self.output.output_blank_lines,
-            "output_bcnc_comments": self.output.output_bcnc_comments,
-            "output_header": self.output.output_header,
-            "output_labels": self.output.output_labels,
-            "output_operation_labels": self.output.output_operation_labels,
-            "output_units": self.output.output_units.value,
-            "axis_precision": self.output.axis_precision,
-            "feed_precision": self.output.feed_precision,
-            "spindle_precision": self.output.spindle_precision,
+            "units": self.output.units.value,
             "output_tool_length_offset": self.output.output_tool_length_offset,
+            "output_header": self.output.output_header,
+            "header": {
+                "include_date": self.output.header.include_date,
+                "include_description": self.output.header.include_description,
+                "include_document_name": self.output.header.include_document_name,
+                "include_machine_name": self.output.header.include_machine_name,
+                "include_project_file": self.output.header.include_project_file,
+                "include_units": self.output.header.include_units,
+                "include_tool_list": self.output.header.include_tool_list,
+                "include_fixture_list": self.output.header.include_fixture_list,
+            },
+            "comments": {
+                "enabled": self.output.comments.enabled,
+                "symbol": self.output.comments.symbol,
+                "include_operation_labels": self.output.comments.include_operation_labels,
+                "include_blank_lines": self.output.comments.include_blank_lines,
+                "output_bcnc_comments": self.output.comments.output_bcnc_comments,
+            },
+            "formatting": {
+                "line_numbers": self.output.formatting.line_numbers,
+                "line_number_start": self.output.formatting.line_number_start,
+                "line_number_prefix": self.output.formatting.line_number_prefix,
+                "line_increment": self.output.formatting.line_increment,
+                "command_space": self.output.formatting.command_space,
+                "end_of_line_chars": self.output.formatting.end_of_line_chars,
+            },
+            "precision": {
+                "axis": self.output.precision.axis,
+                "feed": self.output.precision.feed,
+                "spindle": self.output.precision.spindle,
+            },
+            "duplicates": {
+                "commands": self.output.duplicates.commands,
+                "parameters": self.output.duplicates.parameters,
+            },
         }
 
         # Processing options
@@ -943,66 +1131,106 @@ class Machine:
         # Load output options
         output_data = data.get("output", {})
         if output_data:
-            # Line formatting options
-            config.output.command_space = output_data.get("command_space", " ")
-            config.output.comment_symbol = output_data.get("comment_symbol", "(")
-            config.output.end_of_line_chars = output_data.get("end_of_line_chars", "\n")
-            config.output.line_increment = output_data.get("line_increment", 10)
-            config.output.line_number_start = output_data.get("line_number_start", 100)
-            config.output.line_numbers = output_data.get("line_numbers", False)
-            config.output.line_number_prefix = output_data.get("line_number_prefix", "N")
-
-            # Output content options (with backward compatibility)
-            config.output.output_comments = output_data.get(
-                "output_comments", output_data.get("comments", True)
-            )
-            config.output.output_blank_lines = output_data.get(
-                "output_blank_lines", output_data.get("blank_lines", True)
-            )
-            config.output.output_bcnc_comments = output_data.get("output_bcnc_comments", True)
-            config.output.output_header = output_data.get(
-                "output_header", output_data.get("header", True)
-            )
-            config.output.output_labels = output_data.get(
-                "output_labels", output_data.get("path_labels", False)
-            )
-            config.output.output_operation_labels = output_data.get(
-                "output_operation_labels", output_data.get("show_operation_labels", True)
-            )
-
-            # Header content options (with backward compatibility)
-            config.output.list_tools_in_header = output_data.get(
-                "list_tools_in_header", output_data.get("list_tools_in_preamble", False)
-            )
-            config.output.list_fixtures_in_header = output_data.get("list_fixtures_in_header", True)
-            config.output.machine_name_in_header = output_data.get(
-                "machine_name_in_header", output_data.get("machine_name", False)
-            )
-            config.output.description_in_header = output_data.get("description_in_header", True)
-            config.output.project_file_in_header = output_data.get("project_file_in_header", True)
-            config.output.output_units_in_header = output_data.get("output_units_in_header", True)
-            config.output.date_in_header = output_data.get("date_in_header", True)
-            config.output.document_name_in_header = output_data.get("document_name_in_header", True)
-
-            # Duplicate output options
-            config.output.output_duplicate_parameters = output_data.get(
-                "output_duplicate_parameters", True
-            )
-            config.output.output_duplicate_commands = output_data.get(
-                "output_duplicate_commands", True
-            )
-
-            # Numeric precision settings
-            config.output.axis_precision = output_data.get("axis_precision", 3)
-            config.output.feed_precision = output_data.get("feed_precision", 3)
-            config.output.spindle_precision = output_data.get("spindle_precision", 0)
-            config.output.output_tool_length_offset = output_data.get("output_tool_length_offset", True)
-
-            # Handle output_units conversion from string to enum
-            output_units_str = output_data.get("output_units", "metric")
-            config.output.output_units = (
+            # Main output options
+            output_units_str = output_data.get("units", "metric")
+            config.output.units = (
                 OutputUnits.METRIC if output_units_str == "metric" else OutputUnits.IMPERIAL
             )
+            config.output.output_tool_length_offset = output_data.get("output_tool_length_offset", True)
+            config.output.output_header = output_data.get("output_header", True)
+
+            # Header options
+            header_data = output_data.get("header", {})
+            # Handle backward compatibility - if header is a bool, use it for include_date
+            if isinstance(header_data, bool):
+                # Old structure: header was a boolean controlling all header output
+                config.output.header.include_date = header_data
+                config.output.header.include_description = header_data
+                config.output.header.include_document_name = header_data
+                config.output.header.include_machine_name = header_data
+                config.output.header.include_project_file = header_data
+                config.output.header.include_units = header_data
+                config.output.header.include_tool_list = header_data
+                config.output.header.include_fixture_list = header_data
+            else:
+                # New nested structure
+                config.output.header.include_date = header_data.get("include_date", True)
+                config.output.header.include_description = header_data.get("include_description", True)
+                config.output.header.include_document_name = header_data.get("include_document_name", True)
+                config.output.header.include_machine_name = header_data.get("include_machine_name", True)
+                config.output.header.include_project_file = header_data.get("include_project_file", True)
+                config.output.header.include_units = header_data.get("include_units", True)
+                config.output.header.include_tool_list = header_data.get("include_tool_list", True)
+                config.output.header.include_fixture_list = header_data.get("include_fixture_list", True)
+
+            # Comment options
+            comments_data = output_data.get("comments", {})
+            # Handle backward compatibility - if comments is a bool, use it for enabled
+            if isinstance(comments_data, bool):
+                # Old structure: comments was a boolean controlling all comment output
+                config.output.comments.enabled = comments_data
+                config.output.comments.symbol = "("  # Default symbol
+                config.output.comments.include_operation_labels = False
+                config.output.comments.include_blank_lines = True
+                config.output.comments.output_bcnc_comments = False
+            else:
+                # New nested structure
+                config.output.comments.enabled = comments_data.get("enabled", True)
+                config.output.comments.symbol = comments_data.get("symbol", "(")
+                config.output.comments.include_operation_labels = comments_data.get("include_operation_labels", False)
+                config.output.comments.include_blank_lines = comments_data.get("include_blank_lines", True)
+                config.output.comments.output_bcnc_comments = comments_data.get("output_bcnc_comments", False)
+
+            # Formatting options
+            formatting_data = output_data.get("formatting", {})
+            # Handle backward compatibility for old flat structure
+            if "line_numbers" in output_data and not formatting_data:
+                # Old structure: line_numbers was at top level
+                config.output.formatting.line_numbers = output_data.get("line_numbers", False)
+                config.output.formatting.line_number_start = output_data.get("line_number_start", 100)
+                config.output.formatting.line_number_prefix = output_data.get("line_number_prefix", "N")
+                config.output.formatting.line_increment = output_data.get("line_increment", 10)
+                config.output.formatting.command_space = output_data.get("command_space", " ")
+                config.output.formatting.end_of_line_chars = output_data.get("end_of_line_chars", "\n")
+            else:
+                # New nested structure
+                config.output.formatting.line_numbers = formatting_data.get("line_numbers", False)
+                config.output.formatting.line_number_start = formatting_data.get("line_number_start", 100)
+                config.output.formatting.line_number_prefix = formatting_data.get("line_number_prefix", "N")
+                config.output.formatting.line_increment = formatting_data.get("line_increment", 10)
+                config.output.formatting.command_space = formatting_data.get("command_space", " ")
+                config.output.formatting.end_of_line_chars = formatting_data.get("end_of_line_chars", "\n")
+
+            # Precision options
+            precision_data = output_data.get("precision", {})
+            # Handle backward compatibility for old flat structure
+            if "axis_precision" in output_data and not precision_data:
+                # Old structure: axis_precision was at top level
+                config.output.precision.axis = output_data.get("axis_precision", 3)
+                config.output.precision.feed = output_data.get("feed_precision", 3)
+                config.output.precision.spindle = output_data.get("spindle_precision", 0)
+            else:
+                # New nested structure
+                config.output.precision.axis = precision_data.get("axis", 3)
+                config.output.precision.feed = precision_data.get("feed", 3)
+                config.output.precision.spindle = precision_data.get("spindle", 0)
+
+            # Duplicate options
+            duplicates_data = output_data.get("duplicates", {})
+            # Handle backward compatibility for old flat structure
+            if "output_duplicate_parameters" in output_data and not duplicates_data:
+                # Old structure: output_duplicate_parameters was at top level
+                config.output.duplicates.commands = output_data.get("output_duplicate_commands", True)
+                config.output.duplicates.parameters = output_data.get("output_duplicate_parameters", True)
+            else:
+                # New nested structure
+                config.output.duplicates.commands = duplicates_data.get("commands", True)
+                config.output.duplicates.parameters = duplicates_data.get("parameters", True)
+
+            # Handle legacy output_comments field (for backward compatibility)
+            if "output_comments" in output_data and "comments" not in output_data:
+                # Old structure: output_comments was a boolean
+                config.output.comments.enabled = output_data.get("output_comments", True)
 
         # Load processing options
         processing_data = data.get("processing", {})

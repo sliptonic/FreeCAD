@@ -85,31 +85,43 @@
         "units": "metric"
     },
     "output": {
-        "axis_precision": 3,
-        "command_space": " ",
-        "comment_symbol": "(",
-        "date_in_header": true,
-        "description_in_header": true,
-        "document_name_in_header": true,
-        "end_of_line_chars": "\n",
-        "feed_precision": 3,
-        "line_increment": 10,
-        "line_number_prefix": "N",
-        "line_number_start": 100,
-        "line_numbers": false,
-        "list_fixtures_in_header": true,
-        "list_tools_in_header": false,
-        "machine_name_in_header": false,
-        "output_bcnc_comments": true,
-        "output_blank_lines": true,
-        "output_comments": true,
-        "output_duplicate_commands": true,
-        "output_duplicate_parameters": true,
+        "units": "metric",
+        "output_tool_length_offset": true,
         "output_header": true,
-        "output_labels": false,
-        "output_operation_labels": true,
-        "output_units": "metric",
-        "spindle_precision": 0
+        "header": {
+            "include_date": true,
+            "include_description": true,
+            "include_document_name": true,
+            "include_machine_name": false,
+            "include_project_file": true,
+            "include_units": true,
+            "include_tool_list": false,
+            "include_fixture_list": true
+        },
+        "comments": {
+            "enabled": true,
+            "symbol": "(",
+            "include_operation_labels": true,
+            "include_blank_lines": true,
+            "output_bcnc_comments": true
+        },
+        "formatting": {
+            "line_numbers": false,
+            "line_number_start": 100,
+            "line_number_prefix": "N",
+            "line_increment": 10,
+            "command_space": " ",
+            "end_of_line_chars": "\n"
+        },
+        "precision": {
+            "axis": 3,
+            "feed": 3,
+            "spindle": 0
+        },
+        "duplicates": {
+            "commands": true,
+            "parameters": true
+        }
     },
     "postprocessor": {
         "file_name": "generic",

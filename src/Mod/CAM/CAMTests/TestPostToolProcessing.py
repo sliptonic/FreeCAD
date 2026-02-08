@@ -184,16 +184,43 @@ class TestToolProcessing(unittest.TestCase):
                 }]
             },
             "output": {
-                "axis_precision": 3,
-                "feed_precision": 3,
-                "spindle_precision": 0,
-                "command_space": " ",
-                "comment_symbol": "(",
-                "line_numbers": False,
-                "output_comments": True,
+                "units": "metric",
+                "output_tool_length_offset": True,
                 "output_header": True,
-                "output_units": "metric",
-                "output_tool_length_offset": True
+                "header": {
+                    "include_date": True,
+                    "include_description": True,
+                    "include_document_name": True,
+                    "include_machine_name": True,
+                    "include_project_file": True,
+                    "include_units": True,
+                    "include_tool_list": True,
+                    "include_fixture_list": True
+                },
+                "comments": {
+                    "enabled": True,
+                    "symbol": "(",
+                    "include_operation_labels": True,
+                    "include_blank_lines": True,
+                    "output_bcnc_comments": False
+                },
+                "formatting": {
+                    "line_numbers": False,
+                    "line_number_start": 100,
+                    "line_number_prefix": "N",
+                    "line_increment": 10,
+                    "command_space": " ",
+                    "end_of_line_chars": "\n"
+                },
+                "precision": {
+                    "axis": 3,
+                    "feed": 3,
+                    "spindle": 0
+                },
+                "duplicates": {
+                    "commands": True,
+                    "parameters": True
+                }
             },
             "postprocessor": {
                 "file_name": "generic",
