@@ -58,7 +58,7 @@ class Generic(PostProcessor):
 
     def __init__(self, job):
         super().__init__(
-            job_or_jobs=job,
+            job=job,
             tooltip=translate("CAM", "Generic post processor"),
             tooltipargs=[],
             units="Metric",

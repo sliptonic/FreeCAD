@@ -27,7 +27,7 @@ import json
 from typing import Optional, Dict, Any, get_origin, get_args
 from dataclasses import fields
 from enum import Enum
-from Machine.models.machine import Machine, MachineFactory, LinearAxis, RotaryAxis, Spindle
+from Machine.models.machine import Machine, MachineFactory, LinearAxis, RotaryAxis, Spindle, SpindleType
 from Path.Main.Gui.Editor import CodeEditor
 from Path.Post.Processor import PostProcessorFactory
 from Machine.ui.editor.postprocessor_properties import PostProcessorPropertyManager
@@ -68,6 +68,7 @@ class DataclassGUIGenerator:
 
     # Field display name overrides
     FIELD_LABELS = {
+        # Legacy labels (for backward compatibility)
         "comments": translate("CAM_MachineEditor", "Include Comments"),
         "blank_lines": translate("CAM_MachineEditor", "Include Blank Lines"),
         "header": translate("CAM_MachineEditor", "Include Header"),
@@ -109,6 +110,49 @@ class DataclassGUIGenerator:
         "enable_machine_specific_commands": translate(
             "CAM_MachineEditor", "Enable Machine-Specific Commands"
         ),
+        
+        # New nested structure labels
+        "units": translate("CAM_MachineEditor", "Output Units"),
+        "header": translate("CAM_MachineEditor", "Header Options"),
+        "comments": translate("CAM_MachineEditor", "Comment Options"),
+        "formatting": translate("CAM_MachineEditor", "Formatting Options"),
+        "precision": translate("CAM_MachineEditor", "Precision Options"),
+        "duplicates": translate("CAM_MachineEditor", "Duplicate Output Options"),
+        "output_header": translate("CAM_MachineEditor", "Output Header"),
+        
+        # Header field labels
+        "include_date": translate("CAM_MachineEditor", "Include Date"),
+        "include_description": translate("CAM_MachineEditor", "Include Description"),
+        "include_document_name": translate("CAM_MachineEditor", "Include Document Name"),
+        "include_machine_name": translate("CAM_MachineEditor", "Include Machine Name"),
+        "include_project_file": translate("CAM_MachineEditor", "Include Project File"),
+        "include_units": translate("CAM_MachineEditor", "Include Units"),
+        "include_tool_list": translate("CAM_MachineEditor", "Include Tool List"),
+        "include_fixture_list": translate("CAM_MachineEditor", "Include Fixture List"),
+        
+        # Comment field labels
+        "enabled": translate("CAM_MachineEditor", "Enable Comments"),
+        "symbol": translate("CAM_MachineEditor", "Comment Symbol"),
+        "include_operation_labels": translate("CAM_MachineEditor", "Include Operation Labels"),
+        "include_blank_lines": translate("CAM_MachineEditor", "Include Blank Lines"),
+        "output_bcnc_comments": translate("CAM_MachineEditor", "Output bCNC Comments"),
+        
+        # Formatting field labels
+        "line_numbers": translate("CAM_MachineEditor", "Line Numbers"),
+        "line_number_start": translate("CAM_MachineEditor", "Line Number Start"),
+        "line_number_prefix": translate("CAM_MachineEditor", "Line Number Prefix"),
+        "line_increment": translate("CAM_MachineEditor", "Line Number Increment"),
+        "command_space": translate("CAM_MachineEditor", "Command Space"),
+        "end_of_line_chars": translate("CAM_MachineEditor", "End of Line Chars"),
+        
+        # Precision field labels
+        "axis": translate("CAM_MachineEditor", "Axis Precision"),
+        "feed": translate("CAM_MachineEditor", "Feed Precision"),
+        "spindle": translate("CAM_MachineEditor", "Spindle Precision"),
+        
+        # Duplicate field labels
+        "commands": translate("CAM_MachineEditor", "Duplicate Commands"),
+        "parameters": translate("CAM_MachineEditor", "Duplicate Parameters"),
     }
 
     @staticmethod
@@ -564,6 +608,42 @@ class MachineEditorDialog(QtGui.QDialog):
         if self.machine and spindle_index < len(self.machine.spindles):
             spindle = self.machine.spindles[spindle_index]
             setattr(spindle, field_name, value)
+            
+            # Update visibility if spindle type changed
+            if field_name == "spindle_type":
+                self._update_spindle_type_visibility(spindle_index)
+
+    def _update_spindle_type_visibility(self, spindle_index):
+        """Update visibility of type-specific fields based on spindle type."""
+        if spindle_index >= len(self.spindle_edits):
+            return
+            
+        edits = self.spindle_edits[spindle_index]
+        spindle_type = edits["spindle_type"].itemData(edits["spindle_type"].currentIndex())
+        
+        # Show/hide RPM fields (only for rotary spindles)
+        show_rpm = spindle_type == SpindleType.ROTARY
+        edits["rpm_widget"].setVisible(show_rpm)
+        
+        # Show/hide laser fields
+        show_laser = spindle_type == SpindleType.LASER
+        edits["laser_widget"].setVisible(show_laser)
+        
+        # Show/hide waterjet fields
+        show_waterjet = spindle_type == SpindleType.WATERJET
+        edits["waterjet_widget"].setVisible(show_waterjet)
+        
+        # Show/hide plasma fields
+        show_plasma = spindle_type == SpindleType.PLASMA
+        edits["plasma_widget"].setVisible(show_plasma)
+        
+        # Show/hide coolant fields (only for rotary spindles)
+        show_coolant = spindle_type == SpindleType.ROTARY
+        edits["coolant_widget"].setVisible(show_coolant)
+        
+        # Hide type-specific group if no type-specific fields are visible
+        type_specific_visible = show_rpm or show_laser or show_waterjet or show_plasma
+        edits["type_specific_group"].setVisible(type_specific_visible)
 
     def _add_spindle(self):
         """Add a new spindle to the machine."""
@@ -571,6 +651,7 @@ class MachineEditorDialog(QtGui.QDialog):
             new_index = len(self.machine.spindles) + 1
             new_spindle = Spindle(
                 name=f"Spindle {new_index}",
+                spindle_type=SpindleType.ROTARY,
                 id=f"spindle{new_index}",
                 max_power_kw=3.0,
                 max_rpm=24000,
@@ -1028,7 +1109,7 @@ class MachineEditorDialog(QtGui.QDialog):
         """Update the spindle configuration UI based on spindle count.
 
         Dynamically creates tabbed interface for multiple spindles with
-        input fields for name, ID, power, speed, and tool holder.
+        input fields for type, name, ID, power, speed, and type-specific parameters.
         Updates Machine.spindles directly.
         """
         # Clear existing spindle tabs - this properly disconnects signals
@@ -1048,6 +1129,7 @@ class MachineEditorDialog(QtGui.QDialog):
                 self.machine.spindles.append(
                     Spindle(
                         name=f"Spindle {len(self.machine.spindles) + 1}",
+                        spindle_type=SpindleType.ROTARY,
                         id=f"spindle{len(self.machine.spindles) + 1}",
                         max_power_kw=3.0,
                         max_rpm=24000,
@@ -1069,6 +1151,24 @@ class MachineEditorDialog(QtGui.QDialog):
                 else None
             )
 
+            # Spindle type selection
+            type_combo = QtGui.QComboBox()
+            for spindle_type in SpindleType:
+                type_combo.addItem(spindle_type.value.title(), spindle_type)
+            
+            if spindle:
+                index = type_combo.findData(spindle.spindle_type)
+                if index >= 0:
+                    type_combo.setCurrentIndex(index)
+            
+            type_combo.currentIndexChanged.connect(
+                lambda idx, spindle_idx=i, combo=type_combo: self._on_spindle_field_changed(
+                    spindle_idx, "spindle_type", combo.itemData(combo.currentIndex())
+                )
+            )
+            layout.addRow("Type", type_combo)
+
+            # Name field
             name_edit = QtGui.QLineEdit()
             name_edit.setText(spindle.name if spindle else f"Spindle {i+1}")
             name_edit.textChanged.connect(
@@ -1076,6 +1176,7 @@ class MachineEditorDialog(QtGui.QDialog):
             )
             layout.addRow("Name", name_edit)
 
+            # ID field
             id_edit = QtGui.QLineEdit()
             id_edit.setText(spindle.id if spindle and spindle.id else f"spindle{i+1}")
             id_edit.textChanged.connect(
@@ -1083,6 +1184,7 @@ class MachineEditorDialog(QtGui.QDialog):
             )
             layout.addRow("ID", id_edit)
 
+            # Power specification
             max_power_edit = QtGui.QDoubleSpinBox()
             max_power_edit.setRange(0, 100)
             max_power_edit.setValue(spindle.max_power_kw if spindle else 3.0)
@@ -1091,13 +1193,21 @@ class MachineEditorDialog(QtGui.QDialog):
             )
             layout.addRow("Max Power (kW)", max_power_edit)
 
+            # Type-specific fields container
+            type_specific_group = QtGui.QGroupBox("Type-Specific Settings")
+            type_specific_layout = QtGui.QVBoxLayout(type_specific_group)
+            
+            # Rotary spindle fields (RPM)
+            rpm_widget = QtGui.QWidget()
+            rpm_layout = QtGui.QFormLayout(rpm_widget)
+            
             max_rpm_edit = QtGui.QSpinBox()
             max_rpm_edit.setRange(0, 100000)
             max_rpm_edit.setValue(int(spindle.max_rpm) if spindle else 24000)
             max_rpm_edit.valueChanged.connect(
                 lambda value, idx=i: self._on_spindle_field_changed(idx, "max_rpm", value)
             )
-            layout.addRow("Max RPM", max_rpm_edit)
+            rpm_layout.addRow("Max RPM", max_rpm_edit)
 
             min_rpm_edit = QtGui.QSpinBox()
             min_rpm_edit.setRange(0, 100000)
@@ -1105,8 +1215,53 @@ class MachineEditorDialog(QtGui.QDialog):
             min_rpm_edit.valueChanged.connect(
                 lambda value, idx=i: self._on_spindle_field_changed(idx, "min_rpm", value)
             )
-            layout.addRow("Min RPM", min_rpm_edit)
+            rpm_layout.addRow("Min RPM", min_rpm_edit)
 
+            # Laser fields
+            laser_widget = QtGui.QWidget()
+            laser_layout = QtGui.QFormLayout(laser_widget)
+            
+            laser_wavelength_edit = QtGui.QDoubleSpinBox()
+            laser_wavelength_edit.setRange(200, 2000)  # Common laser wavelength range
+            laser_wavelength_edit.setDecimals(1)
+            laser_wavelength_edit.setValue(spindle.laser_wavelength if spindle and spindle.laser_wavelength is not None else 1064.0)
+            laser_wavelength_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_spindle_field_changed(idx, "laser_wavelength", value)
+            )
+            laser_layout.addRow("Wavelength (nm)", laser_wavelength_edit)
+
+            # Waterjet fields
+            waterjet_widget = QtGui.QWidget()
+            waterjet_layout = QtGui.QFormLayout(waterjet_widget)
+            
+            waterjet_pressure_edit = QtGui.QDoubleSpinBox()
+            waterjet_pressure_edit.setRange(1000, 10000)  # Common pressure range
+            waterjet_pressure_edit.setValue(spindle.waterjet_pressure if spindle and spindle.waterjet_pressure is not None else 4000.0)
+            waterjet_pressure_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_spindle_field_changed(idx, "waterjet_pressure", value)
+            )
+            waterjet_layout.addRow("Pressure (bar)", waterjet_pressure_edit)
+
+            # Plasma fields
+            plasma_widget = QtGui.QWidget()
+            plasma_layout = QtGui.QFormLayout(plasma_widget)
+            
+            plasma_amperage_edit = QtGui.QDoubleSpinBox()
+            plasma_amperage_edit.setRange(10, 200)  # Common amperage range
+            plasma_amperage_edit.setValue(spindle.plasma_amperage if spindle and spindle.plasma_amperage is not None else 45.0)
+            plasma_amperage_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_spindle_field_changed(idx, "plasma_amperage", value)
+            )
+            plasma_layout.addRow("Amperage", plasma_amperage_edit)
+
+            # Add type-specific widgets to layout
+            type_specific_layout.addWidget(rpm_widget)
+            type_specific_layout.addWidget(laser_widget)
+            type_specific_layout.addWidget(waterjet_widget)
+            type_specific_layout.addWidget(plasma_widget)
+            layout.addRow(type_specific_group)
+
+            # Common fields
             tool_change_combo = QtGui.QComboBox()
             tool_change_combo.addItem("Manual", "manual")
             tool_change_combo.addItem("ATC", "atc")
@@ -1121,17 +1276,53 @@ class MachineEditorDialog(QtGui.QDialog):
             )
             layout.addRow("Tool Change:", tool_change_combo)
 
+            # Coolant fields (only for rotary spindles)
+            coolant_widget = QtGui.QWidget()
+            coolant_layout = QtGui.QFormLayout(coolant_widget)
+            
+            coolant_flood_check = QtGui.QCheckBox()
+            coolant_flood_check.setChecked(spindle.coolant_flood if spindle else False)
+            coolant_flood_check.toggled.connect(
+                lambda checked, idx=i: self._on_spindle_field_changed(idx, "coolant_flood", checked)
+            )
+            coolant_layout.addRow("Coolant Flood", coolant_flood_check)
+
+            coolant_mist_check = QtGui.QCheckBox()
+            coolant_mist_check.setChecked(spindle.coolant_mist if spindle else False)
+            coolant_mist_check.toggled.connect(
+                lambda checked, idx=i: self._on_spindle_field_changed(idx, "coolant_mist", checked)
+            )
+            coolant_layout.addRow("Coolant Mist", coolant_mist_check)
+            
+            layout.addRow(coolant_widget)
+
+            # Store widgets for later updates
             self.spindles_tabs.addTab(tab, f"Spindle {i+1}")
             self.spindle_edits.append(
                 {
+                    "spindle_type": type_combo,
                     "name": name_edit,
                     "id": id_edit,
                     "max_power_kw": max_power_edit,
                     "max_rpm": max_rpm_edit,
                     "min_rpm": min_rpm_edit,
+                    "laser_wavelength": laser_wavelength_edit,
+                    "waterjet_pressure": waterjet_pressure_edit,
+                    "plasma_amperage": plasma_amperage_edit,
                     "tool_change": tool_change_combo,
+                    "coolant_flood": coolant_flood_check,
+                    "coolant_mist": coolant_mist_check,
+                    "rpm_widget": rpm_widget,
+                    "laser_widget": laser_widget,
+                    "waterjet_widget": waterjet_widget,
+                    "plasma_widget": plasma_widget,
+                    "coolant_widget": coolant_widget,
+                    "type_specific_group": type_specific_group,
                 }
             )
+            
+            # Update visibility based on initial spindle type
+            self._update_spindle_type_visibility(i)
 
     def setup_output_tab(self):
         """Set up the output options configuration tab."""
@@ -1147,13 +1338,90 @@ class MachineEditorDialog(QtGui.QDialog):
 
         # === Output Options ===
         if self.machine:
-            output_group, output_widgets = DataclassGUIGenerator.create_group_for_dataclass(
-                self.machine.output, "Output Options"
+            # Main output options
+            main_group = QtGui.QGroupBox(translate("CAM_MachineEditor", "Main Options"))
+            main_layout = QtGui.QFormLayout(main_group)
+            
+            # Units
+            units_combo = QtGui.QComboBox()
+            units_combo.addItem("Metric", "metric")
+            units_combo.addItem("Imperial", "imperial")
+            units_str = self.machine.output.units.value
+            index = units_combo.findData(units_str)
+            if index >= 0:
+                units_combo.setCurrentIndex(index)
+            units_combo.currentIndexChanged.connect(
+                lambda idx: self._on_output_field_changed("units", units_combo.itemData(idx))
             )
-            layout.addWidget(output_group)
-            self._connect_widgets_to_machine(output_widgets, "output")
+            main_layout.addRow("Units", units_combo)
+            
+            # Output tool length offset
+            tool_length_check = QtGui.QCheckBox()
+            tool_length_check.setChecked(self.machine.output.output_tool_length_offset)
+            tool_length_check.toggled.connect(
+                lambda checked: self._on_output_field_changed("output_tool_length_offset", checked)
+            )
+            main_layout.addRow("Output Tool Length Offset (G43)", tool_length_check)
+            
+            # Output header
+            output_header_check = QtGui.QCheckBox()
+            output_header_check.setChecked(self.machine.output.output_header)
+            output_header_check.toggled.connect(
+                lambda checked: self._on_output_field_changed("output_header", checked)
+            )
+            main_layout.addRow("Output Header", output_header_check)
+            
+            # Remote posting
+            remote_post_check = QtGui.QCheckBox()
+            remote_post_check.setChecked(self.machine.output.remote_post)
+            remote_post_check.toggled.connect(
+                lambda checked: self._on_output_field_changed("remote_post", checked)
+            )
+            main_layout.addRow("Enable Remote Posting", remote_post_check)
+            
+            layout.addWidget(main_group)
+            
+            # Header options
+            header_group, header_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.output.header, "Header Options"
+            )
+            layout.addWidget(header_group)
+            self._connect_widgets_to_machine(header_widgets, "output.header")
+            
+            # Comment options
+            comments_group, comments_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.output.comments, "Comment Options"
+            )
+            layout.addWidget(comments_group)
+            self._connect_widgets_to_machine(comments_widgets, "output.comments")
+            
+            # Formatting options
+            formatting_group, formatting_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.output.formatting, "Formatting Options"
+            )
+            layout.addWidget(formatting_group)
+            self._connect_widgets_to_machine(formatting_widgets, "output.formatting")
+            
+            # Precision options
+            precision_group, precision_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.output.precision, "Precision Options"
+            )
+            layout.addWidget(precision_group)
+            self._connect_widgets_to_machine(precision_widgets, "output.precision")
+            
+            # Duplicate options
+            duplicates_group, duplicates_widgets = DataclassGUIGenerator.create_group_for_dataclass(
+                self.machine.output.duplicates, "Duplicate Output Options"
+            )
+            layout.addWidget(duplicates_group)
+            self._connect_widgets_to_machine(duplicates_widgets, "output.duplicates")
 
         layout.addStretch()
+
+    def _on_output_field_changed(self, field_name: str, value):
+        """Handle changes to main output option fields."""
+        if self.machine and hasattr(self.machine.output, field_name):
+            setattr(self.machine.output, field_name, value)
 
     def setup_postprocessor_tab(self):
         """Set up the postprocessor configuration tab with selector and properties."""
@@ -1181,10 +1449,84 @@ class MachineEditorDialog(QtGui.QDialog):
         )
         self.post_processor_combo.setToolTip(self.postProcessorDefaultTooltip)
         
-        # Populate postprocessor list
+        # Populate postprocessor list - only show new-style post processors with property schema support
+        Path.Log.info("Machine Editor: Starting postprocessor filtering...")
+        
+        # Clear any existing items first
+        self.post_processor_combo.clear()
+        Path.Log.debug(f"Machine Editor: Cleared combo box (now has {self.post_processor_combo.count()} items)")
+        
         postProcessors = Path.Preferences.allEnabledPostProcessors([""])
+        found_generic = False
+        total_postprocessors = len(postProcessors)
+        new_style_count = 0
+        
+        Path.Log.debug(f"Machine Editor: Filtering {total_postprocessors} postprocessors for new-style architecture")
+        
         for post in postProcessors:
-            self.post_processor_combo.addItem(post)
+            Path.Log.debug(f"Machine Editor: Processing postprocessor: {post}")
+            # Check if this is a new-style post processor by testing for property schema support
+            try:
+                processor = PostProcessorFactory.get_post_processor(None, post)
+                Path.Log.debug(f"Machine Editor: Loaded processor for {post}: {processor.__class__.__name__ if processor else 'None'}")
+                
+                if not processor:
+                    Path.Log.debug(f"Machine Editor: Skipped {post} - could not load")
+                    continue
+                
+                # Skip WrapperPost instances - these are legacy script-based post processors
+                if processor.__class__.__name__ == 'WrapperPost':
+                    Path.Log.debug(f"Machine Editor: Skipped WrapperPost (legacy script): {post}")
+                    continue
+                
+                # Check if it's a PostProcessor subclass (works for both instances and uninitialized objects)
+                from Path.Post.Processor import PostProcessor
+                processor_class = processor.__class__
+                
+                if not issubclass(processor_class, PostProcessor):
+                    Path.Log.debug(f"Machine Editor: Skipped non-PostProcessor subclass: {post}")
+                    continue
+                
+                # Check for schema methods (these are class methods, so check on the class)
+                if (hasattr(processor_class, 'get_property_schema') and 
+                    callable(getattr(processor_class, 'get_property_schema')) and
+                    hasattr(processor_class, 'get_common_property_schema') and
+                    callable(getattr(processor_class, 'get_common_property_schema'))):
+                    
+                    # Test that the methods actually return meaningful schema data
+                    try:
+                        common_schema = processor_class.get_common_property_schema()
+                        specific_schema = processor_class.get_property_schema()
+                        
+                        # New-style post processors should return non-empty lists with proper structure
+                        if (isinstance(common_schema, list) and len(common_schema) > 0 and
+                            isinstance(specific_schema, list) and 
+                            all(isinstance(prop, dict) and 'name' in prop for prop in common_schema)):
+                            # This is a proper new-style post processor
+                            self.post_processor_combo.addItem(post)
+                            new_style_count += 1
+                            Path.Log.debug(f"Machine Editor: Added new-style postprocessor: {post}")
+                            if post == "generic":
+                                found_generic = True
+                        else:
+                            Path.Log.debug(f"Machine Editor: Skipped postprocessor with invalid schema: {post}")
+                    except Exception as schema_error:
+                        Path.Log.debug(f"Machine Editor: Schema test failed for {post}: {schema_error}")
+                else:
+                    Path.Log.debug(f"Machine Editor: Skipped legacy postprocessor: {post}")
+            except Exception as e:
+                # Skip post processors that can't be instantiated or don't support new architecture
+                import traceback
+                Path.Log.debug(f"Machine Editor: Error loading postprocessor {post}: {e}")
+                Path.Log.debug(f"Machine Editor: Traceback: {traceback.format_exc()}")
+                continue
+        
+        # Ensure generic post processor is always available as fallback
+        if not found_generic:
+            self.post_processor_combo.addItem("generic")
+            Path.Log.debug("Machine Editor: Added generic postprocessor as fallback")
+        
+        Path.Log.info(f"Machine Editor: Showing {new_style_count} new-style postprocessors (filtered from {total_postprocessors} total)")
         
         # Connect signals
         self.post_processor_combo.currentIndexChanged.connect(self.updatePostProcessorTooltip)
@@ -1556,6 +1898,7 @@ class MachineEditorDialog(QtGui.QDialog):
             machine.spindles.append(
                 Spindle(
                     name="Spindle 1",
+                    spindle_type=SpindleType.ROTARY,
                     id="spindle1",
                     max_power_kw=3.0,
                     max_rpm=24000,

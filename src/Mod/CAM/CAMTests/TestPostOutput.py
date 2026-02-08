@@ -412,28 +412,72 @@ class TestExport2Integration(unittest.TestCase):
 
     def _create_machine(self, **output_options):
         """Helper to create a machine with specified output options."""
-        from Machine.models.machine import Machine, OutputUnits
+        from Machine.models.machine import Machine, OutputUnits, Spindle, SpindleType
         machine = Machine.create_3axis_config()
         machine.name = "TestMachine"
         
         # Add a default spindle since post processor expects spindle index 0
-        machine.add_spindle(
+        default_spindle = Spindle(
             name="Default Spindle",
+            spindle_type=SpindleType.ROTARY,
             id="spindle1",
             max_power_kw=2.2,
             max_rpm=24000,
             min_rpm=6000,
             tool_change="manual"
         )
+        machine.spindles = [default_spindle]
         
         for key, value in output_options.items():
-            # Convert string output_units to enum
-            if key == 'output_units':
+            # Handle nested output structure
+            if key in ['header', 'comments', 'formatting', 'precision', 'duplicates']:
+                # Set nested attribute
+                setattr(getattr(machine.output, key), key, value)
+            elif key in ['include_date', 'include_description', 'include_document_name', 
+                        'include_machine_name', 'include_project_file', 'include_units',
+                        'include_tool_list', 'include_fixture_list']:
+                # Set header nested attribute
+                setattr(machine.output.header, key, value)
+            elif key in ['enabled', 'symbol', 'include_operation_labels', 'include_blank_lines', 'output_bcnc_comments']:
+                # Set comments nested attribute
+                setattr(machine.output.comments, key, value)
+            elif key == 'comment_symbol':
+                # Handle legacy test parameter name
+                setattr(machine.output.comments, 'symbol', value)
+            elif key == 'comments_enabled':
+                # Handle legacy test parameter name
+                setattr(machine.output.comments, 'enabled', value)
+            elif key in ['line_numbers', 'line_number_start', 'line_number_prefix', 'line_increment', 
+                        'command_space', 'end_of_line_chars']:
+                # Set formatting nested attribute
+                setattr(machine.output.formatting, key, value)
+            elif key in ['axis', 'feed', 'spindle']:
+                # Set precision nested attribute
+                setattr(machine.output.precision, key, value)
+            elif key == 'axis_precision':
+                # Handle legacy test parameter name
+                setattr(machine.output.precision, 'axis', value)
+            elif key == 'feed_precision':
+                # Handle legacy test parameter name
+                setattr(machine.output.precision, 'feed', value)
+            elif key == 'spindle_precision':
+                # Handle legacy test parameter name
+                setattr(machine.output.precision, 'spindle', value)
+            elif key in ['commands', 'parameters']:
+                # Set duplicates nested attribute
+                setattr(machine.output.duplicates, key, value)
+            elif key == 'output_units':
+                # Convert string output_units to enum
                 if value == 'metric':
-                    value = OutputUnits.METRIC
+                    machine.output.units = OutputUnits.METRIC
                 elif value == 'imperial':
-                    value = OutputUnits.IMPERIAL
-            setattr(machine.output, key, value)
+                    machine.output.units = OutputUnits.IMPERIAL
+            elif key == 'output_header':
+                # Set top-level output_header attribute
+                setattr(machine.output, key, value)
+            else:
+                # Set top-level attribute
+                setattr(machine.output, key, value)
         return machine
 
     def _create_postprocessor(self, machine=None, job=None):
@@ -645,7 +689,7 @@ class TestExport2Integration(unittest.TestCase):
         """Test that header:true and comments:false shows header but suppresses inline comments."""
         machine = self._create_machine(
             output_header=True,
-            output_comments=False,
+            comments_enabled=False,
             line_numbers=False
         )
 
@@ -672,7 +716,7 @@ class TestExport2Integration(unittest.TestCase):
         """Test that header:false and comments:true suppresses header but shows inline comments."""
         machine = self._create_machine(
             output_header=False,
-            output_comments=True,
+            comments_enabled=True,
             line_numbers=False
         )
 
@@ -697,7 +741,7 @@ class TestExport2Integration(unittest.TestCase):
         """Test that line numbers are applied to G-code but not header comments."""
         machine = self._create_machine(
             output_header=True,
-            output_comments=False,
+            comments_enabled=False,
             line_numbers=True,
             line_number_start=100,
             line_increment=10
@@ -771,18 +815,18 @@ class TestExport2Integration(unittest.TestCase):
             self.assertIn("F6007.4", first_section_gcode,
                          "Feed should have 1 decimal place")
 
-    def test080_comment_symbol_from_config(self):
+    def test060_comment_symbol_formatting(self):
         """Test that comment_symbol setting formats comments correctly."""
         machine1 = self._create_machine(
             comment_symbol='(',
-            output_comments=True,
+            comments_enabled=True,
             output_header=False,
             line_numbers=False
         )
 
         machine2 = self._create_machine(
             comment_symbol=';',
-            output_comments=True,
+            comments_enabled=True,
             output_header=False,
             line_numbers=False
         )
@@ -804,9 +848,9 @@ class TestExport2Integration(unittest.TestCase):
     def test082_output_duplicate_parameters_false(self):
         """Test that output_duplicate_parameters=False suppresses duplicate parameters."""
         machine = self._create_machine(
-            output_duplicate_parameters=False,
+            parameters=False,  # duplicates.parameters = False
             line_numbers=False,
-            output_comments=False,
+            comments_enabled=False,
             output_header=False
         )
 
@@ -836,9 +880,9 @@ class TestExport2Integration(unittest.TestCase):
     def test083_output_duplicate_parameters_true(self):
         """Test that output_duplicate_parameters=True shows all parameters (default behavior)."""
         machine = self._create_machine(
-            output_duplicate_parameters=True,
+            parameters=True,  # duplicates.parameters = True
             line_numbers=False,
-            output_comments=False,
+            comments_enabled=False,
             output_header=False
         )
 
@@ -1059,16 +1103,16 @@ class TestExport2Integration(unittest.TestCase):
         """Test that machine_name option includes machine name in output."""
         # Test with machine name enabled
         machine_with_name = self._create_machine(
-            machine_name=True,
+            include_machine_name=True,  # header.include_machine_name = True
             output_header=True,
-            output_comments=True
+            comments_enabled=True
         )
         
         # Test with machine name disabled
         machine_no_name = self._create_machine(
-            machine_name=False,
+            include_machine_name=False,  # header.include_machine_name = False
             output_header=True,
-            output_comments=True
+            comments_enabled=True
         )
         
         results_with = self._run_export2(machine_with_name)
@@ -1091,15 +1135,15 @@ class TestExport2Integration(unittest.TestCase):
         """Test that output_bcnc_comments option controls bCNC-specific comment output."""
         # Test with bCNC comments enabled
         machine_with_bcnc = self._create_machine(
-            output_bcnc_comments=True,
-            output_comments=True,
+            output_bcnc_comments=True,  # comments.output_bcnc_comments = True
+            comments_enabled=True,
             output_header=False
         )
         
         # Test with bCNC comments disabled
         machine_no_bcnc = self._create_machine(
-            output_bcnc_comments=False,
-            output_comments=True,
+            output_bcnc_comments=False,  # comments.output_bcnc_comments = False
+            comments_enabled=True,
             output_header=False
         )
         
@@ -1156,15 +1200,15 @@ class TestExport2Integration(unittest.TestCase):
         """Test that path_labels option includes path labels in output."""
         # Test with path labels enabled
         machine_with_labels = self._create_machine(
-            path_labels=True,
-            output_comments=True,
+            path_labels=True,  # comments.include_operation_labels = True (legacy mapping)
+            comments_enabled=True,
             output_header=False
         )
         
         # Test with path labels disabled
         machine_no_labels = self._create_machine(
-            path_labels=False,
-            output_comments=True,
+            path_labels=False,  # comments.include_operation_labels = False (legacy mapping)
+            comments_enabled=True,
             output_header=False
         )
         
@@ -1183,15 +1227,15 @@ class TestExport2Integration(unittest.TestCase):
         """Test that show_operation_labels option includes operation labels in output."""
         # Test with operation labels enabled
         machine_with_labels = self._create_machine(
-            show_operation_labels=True,
-            output_comments=True,
+            show_operation_labels=True,  # comments.include_operation_labels = True
+            comments_enabled=True,
             output_header=False
         )
         
         # Test with operation labels disabled
         machine_no_labels = self._create_machine(
-            show_operation_labels=False,
-            output_comments=True,
+            show_operation_labels=False,  # comments.include_operation_labels = False
+            comments_enabled=True,
             output_header=False
         )
         

@@ -249,11 +249,26 @@ class PostProcessorFactory:
 
                 try:
                     PostClass = getattr(module, class_name)
+                    Path.Log.debug(f"Found class {class_name} in module {module_name}")
                     return PostClass(job)
                 except AttributeError:
                     # Return an instance of WrapperPost if no valid module is found
                     Path.Log.debug(f"Post processor {postname} is a script")
                     return WrapperPost(job, module_path, module_name)
+                except Exception as e:
+                    # Log any other exception during instantiation
+                    Path.Log.debug(f"Error instantiating {class_name}: {e}")
+                    # If job is None (filtering context), try to return the class itself
+                    # so the machine editor can check its schema methods
+                    if job is None:
+                        try:
+                            PostClass = getattr(module, class_name)
+                            Path.Log.debug(f"Returning uninstantiated class {class_name} for schema inspection")
+                            # Return a mock instance that can be used for schema inspection
+                            return PostClass.__new__(PostClass)
+                        except:
+                            pass
+                    raise
 
         return None
 
@@ -407,16 +422,16 @@ class PostProcessor:
         specific_props = cls.get_property_schema()
         return common_props + specific_props
 
-    def __init__(self, job_or_jobs, tooltip, tooltipargs, units, *args, **kwargs):
+    def __init__(self, job, tooltip, tooltipargs, units, *args, **kwargs):
         self._tooltip = tooltip
         self._tooltipargs = tooltipargs
         self._units = units
         self._args = args
         self._kwargs = kwargs
 
-        # Handle job_or_jobs: can be single job or list of jobs
-        if isinstance(job_or_jobs, list):
-            self._jobs = job_or_jobs
+        # Handle job: can be single job or list of jobs
+        if isinstance(job, list):
+            self._jobs = job
             if len(self._jobs) == 0:
                 raise ValueError("At least one job must be provided")
             # Validate all jobs have the same machine (if Machine attribute exists)
@@ -430,8 +445,8 @@ class PostProcessor:
                 raise NotImplementedError("Multiple jobs are not yet supported. Please process one job at a time.")
             self._job = self._jobs[0]  # For backward compatibility
         else:
-            self._jobs = [job_or_jobs]
-            self._job = job_or_jobs
+            self._jobs = [job]
+            self._job = job
 
         # Get machine
         if self._job is None:
@@ -460,10 +475,10 @@ class PostProcessor:
         }
         self.reinitialize()
 
-        if isinstance(job_or_jobs, dict):
+        if isinstance(job, dict):
             # process only selected operations
-            self._job = job_or_jobs["job"]
-            self._operations = job_or_jobs["operations"]
+            self._job = job["job"]
+            self._operations = job["operations"]
         else:
             # get all operations from 'Operations' group
             self._operations = getattr(self._job.Operations, "Group", []) if self._job is not None else []
@@ -532,45 +547,85 @@ class PostProcessor:
         
         # Merge machine configuration into values dict
         if self._machine and hasattr(self._machine, 'output'):
-            # Map machine config to values dict keys
+            # Map machine config to values dict keys using new nested structure
             output_options = self._machine.output
-            if hasattr(output_options, 'line_numbers'):
-                self.values['OUTPUT_LINE_NUMBERS'] = output_options.line_numbers
-            if hasattr(output_options, 'line_number_start'):
-                self.values['line_number'] = output_options.line_number_start
-            if hasattr(output_options, 'line_increment'):
-                self.values['LINE_INCREMENT'] = output_options.line_increment
-            # Support both old and new field names for backward compatibility
-            if hasattr(output_options, 'output_comments'):
-                self.values['OUTPUT_COMMENTS'] = output_options.output_comments
-            elif hasattr(output_options, 'comments'):
-                self.values['OUTPUT_COMMENTS'] = output_options.comments
-            if hasattr(output_options, 'output_header'):
-                self.values['OUTPUT_HEADER'] = output_options.output_header
-            elif hasattr(output_options, 'header'):
-                self.values['OUTPUT_HEADER'] = output_options.header
-            if hasattr(output_options, 'axis_precision'):
-                self.values['AXIS_PRECISION'] = output_options.axis_precision
-            if hasattr(output_options, 'feed_precision'):
-                self.values['FEED_PRECISION'] = output_options.feed_precision
-            if hasattr(output_options, 'command_space'):
-                self.values['COMMAND_SPACE'] = output_options.command_space
-            if hasattr(output_options, 'end_of_line_chars'):
-                self.values['END_OF_LINE_CHARS'] = output_options.end_of_line_chars
-            if hasattr(output_options, 'spindle_precision'):
-                self.values['SPINDLE_DECIMALS'] = output_options.spindle_precision
-            if hasattr(output_options, 'comment_symbol'):
-                self.values['COMMENT_SYMBOL'] = output_options.comment_symbol
-            if hasattr(output_options, 'output_duplicate_parameters'):
-                self.values['OUTPUT_DOUBLES'] = output_options.output_duplicate_parameters
-            if hasattr(output_options, 'output_bcnc_comments'):
-                Path.Log.debug(f"Found output_bcnc_comments: {output_options.output_bcnc_comments}")
-                self.values['OUTPUT_BCNC'] = output_options.output_bcnc_comments
-                Path.Log.debug(f"Set OUTPUT_BCNC to: {self.values['OUTPUT_BCNC']}")
+            
+            # Main output options
             if hasattr(output_options, 'output_tool_length_offset'):
                 self.values['OUTPUT_TOOL_LENGTH_OFFSET'] = output_options.output_tool_length_offset
             if hasattr(output_options, 'remote_post'):
                 self.values['REMOTE_POST'] = output_options.remote_post
+            
+            # Header options
+            if hasattr(output_options, 'header'):
+                header = output_options.header
+                if hasattr(header, 'include_date'):
+                    self.values['OUTPUT_HEADER'] = header.include_date  # Using include_date as master switch
+                if hasattr(header, 'include_tool_list'):
+                    self.values['LIST_TOOLS_IN_HEADER'] = header.include_tool_list
+                if hasattr(header, 'include_fixture_list'):
+                    self.values['LIST_FIXTURES_IN_HEADER'] = header.include_fixture_list
+                if hasattr(header, 'include_machine_name'):
+                    self.values['MACHINE_NAME_IN_HEADER'] = header.include_machine_name
+                if hasattr(header, 'include_description'):
+                    self.values['DESCRIPTION_IN_HEADER'] = header.include_description
+                if hasattr(header, 'include_project_file'):
+                    self.values['PROJECT_FILE_IN_HEADER'] = header.include_project_file
+                if hasattr(header, 'include_units'):
+                    self.values['OUTPUT_UNITS_IN_HEADER'] = header.include_units
+                if hasattr(header, 'include_document_name'):
+                    self.values['DOCUMENT_NAME_IN_HEADER'] = header.include_document_name
+            
+            # Comment options
+            if hasattr(output_options, 'comments'):
+                comments = output_options.comments
+                if hasattr(comments, 'enabled'):
+                    self.values['OUTPUT_COMMENTS'] = comments.enabled
+                if hasattr(comments, 'symbol'):
+                    self.values['COMMENT_SYMBOL'] = comments.symbol
+                    Path.Log.debug(f"Set COMMENT_SYMBOL to: {comments.symbol}")
+                if hasattr(comments, 'include_operation_labels'):
+                    self.values['OUTPUT_OPERATION_LABELS'] = comments.include_operation_labels
+                if hasattr(comments, 'include_blank_lines'):
+                    self.values['OUTPUT_BLANK_LINES'] = comments.include_blank_lines
+                if hasattr(comments, 'output_bcnc_comments'):
+                    Path.Log.debug(f"Found output_bcnc_comments: {comments.output_bcnc_comments}")
+                    self.values['OUTPUT_BCNC'] = comments.output_bcnc_comments
+                    Path.Log.debug(f"Set OUTPUT_BCNC to: {self.values['OUTPUT_BCNC']}")
+            
+            # Formatting options
+            if hasattr(output_options, 'formatting'):
+                formatting = output_options.formatting
+                if hasattr(formatting, 'line_numbers'):
+                    self.values['OUTPUT_LINE_NUMBERS'] = formatting.line_numbers
+                if hasattr(formatting, 'line_number_start'):
+                    self.values['line_number'] = formatting.line_number_start
+                if hasattr(formatting, 'line_increment'):
+                    self.values['LINE_INCREMENT'] = formatting.line_increment
+                if hasattr(formatting, 'line_number_prefix'):
+                    self.values['LINE_NUMBER_PREFIX'] = formatting.line_number_prefix
+                if hasattr(formatting, 'command_space'):
+                    self.values['COMMAND_SPACE'] = formatting.command_space
+                if hasattr(formatting, 'end_of_line_chars'):
+                    self.values['END_OF_LINE_CHARS'] = formatting.end_of_line_chars
+            
+            # Precision options
+            if hasattr(output_options, 'precision'):
+                precision = output_options.precision
+                if hasattr(precision, 'axis'):
+                    self.values['AXIS_PRECISION'] = precision.axis
+                if hasattr(precision, 'feed'):
+                    self.values['FEED_PRECISION'] = precision.feed
+                if hasattr(precision, 'spindle'):
+                    self.values['SPINDLE_DECIMALS'] = precision.spindle
+            
+            # Duplicate options
+            if hasattr(output_options, 'duplicates'):
+                duplicates = output_options.duplicates
+                if hasattr(duplicates, 'commands'):
+                    self.values['OUTPUT_DUPLICATE_COMMANDS'] = duplicates.commands
+                if hasattr(duplicates, 'parameters'):
+                    self.values['OUTPUT_DOUBLES'] = duplicates.parameters
         
         # ===== STAGE 1: ORDERING =====
         # Process all jobs (currently only first job supported)
@@ -588,46 +643,44 @@ class PostProcessor:
             # ===== STAGE 2: COMMAND EXPANSION =====
             # Expand commands and collect header information
             gcodeheader = _HeaderBuilder()
-            if self.values.get('OUTPUT_HEADER', True):
-                if self._machine:
-                    gcodeheader.add_machine_info(self._machine.name if hasattr(self._machine, 'name') else str(self._machine))
-                
-                # Add project file if enabled
-                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'project_file_in_header'):
-                    if self._machine.output.project_file_in_header and self._job:
+            
+            # Only add header information if output_header is enabled
+            header_enabled = True
+            if self._machine and hasattr(self._machine, 'output'):
+                header_enabled = self._machine.output.output_header
+            
+            if header_enabled:
+                # Add machine name if enabled
+                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'header'):
+                    if self._machine.output.header.include_machine_name:
+                        gcodeheader.add_machine_info(self._machine.name)
+                    
+                    # Add project file if enabled
+                    if self._machine.output.header.include_project_file and self._job:
                         if hasattr(self._job, 'Document') and self._job.Document:
                             project_file = self._job.Document.FileName
                             if project_file:
                                 gcodeheader.add_project_file(project_file)
-                
-                # Add output units if enabled
-                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'output_units_in_header'):
-                    if self._machine.output.output_units_in_header:
-                        units_str = "Metric - mm" if self._machine.output.output_units.value == "metric" else "Imperial - inch"
-                        gcodeheader.add_output_units(units_str)
-                
-                # Add document name if enabled
-                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'document_name_in_header'):
-                    if self._machine.output.document_name_in_header and self._job:
+                    
+                    # Add document name if enabled
+                    if self._machine.output.header.include_document_name and self._job:
                         if hasattr(self._job, 'Document') and self._job.Document:
                             doc_name = self._job.Document.Label
                             if doc_name:
                                 gcodeheader.add_document_name(doc_name)
-                
-                # Add description if enabled
-                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'description_in_header'):
-                    if self._machine.output.description_in_header and self._job:
+                    
+                    # Add description if enabled
+                    if self._machine.output.header.include_description and self._job:
                         if hasattr(self._job, 'Description') and self._job.Description:
                             gcodeheader.add_description(self._job.Description)
-                
-                # Add author if enabled
-                if self._job and hasattr(self._job, 'Document') and self._job.Document:
-                    if hasattr(self._job.Document, 'CreatedBy') and self._job.Document.CreatedBy:
-                        gcodeheader.add_author(self._job.Document.CreatedBy)
-                
-                # Add date/time if enabled
-                if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'date_in_header'):
-                    if self._machine.output.date_in_header:
+                    
+                    # Add author if enabled
+                    if self._job and hasattr(self._job, 'Document') and self._job.Document:
+                        if hasattr(self._job.Document, 'CreatedBy') and self._job.Document.CreatedBy:
+                            gcodeheader.add_author(self._job.Document.CreatedBy)
+                    
+                    # Add date/time if enabled
+                    if self._machine.output.header.include_date:
                         import datetime
                         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         gcodeheader.add_output_time(timestamp)
@@ -890,9 +943,9 @@ class PostProcessor:
             unit_command_line = []
             if self._machine and hasattr(self._machine, 'output'):
                 from Machine.models.machine import OutputUnits
-                if self._machine.output.output_units == OutputUnits.METRIC:
+                if self._machine.output.units == OutputUnits.METRIC:
                     unit_command_line = ["G21"]
-                elif self._machine.output.output_units == OutputUnits.IMPERIAL:
+                elif self._machine.output.units == OutputUnits.IMPERIAL:
                     unit_command_line = ["G20"]
             
             # Collect PRE-JOB lines
@@ -1079,9 +1132,9 @@ class PostProcessor:
                     if body_part and self.values.get('OUTPUT_LINE_NUMBERS', False):
                         start = 10
                         increment = 10
-                        if self._machine and hasattr(self._machine, 'output'):
-                            start = self._machine.output.line_number_start
-                            increment = self._machine.output.line_increment
+                        if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'formatting'):
+                            start = self._machine.output.formatting.line_number_start
+                            increment = self._machine.output.formatting.line_increment
                         body_part = insert_line_numbers(body_part, start=start, increment=increment)
                     
                     # Recombine header and body
@@ -1438,6 +1491,7 @@ class PostProcessor:
                 # Format comment according to comment_symbol
                 comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
                 comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+                Path.Log.debug(f"Formatting comment with symbol: '{comment_symbol}', text: '{comment_text}'")
                 if comment_symbol == '(':
                     return f"({comment_text})"
                 else:
@@ -1464,11 +1518,11 @@ class PostProcessor:
         
         def format_axis_param(value):
             """Format axis parameter with unit conversion and precision."""
-            # Apply unit conversion based on machine output_units setting
+            # Apply unit conversion based on machine units setting
             is_imperial = False
             if self._machine and hasattr(self._machine, 'output'):
                 from Machine.models.machine import OutputUnits
-                is_imperial = self._machine.output.output_units == OutputUnits.IMPERIAL
+                is_imperial = self._machine.output.units == OutputUnits.IMPERIAL
             else:
                 # Fallback to legacy UNITS value
                 units = self.values.get('UNITS', 'G21')
@@ -1491,7 +1545,7 @@ class PostProcessor:
             is_imperial = False
             if self._machine and hasattr(self._machine, 'output'):
                 from Machine.models.machine import OutputUnits
-                is_imperial = self._machine.output.output_units == OutputUnits.IMPERIAL
+                is_imperial = self._machine.output.units == OutputUnits.IMPERIAL
             else:
                 # Fallback to legacy UNITS value
                 units = self.values.get('UNITS', 'G21')

@@ -242,7 +242,7 @@ class Snapmaker(Path.Post.Processor.PostProcessor):
 
     def __init__(self, job) -> None:
         super().__init__(
-            job_or_jobs=job,
+            job=job,
             tooltip=translate("CAM", "Snapmaker post processor"),
             tooltipargs=[""],
             units="Metric",

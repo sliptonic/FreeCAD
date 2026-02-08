@@ -25,10 +25,7 @@
 # *   USA                                                                   *
 # *                                                                         *
 # ***************************************************************************
-#
-# DEPRECATED: This post processor is deprecated and replaced by the generic
-# post processor with Generic_LinuxCNC.fcm machine configuration file.
-# Use the generic post processor instead.
+
 
 from typing import Any, Dict
 
@@ -46,9 +43,7 @@ if DEBUG:
 else:
     Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
 
-#
 # Define some types that are used throughout this file.
-#
 Values = Dict[str, Any]
 
 
@@ -60,10 +55,8 @@ class Linuxcnc(PostProcessor):
 
     This post processor implements the following trajectory control methods:
     - Exact Path (G61)
-    - Exact Stop (G64)
-    - Blend (G61.1)
-
-
+    - Exact Stop (G61.1)
+    - Blend (G64)
     """
 
     @classmethod
@@ -116,11 +109,11 @@ class Linuxcnc(PostProcessor):
         self,
         job,
         tooltip=translate("CAM", "LinuxCNC post processor"),
-        tooltipargs=["blend-mode", "blend-tolerance"],
+        tooltipargs=[],
         units="Metric",
     ) -> None:
         super().__init__(
-            job_or_jobs=job,
+            job=job,
             tooltip=tooltip,
             tooltipargs=tooltipargs,
             units=units,
@@ -160,21 +153,16 @@ class Linuxcnc(PostProcessor):
             "D",
             "P",
         ]
-        #
-        # Used in the argparser code as the "name" of the postprocessor program.
-        #
+        
         values["MACHINE_NAME"] = "LinuxCNC"
-        #
-        # Any commands in this value will be output as the last commands
-        # in the G-code file.
-        #
-        values[
-            "POSTAMBLE"
-        ] = """M05
-G17 G54 G90 G80 G40
-M2"""
         values["POSTPROCESSOR_FILE_NAME"] = __name__
         #
+        # Load base PREAMBLE from machine configuration
+        #
+        if self._machine and hasattr(self._machine, 'postprocessor_properties'):
+            props = self._machine.postprocessor_properties
+            values["PREAMBLE"] = props.get("preamble")
+        
         # Path blending mode configuration (LinuxCNC-specific)
         # Load from machine configuration if available, otherwise use defaults
         #
@@ -186,52 +174,13 @@ M2"""
             # Fallback to defaults if no machine configuration
             values["BLEND_MODE"] = "BLEND"
             values["BLEND_TOLERANCE"] = 0.0
-        #
-        # Any commands in this value will be output after the header and
-        # safety block at the beginning of the G-code file.
-        #
-        values["PREAMBLE"] = """G17 G54 G40 G49 G80 G90 """
-
-    def init_arguments(self, values, argument_defaults, arguments_visible):
-        """Initialize command-line arguments, including LinuxCNC-specific options."""
-        parser = super().init_arguments(values, argument_defaults, arguments_visible)
-
-        # Add LinuxCNC-specific argument group
-        linuxcnc_group = parser.add_argument_group("LinuxCNC-specific arguments")
-
-        linuxcnc_group.add_argument(
-            "--blend-mode",
-            choices=["EXACT_PATH", "EXACT_STOP", "BLEND"],
-            default="BLEND",
-            help="Path blending mode: EXACT_PATH (G61), EXACT_STOP (G61.1), "
-            "BLEND (G64/G64 P-) (default: BLEND)",
-        )
-
-        linuxcnc_group.add_argument(
-            "--blend-tolerance",
-            type=float,
-            default=0.0,
-            help="Tolerance for BLEND mode (P value): 0 = no tolerance (G64), "
-            ">0 = tolerance (G64 P-), in current units (default: 0.0)",
-        )
-        return parser
-
-    def process_arguments(self):
-        """Process arguments and update values, including blend mode handling."""
-        flag, args = super().process_arguments()
-
-        if flag and args:
-            # Update blend mode values from parsed arguments
-            if hasattr(args, "blend_mode"):
-                self.values["BLEND_MODE"] = args.blend_mode
-            if hasattr(args, "blend_tolerance"):
-                self.values["BLEND_TOLERANCE"] = args.blend_tolerance
-
-            # Update PREAMBLE with blend command
+        
+        # Update PREAMBLE with blend command (only if PREAMBLE exists)
+        if values.get("PREAMBLE"):
             blend_cmd = self._get_blend_command()
-            self.values["PREAMBLE"] += f"\n{blend_cmd}"
+            values["PREAMBLE"] += f"\n{blend_cmd}"
 
-        return flag, args
+
 
     def _get_blend_command(self) -> str:
         """Generate the path blending G-code command based on current settings."""
@@ -248,8 +197,7 @@ M2"""
             else:
                 return "G64"
 
-    # tooltipArgs is inherited from base class and automatically includes
-    # all arguments from init_arguments() via parser.format_help()
+    # Property tooltip is inherited from base class
 
     @property
     def tooltip(self):
