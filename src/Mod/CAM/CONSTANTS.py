@@ -89,6 +89,9 @@ GCODE_DISTANCE_MODE = GCODE_ABSOLUTE + GCODE_INCREMENTAL
 # Coordinate system offset
 GCODE_OFFSET = ["G92"]
 
+# Tool length offset
+GCODE_TOOL_LENGTH_OFFSET = ["G43"]
+
 # Feed rate modes
 GCODE_FEED_INVERSE_TIME = ["G93"]
 GCODE_FEED_UNITS_PER_MIN = ["G94"]
@@ -161,7 +164,8 @@ GCODE_SUPPORTED = (
     GCODE_SPINDLE_CSS +
     GCODE_SPINDLE_RPM +
     GCODE_RETURN_INITIAL +
-    GCODE_RETURN_R
+    GCODE_RETURN_R +
+    GCODE_TOOL_LENGTH_OFFSET
 )
 
 # All supported M-codes for generic post processor

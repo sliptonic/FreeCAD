@@ -54,6 +54,10 @@ from CAMTests.TestPathHelix import TestPathHelix
 from CAMTests.TestPathHelixGenerator import TestPathHelixGenerator
 from CAMTests.TestPathLog import TestPathLog
 from CAMTests.TestPathOpUtil import TestPathOpUtil
+from CAMTests.TestToolPostProcessing import (
+    TestToolLengthOffset,
+    TestToolProcessing
+)
 
 # Post-processing tests split into 3 files for better organization
 from CAMTests.TestPostCore import (
