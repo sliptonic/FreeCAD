@@ -1124,18 +1124,18 @@ class TestExport2Integration(unittest.TestCase):
             # LF output should not contain \r
             self.assertNotIn("\r", gcode_lf, "Should have LF-only line endings")
 
-    def test093_list_tools_in_preamble_option(self):
-        """Test that list_tools_in_preamble option includes tool list in preamble."""
+    def test093_list_tools_in_header_option(self):
+        """Test that list_tools_in_header option includes tool list in header."""
         # Test with tool list enabled
         machine_with_tools = self._create_machine(
-            list_tools_in_preamble=True,
+            list_tools_in_header=True,
             output_header=True,
             output_comments=True
         )
         
         # Test with tool list disabled
         machine_no_tools = self._create_machine(
-            list_tools_in_preamble=False,
+            list_tools_in_header=False,
             output_header=True,
             output_comments=True
         )
@@ -1146,17 +1146,20 @@ class TestExport2Integration(unittest.TestCase):
         results_without = self._run_export2(machine_no_tools)
         gcode_without = self._get_first_section_gcode(results_without)
         
-        # With tool list should contain tool information in comments
-        # Look for tool number patterns like "T1" or tool descriptions
+        # With tool list enabled, header should contain tool information in comments
+        # Look for specific tool listing format: (T<number>=toolname)
+        import re
+        tool_pattern = re.compile(r'\(T\d+=.*?\)')
+        
         lines_with = gcode_with.split('\n')
-        tool_comments_with = [line for line in lines_with if '(' in line and 'T' in line]
+        tool_comments_with = [line for line in lines_with if tool_pattern.search(line)]
         
         lines_without = gcode_without.split('\n')
-        tool_comments_without = [line for line in lines_without if '(' in line and 'T' in line]
+        tool_comments_without = [line for line in lines_without if tool_pattern.search(line)]
         
         # Should have more tool-related comments when enabled
         self.assertGreaterEqual(len(tool_comments_with), len(tool_comments_without),
-                               "Should have more tool comments when list_tools_in_preamble=True")
+                               "Should have more tool comments when list_tools_in_header=True")
 
     def test094_machine_name_option(self):
         """Test that machine_name option includes machine name in output."""
@@ -1718,3 +1721,128 @@ class TestExport2Integration(unittest.TestCase):
             self.doc.removeObject(profile_op2.Name)
             self.doc.removeObject(tc2.Name)
             self.doc.removeObject(tool2.Name)
+
+    def test100_bcnc_comments_enabled(self):
+        """Test that bCNC comments are included when output_bcnc_comments=True."""
+        # Test with bCNC enabled
+        machine_bcnc = self._create_machine(
+            output_bcnc_comments=True,
+            output_comments=True,
+            output_header=True
+        )
+        
+        results = self._run_export2(machine_bcnc)
+        self.assertIsNotNone(results)
+        self.assertGreater(len(results), 0)
+        
+        first_section_gcode = self._get_first_section_gcode(results)
+        
+        # Should contain bCNC block headers for operations
+        self.assertIn("(Block-name:", first_section_gcode, "Should contain bCNC block name comments")
+        self.assertIn("(Block-expand: 0)", first_section_gcode, "Should contain bCNC block expand comments")
+        self.assertIn("(Block-enable: 1)", first_section_gcode, "Should contain bCNC block enable comments")
+        
+        # Should contain bCNC postamble block
+        self.assertIn("(Block-name: post_amble)", first_section_gcode, "Should contain bCNC postamble block")
+
+    def test101_bcnc_comments_disabled(self):
+        """Test that bCNC comments are not included when output_bcnc_comments=False."""
+        # Test with bCNC disabled
+        machine_no_bcnc = self._create_machine(
+            output_bcnc_comments=False,
+            output_comments=True,
+            output_header=True
+        )
+        
+        results = self._run_export2(machine_no_bcnc)
+        self.assertIsNotNone(results)
+        self.assertGreater(len(results), 0)
+        
+        first_section_gcode = self._get_first_section_gcode(results)
+        
+        # Should NOT contain bCNC block headers
+        self.assertNotIn("(Block-name:", first_section_gcode, "Should not contain bCNC block name comments")
+        self.assertNotIn("(Block-expand: 0)", first_section_gcode, "Should not contain bCNC block expand comments")
+        self.assertNotIn("(Block-enable: 1)", first_section_gcode, "Should not contain bCNC block enable comments")
+        self.assertNotIn("(Block-name: post_amble)", first_section_gcode, "Should not contain bCNC postamble block")
+
+    def test102_bcnc_comments_with_regular_comments_disabled(self):
+        """Test that bCNC comments are output even when regular comments are disabled."""
+        # Test with bCNC enabled but regular comments disabled
+        machine_bcnc_no_comments = self._create_machine(
+            output_bcnc_comments=True,
+            output_comments=False,
+            output_header=False  # Disable header to avoid other comments
+        )
+        
+        results = self._run_export2(machine_bcnc_no_comments)
+        self.assertIsNotNone(results)
+        self.assertGreater(len(results), 0)
+        
+        first_section_gcode = self._get_first_section_gcode(results)
+        
+        # Should contain bCNC comments even when regular comments are disabled
+        self.assertIn("(Block-name:", first_section_gcode, "Should contain bCNC block name comments even when regular comments disabled")
+        self.assertIn("(Block-expand: 0)", first_section_gcode, "Should contain bCNC block expand comments even when regular comments disabled")
+        self.assertIn("(Block-enable: 1)", first_section_gcode, "Should contain bCNC block enable comments even when regular comments disabled")
+        self.assertIn("(Block-name: post_amble)", first_section_gcode, "Should contain bCNC postamble block even when regular comments disabled")
+        
+        # Should NOT contain regular comments (like header comments)
+        self.assertNotIn("(Machine:", first_section_gcode, "Should not contain regular header comments when comments disabled")
+
+    def test103_bcnc_block_format(self):
+        """Test that bCNC blocks have the correct format and structure."""
+        machine_bcnc = self._create_machine(
+            output_bcnc_comments=True,
+            output_comments=True
+        )
+        
+        results = self._run_export2(machine_bcnc)
+        first_section_gcode = self._get_first_section_gcode(results)
+        lines = first_section_gcode.split('\n')
+        
+        # Find bCNC block starts
+        block_name_lines = [line for line in lines if line.startswith("(Block-name:")]
+        
+        # Should have at least one operation block and one postamble block
+        self.assertGreaterEqual(len(block_name_lines), 2, "Should have at least operation and postamble blocks")
+        
+        # Check that each block name is followed by expand and enable
+        for i, line in enumerate(lines):
+            if line.startswith("(Block-name:"):
+                # Next lines should be expand and enable
+                if i + 2 < len(lines):
+                    self.assertEqual(lines[i+1], "(Block-expand: 0)", "Block should be followed by expand: 0")
+                    self.assertEqual(lines[i+2], "(Block-enable: 1)", "Block should be followed by enable: 1")
+                
+                # Operation blocks should have operation labels
+                if "post_amble" not in line:
+                    # Should contain an operation label (not empty)
+                    block_name = line.replace("(Block-name: ", "").rstrip(")")
+                    self.assertNotEqual(block_name, "", "Operation block name should not be empty")
+
+    def test104_bcnc_operation_ordering(self):
+        """Test that bCNC blocks appear before the operation content."""
+        machine_bcnc = self._create_machine(
+            output_bcnc_comments=True,
+            output_comments=True
+        )
+        
+        results = self._run_export2(machine_bcnc)
+        first_section_gcode = self._get_first_section_gcode(results)
+        lines = first_section_gcode.split('\n')
+        
+        # Find the first bCNC block and first G-code move
+        first_block_idx = None
+        first_move_idx = None
+        
+        for i, line in enumerate(lines):
+            if line.startswith("(Block-name:") and first_block_idx is None:
+                first_block_idx = i
+            elif line.startswith("G0") and first_move_idx is None:
+                first_move_idx = i
+                break
+        
+        # bCNC block should appear before G-code moves
+        if first_block_idx is not None and first_move_idx is not None:
+            self.assertLess(first_block_idx, first_move_idx, "bCNC block should appear before operation G-code")

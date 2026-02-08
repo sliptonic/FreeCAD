@@ -555,6 +555,10 @@ class PostProcessor:
                 self.values['COMMENT_SYMBOL'] = output_options.comment_symbol
             if hasattr(output_options, 'output_duplicate_parameters'):
                 self.values['OUTPUT_DOUBLES'] = output_options.output_duplicate_parameters
+            if hasattr(output_options, 'output_bcnc_comments'):
+                Path.Log.debug(f"Found output_bcnc_comments: {output_options.output_bcnc_comments}")
+                self.values['OUTPUT_BCNC'] = output_options.output_bcnc_comments
+                Path.Log.debug(f"Set OUTPUT_BCNC to: {self.values['OUTPUT_BCNC']}")
         
         # ===== STAGE 1: ORDERING =====
         # Process all jobs (currently only first job supported)
@@ -674,11 +678,23 @@ class PostProcessor:
                     # Collect header information
                     if self.values.get('OUTPUT_HEADER', True):
                         if hasattr(item, 'ToolNumber'):  # Tool controller
-                            gcodeheader.add_tool(item.ToolNumber, item.Label)
+                            # Check if tools should be listed in header
+                            list_tools = True
+                            if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'list_tools_in_header'):
+                                list_tools = self._machine.output.list_tools_in_header
+                            
+                            if list_tools:
+                                gcodeheader.add_tool(item.ToolNumber, item.Label)
                         elif hasattr(item, 'Label') and item.Label == "Fixture":  # Fixture
-                            if hasattr(item, 'Path') and item.Path and item.Path.Commands:
-                                fixture_name = item.Path.Commands[0].Name
-                                gcodeheader.add_fixture(fixture_name)
+                            # Check if fixtures should be listed in header
+                            list_fixtures = True
+                            if self._machine and hasattr(self._machine, 'output') and hasattr(self._machine.output, 'list_fixtures_in_header'):
+                                list_fixtures = self._machine.output.list_fixtures_in_header
+                            
+                            if list_fixtures:
+                                if hasattr(item, 'Path') and item.Path and item.Path.Commands:
+                                    fixture_name = item.Path.Commands[0].Name
+                                    gcodeheader.add_fixture(fixture_name)
 
                     # translate rapid moves
                     # If machine processing.translate_rapid_moves is True, replace G0/G00 with G1 and use tool controller rapid rate.
@@ -692,6 +708,76 @@ class PostProcessor:
                         item.Path = Path.Path(new_commands)
 
             Path.Log.debug(postables)
+
+            Path.Log.debug("starting stage 2.5")
+            # ===== STAGE 2.5: BCNC COMMAND CREATION =====
+            # Create bCNC block commands with annotations if enabled
+            output_bcnc = self.values.get('OUTPUT_BCNC', False)
+            Path.Log.debug(f"OUTPUT_BCNC value: {output_bcnc}")
+            # Clear any existing bCNC postamble commands to avoid state leakage
+            self._bcnc_postamble_commands = None
+            
+            if output_bcnc:
+                Path.Log.debug("Creating bCNC commands")
+                # Create bCNC postamble commands
+                bcnc_postamble_start_cmd = Path.Command('(Block-name: post_amble)')
+                bcnc_postamble_start_cmd.Annotations = {'bcnc': 'postamble_start'}
+                
+                bcnc_postamble_expand_cmd = Path.Command('(Block-expand: 0)')
+                bcnc_postamble_expand_cmd.Annotations = {'bcnc': 'postamble_meta'}
+                
+                bcnc_postamble_enable_cmd = Path.Command('(Block-enable: 1)')
+                bcnc_postamble_enable_cmd.Annotations = {'bcnc': 'postamble_meta'}
+                
+                # Store bCNC postamble commands for later insertion
+                self._bcnc_postamble_commands = [
+                    bcnc_postamble_start_cmd, 
+                    bcnc_postamble_expand_cmd, 
+                    bcnc_postamble_enable_cmd
+                ]
+                
+                for section_name, sublist in postables:
+                    for item in sublist:
+                        if hasattr(item, 'Proxy'):  # OPERATION
+                            # Create bCNC block start command
+                            bcnc_start_cmd = Path.Command('(Block-name: ' + item.Label + ')')
+                            bcnc_start_cmd.Annotations = {'bcnc': 'block_start'}
+                            
+                            # Create bCNC block metadata commands
+                            bcnc_expand_cmd = Path.Command('(Block-expand: 0)')
+                            bcnc_expand_cmd.Annotations = {'bcnc': 'block_meta'}
+                            
+                            bcnc_enable_cmd = Path.Command('(Block-enable: 1)')
+                            bcnc_enable_cmd.Annotations = {'bcnc': 'block_meta'}
+                            
+                            # Insert bCNC commands at the beginning of the operation's Path
+                            if hasattr(item, 'Path') and item.Path:
+                                # Create a copy of the original commands to avoid modifying the original Path
+                                original_commands = list(item.Path.Commands)
+                                
+                                # Create new Path with bCNC commands
+                                new_commands = [bcnc_start_cmd, bcnc_expand_cmd, bcnc_enable_cmd]
+                                new_commands.extend(original_commands)
+                                # Create a new Path object
+                                item.Path = Path.Path(new_commands)
+            else:
+                # OUTPUT_BCNC is False - remove any existing bCNC commands from operations
+                Path.Log.debug("Removing existing bCNC commands")
+                for section_name, sublist in postables:
+                    for item in sublist:
+                        if hasattr(item, 'Proxy') and hasattr(item, 'Path') and item.Path:
+                            # Filter out any existing bCNC commands
+                            filtered_commands = []
+                            for cmd in item.Path.Commands:
+                                if not (cmd.Name.startswith("(Block-name:") or 
+                                       cmd.Name.startswith("(Block-expand:") or 
+                                       cmd.Name.startswith("(Block-enable:")):
+                                    filtered_commands.append(cmd)
+                            
+                            # Create new Path without bCNC commands
+                            if len(filtered_commands) != len(item.Path.Commands):
+                                item.Path = Path.Path(filtered_commands)
+            
             # ===== STAGE 3: COMMAND CONVERSION =====
             job_sections = []
             
@@ -914,6 +1000,16 @@ class PostProcessor:
             if job_sections:
                 last_section_name, last_section_gcode = job_sections[-1]
                 additional_lines = []
+                
+                # Add bCNC postamble commands if they were created
+                if hasattr(self, '_bcnc_postamble_commands') and self._bcnc_postamble_commands is not None:
+                    Path.Log.debug(f"Processing {len(self._bcnc_postamble_commands)} bCNC postamble commands")
+                    for cmd in self._bcnc_postamble_commands:
+                        gcode = self.convert_command_to_gcode(cmd)
+                        if gcode is not None and gcode.strip():
+                            additional_lines.append(gcode)
+                else:
+                    Path.Log.debug("No bCNC postamble commands to process")
                 
                 # Add POST-JOB block
                 if self._machine and self._machine.postprocessor_properties.get('post_job'):
@@ -1187,26 +1283,24 @@ class PostProcessor:
         # handle comments
         if command_name.startswith("("):  # comment
             if self.values.get('OUTPUT_BCNC', False) and annotations.get("bcnc"):
-                # For now, treat bCNC comments as regular comments
-                # TODO: Implement proper bCNC block formatting when available
-                if self.values.get('OUTPUT_COMMENTS', True):
-                    # Format comment according to comment_symbol
-                    comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
-                    comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
-                    if comment_symbol == '(':
-                        return f"({comment_text})"
-                    else:
-                        return f"{comment_symbol} {comment_text}"
-                return None
+                # bCNC commands should be output even if OUTPUT_COMMENTS is false
+                # Format comment according to comment_symbol
+                comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
+                comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+                if comment_symbol == '(':
+                    return f"({comment_text})"
+                else:
+                    return f"{comment_symbol} {comment_text}"
+            elif self.values.get('OUTPUT_COMMENTS', True):
+                # Format comment according to comment_symbol
+                comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
+                comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+                if comment_symbol == '(':
+                    return f"({comment_text})"
+                else:
+                    return f"{comment_symbol} {comment_text}"
             else:
-                if self.values.get('OUTPUT_COMMENTS', True):
-                    # Format comment according to comment_symbol
-                    comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
-                    comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
-                    if comment_symbol == '(':
-                        return f"({comment_text})"
-                    else:
-                        return f"{comment_symbol} {comment_text}"
+                # Comments are disabled and this is not a bCNC command - suppress it
                 return None
         
         # Check for blockdelete annotation
