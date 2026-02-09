@@ -254,6 +254,92 @@ class TestToolProcessing(unittest.TestCase):
         
         return all_output
 
+    def test_XY_before_Z_after_tool_change(self):
+        """
+        Test that xy_before_z_after_tool_change decomposes first move after tool change.
+        
+        Expected behavior when enabled:
+            BEFORE: M6 T2
+                    G0 X50.0 Y60.0 Z10.0
+            
+            AFTER:  M6 T2
+                    G0 X50.0 Y60.0
+                    G0 Z10.0
+        """
+        # Create a second tool controller for testing tool changes
+        tool_attrs = {
+            "name": "TestTool2",
+            "shape": "endmill.fcstd",
+            "parameter": {"Diameter": 3.0},
+            "attribute": {},
+        }
+        toolbit2 = ToolBit.from_dict(tool_attrs)
+        tool2 = toolbit2.attach_to_doc(doc=self.doc)
+        tool2.Label = "3mm_Endmill"
+        
+        tc2 = PathToolController.Create("TC_Test_Tool2", tool2, 2)
+        tc2.Label = "TC: 3mm Endmill"
+        self.job.addObject(tc2)
+        
+        # Create a second operation using the second tool
+        # First move after tool change has X, Y, and Z components
+        profile_op2 = self.doc.addObject("Path::FeaturePython", "TestProfile2")
+        profile_op2.Label = "TestProfile2"
+        profile_op2.addProperty("App::PropertyLink", "ToolController", "Base", "Tool controller")
+        profile_op2.ToolController = tc2
+        profile_op2.Path = Path.Path([
+            Path.Command("G0", {"X": 50.0, "Y": 60.0, "Z": 10.0}),  # First move with X, Y, Z
+            Path.Command("G1", {"X": 55.0, "Y": 65.0, "Z": -5.0, "F": 100.0}),
+        ])
+        self.job.Operations.addObject(profile_op2)
+        
+        # Test with feature ENABLED
+        config = self._get_full_machine_config()
+        config['processing']['xy_before_z_after_tool_change'] = True
+        machine = Machine.from_dict(config)
+        
+        try:
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+            
+            # Find the tool change to T2
+            m6_index = None
+            for i, line in enumerate(lines):
+                if 'M6' in line and 'T2' in line:
+                    m6_index = i
+                    break
+            
+            self.assertIsNotNone(m6_index, "Should have M6 T2 tool change")
+            
+            # Get the next two move commands after M6
+            moves = []
+            for i in range(m6_index + 1, min(m6_index + 10, len(lines))):
+                if lines[i].startswith('G0') or lines[i].startswith('G1'):
+                    moves.append(lines[i])
+                    if len(moves) == 2:
+                        break
+            
+            self.assertEqual(len(moves), 2, "Should have 2 moves after tool change (XY then Z)")
+            
+            # First move should have X and Y but NOT Z
+            self.assertIn('X', moves[0], "First move should have X")
+            self.assertIn('Y', moves[0], "First move should have Y")
+            self.assertNotIn('Z', moves[0], "First move should NOT have Z")
+            
+            # Second move should have Z but NOT X or Y
+            self.assertIn('Z', moves[1], "Second move should have Z")
+            self.assertNotIn('X', moves[1], "Second move should NOT have X")
+            self.assertNotIn('Y', moves[1], "Second move should NOT have Y")
+            
+        finally:
+            # Clean up
+            self.job.Operations.removeObject(profile_op2)
+            self.job.removeObject(tc2)
+            self.doc.removeObject(profile_op2.Name)
+            self.doc.removeObject(tc2.Name)
+            self.doc.removeObject(tool2.Name)
+
     def test_early_tool_prep(self):
         """Test that early_tool_prep inserts tool prep commands after M6."""
         # Create a second tool controller for testing tool changes

@@ -772,6 +772,83 @@ class PostProcessor:
                             new_commands.append(cmd)
                         item.Path = Path.Path(new_commands)
 
+            # XY before Z after tool change
+            # Decompose first move after tool change to move XY first, then Z
+            if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.xy_before_z_after_tool_change:
+                Path.Log.debug("Processing XY before Z after tool change")
+                for section_name, sublist in postables:
+                    # Track whether we just saw a tool change
+                    tool_change_seen = False
+                    
+                    for item in sublist:
+                        # Check if this is a tool change item
+                        if hasattr(item, 'ToolNumber'):
+                            tool_change_seen = True
+                            Path.Log.debug(f"Tool change detected: T{item.ToolNumber}")
+                            continue
+                        
+                        # Process operations - check for moves after tool change
+                        if hasattr(item, 'Path') and item.Path:
+                            new_commands = []
+                            first_move_processed = False
+                            
+                            for cmd in item.Path.Commands:
+                                # Check if this is a tool change command (M6)
+                                if cmd.Name in CONSTANTS.MCODE_TOOL_CHANGE:
+                                    new_commands.append(cmd)
+                                    tool_change_seen = True
+                                    first_move_processed = False
+                                    Path.Log.debug(f"M6 tool change detected in operation")
+                                    continue
+                                
+                                # Check if this is the first move after tool change
+                                if tool_change_seen and not first_move_processed and cmd.Name in CONSTANTS.GCODE_MOVE_ALL:
+                                    # Check if this move has both XY and Z components
+                                    has_xy = 'X' in cmd.Parameters or 'Y' in cmd.Parameters
+                                    has_z = 'Z' in cmd.Parameters
+                                    
+                                    if has_xy and has_z:
+                                        Path.Log.debug(f"Decomposing first move after tool change: {cmd.Name}")
+                                        
+                                        # Create XY-only move (first)
+                                        xy_params = {}
+                                        for param in ['X', 'Y', 'A', 'B', 'C']:
+                                            if param in cmd.Parameters:
+                                                xy_params[param] = cmd.Parameters[param]
+                                        
+                                        if xy_params:
+                                            xy_cmd = Path.Command(cmd.Name, xy_params)
+                                            new_commands.append(xy_cmd)
+                                            Path.Log.debug(f"  XY move: {cmd.Name} {xy_params}")
+                                        
+                                        # Create Z-only move (second)
+                                        z_params = {'Z': cmd.Parameters['Z']}
+                                        # Preserve other non-XY parameters (like F, S, etc.)
+                                        for param in cmd.Parameters:
+                                            if param not in ['X', 'Y', 'Z', 'A', 'B', 'C']:
+                                                z_params[param] = cmd.Parameters[param]
+                                        
+                                        z_cmd = Path.Command(cmd.Name, z_params)
+                                        new_commands.append(z_cmd)
+                                        Path.Log.debug(f"  Z move: {cmd.Name} {z_params}")
+                                        
+                                        first_move_processed = True
+                                        tool_change_seen = False  # Reset after decomposing the move
+                                    else:
+                                        # Move doesn't have both XY and Z, just add it as-is
+                                        new_commands.append(cmd)
+                                        if has_xy or has_z:
+                                            first_move_processed = True
+                                            tool_change_seen = False  # Reset after processing any move
+                                else:
+                                    # Not the first move or not a move command
+                                    new_commands.append(cmd)
+                            
+                            # Update the item's path if we made changes
+                            if len(new_commands) != len(item.Path.Commands):
+                                item.Path = Path.Path(new_commands)
+                                Path.Log.debug(f"Updated path for {item.Label}")
+
             Path.Log.debug(postables)
 
             Path.Log.debug("starting stage 2.5")

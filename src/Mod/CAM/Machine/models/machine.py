@@ -160,6 +160,7 @@ class ProcessingOptions:
     split_arcs: bool = False
     tool_change: bool = True  # Enable tool change commands
     translate_rapid_moves: bool = False
+    xy_before_z_after_tool_change: bool = False  # Decompose first move after tool change: XY first, then Z
 
     return_to: Optional[Tuple[float, float, float]] = None  # (x, y, z) or None
 
@@ -936,8 +937,9 @@ class Machine:
         data["output"] = {
             "units": self.output.units.value,
             "output_tool_length_offset": self.output.output_tool_length_offset,
-            "output_header": self.output.output_header,
+            "remote_post": self.output.remote_post,
             "header": {
+                "output_header": self.output.output_header,
                 "include_date": self.output.header.include_date,
                 "include_description": self.output.header.include_description,
                 "include_document_name": self.output.header.include_document_name,
@@ -980,6 +982,7 @@ class Machine:
             "split_arcs": self.processing.split_arcs,
             "tool_change": self.processing.tool_change,
             "translate_rapid_moves": self.processing.translate_rapid_moves,
+            "xy_before_z_after_tool_change": self.processing.xy_before_z_after_tool_change,
         }
         if self.processing.return_to:
             data["processing"]["return_to"] = list(self.processing.return_to)
@@ -1137,13 +1140,14 @@ class Machine:
                 OutputUnits.METRIC if output_units_str == "metric" else OutputUnits.IMPERIAL
             )
             config.output.output_tool_length_offset = output_data.get("output_tool_length_offset", True)
-            config.output.output_header = output_data.get("output_header", True)
+            config.output.remote_post = output_data.get("remote_post", False)
 
             # Header options
             header_data = output_data.get("header", {})
             # Handle backward compatibility - if header is a bool, use it for include_date
             if isinstance(header_data, bool):
                 # Old structure: header was a boolean controlling all header output
+                config.output.output_header = header_data
                 config.output.header.include_date = header_data
                 config.output.header.include_description = header_data
                 config.output.header.include_document_name = header_data
@@ -1153,7 +1157,8 @@ class Machine:
                 config.output.header.include_tool_list = header_data
                 config.output.header.include_fixture_list = header_data
             else:
-                # New nested structure
+                # New nested structure - output_header can be in header subsection or main output
+                config.output.output_header = header_data.get("output_header", output_data.get("output_header", True))
                 config.output.header.include_date = header_data.get("include_date", True)
                 config.output.header.include_description = header_data.get("include_description", True)
                 config.output.header.include_document_name = header_data.get("include_document_name", True)
@@ -1243,6 +1248,9 @@ class Machine:
             config.processing.tool_change = processing_data.get("tool_change", True)
             config.processing.translate_rapid_moves = processing_data.get(
                 "translate_rapid_moves", False
+            )
+            config.processing.xy_before_z_after_tool_change = processing_data.get(
+                "xy_before_z_after_tool_change", False
             )
             return_to = processing_data.get("return_to", None)
             config.processing.return_to = tuple(return_to) if return_to is not None else None

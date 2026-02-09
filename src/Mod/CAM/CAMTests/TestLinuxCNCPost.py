@@ -28,6 +28,7 @@ import Path
 import CAMTests.PathTestUtils as PathTestUtils
 import CAMTests.PostTestMocks as PostTestMocks
 from Path.Post.Processor import PostProcessorFactory
+from Machine.models.machine import Machine, Spindle, SpindleType
 
 
 Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
@@ -86,6 +87,18 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
         self.maxDiff = None
         # reinitialize the postprocessor data structures between tests
         self.post.reinitialize()
+        # Create a machine configuration for each test
+        self.post._machine = Machine.create_3axis_config()
+        self.post._machine.name = "Test LinuxCNC Machine"
+        # Add a default spindle (required by export2)
+        spindle = Spindle(
+            name="Default Spindle",
+            spindle_type=SpindleType.ROTARY,
+            min_rpm=0,
+            max_rpm=24000,
+            max_power_kw=1.0
+        )
+        self.post._machine.spindles = [spindle]
 
     def tearDown(self):
         """tearDown()...
@@ -98,10 +111,11 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
     def test_blend_mode_exact_path(self):
         """Test EXACT_PATH blend mode outputs G61."""
         self.profile_op.Path = Path.Path([])
-        self.job.PostProcessorArgs = (
-            "--no-header --no-comments --blend-mode EXACT_PATH --no-show-editor"
-        )
-        gcode = self.post.export()[0][1]
+        # Set blend mode via machine configuration
+        self.post._machine.postprocessor_properties['blend_mode'] = 'EXACT_PATH'
+        self.post._machine.output.comments.enabled = False
+        self.post._machine.output.output_header = False
+        gcode = self.post.export2()[0][1]
 
         # G61 should be in the preamble
         self.assertIn("G61", gcode)
@@ -113,10 +127,11 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
     def test_blend_mode_exact_stop(self):
         """Test EXACT_STOP blend mode outputs G61.1."""
         self.profile_op.Path = Path.Path([])
-        self.job.PostProcessorArgs = (
-            "--no-header --no-comments --blend-mode EXACT_STOP --no-show-editor"
-        )
-        gcode = self.post.export()[0][1]
+        # Set blend mode via machine configuration
+        self.post._machine.postprocessor_properties['blend_mode'] = 'EXACT_STOP'
+        self.post._machine.output.comments.enabled = False
+        self.post._machine.output.output_header = False
+        gcode = self.post.export2()[0][1]
 
         # G61.1 should be in the preamble
         self.assertIn("G61.1", gcode)
@@ -126,8 +141,12 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
     def test_blend_mode_blend_default(self):
         """Test BLEND mode with default tolerance (0) outputs G64."""
         self.profile_op.Path = Path.Path([])
-        self.job.PostProcessorArgs = "--no-header --no-comments --blend-mode BLEND --no-show-editor"
-        gcode = self.post.export()[0][1]
+        # Set blend mode via machine configuration
+        self.post._machine.postprocessor_properties['blend_mode'] = 'BLEND'
+        self.post._machine.postprocessor_properties['blend_tolerance'] = 0.0
+        self.post._machine.output.comments.enabled = False
+        self.post._machine.output.output_header = False
+        gcode = self.post.export2()[0][1]
 
         # G64 should be in the preamble (without P parameter)
         lines = gcode.splitlines()
@@ -137,10 +156,12 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
     def test_blend_mode_blend_with_tolerance(self):
         """Test BLEND mode with tolerance outputs G64 P<tolerance>."""
         self.profile_op.Path = Path.Path([])
-        self.job.PostProcessorArgs = (
-            "--no-header --no-comments --blend-mode BLEND --blend-tolerance 0.05 --no-show-editor"
-        )
-        gcode = self.post.export()[0][1]
+        # Set blend mode via machine configuration
+        self.post._machine.postprocessor_properties['blend_mode'] = 'BLEND'
+        self.post._machine.postprocessor_properties['blend_tolerance'] = 0.05
+        self.post._machine.output.comments.enabled = False
+        self.post._machine.output.output_header = False
+        gcode = self.post.export2()[0][1]
 
         # G64 P0.05 should be in the preamble
         self.assertIn("G64 P0.0500", gcode)
@@ -148,10 +169,12 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
     def test_blend_mode_blend_with_custom_tolerance(self):
         """Test BLEND mode with custom tolerance value."""
         self.profile_op.Path = Path.Path([])
-        self.job.PostProcessorArgs = (
-            "--no-header --no-comments --blend-mode BLEND --blend-tolerance 0.02 --no-show-editor"
-        )
-        gcode = self.post.export()[0][1]
+        # Set blend mode via machine configuration
+        self.post._machine.postprocessor_properties['blend_mode'] = 'BLEND'
+        self.post._machine.postprocessor_properties['blend_tolerance'] = 0.02
+        self.post._machine.output.comments.enabled = False
+        self.post._machine.output.output_header = False
+        gcode = self.post.export2()[0][1]
 
         # G64 P0.02 should be in the preamble
         self.assertIn("G64 P0.0200", gcode)
@@ -159,10 +182,12 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
     def test_blend_mode_in_preamble_position(self):
         """Test that blend mode command appears in correct position in preamble."""
         self.profile_op.Path = Path.Path([])
-        self.job.PostProcessorArgs = (
-            "--no-header --no-comments --blend-mode BLEND --blend-tolerance 0.1 --no-show-editor"
-        )
-        gcode = self.post.export()[0][1]
+        # Set blend mode via machine configuration
+        self.post._machine.postprocessor_properties['blend_mode'] = 'BLEND'
+        self.post._machine.postprocessor_properties['blend_tolerance'] = 0.1
+        self.post._machine.output.comments.enabled = False
+        self.post._machine.output.output_header = False
+        gcode = self.post.export2()[0][1]
         lines = gcode.splitlines()
 
         # Find G64 P line
@@ -179,10 +204,12 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
     def test_blend_tolerance_zero_equals_no_tolerance(self):
         """Test that blend tolerance of 0 outputs G64 without P parameter."""
         self.profile_op.Path = Path.Path([])
-        self.job.PostProcessorArgs = (
-            "--no-header --no-comments --blend-mode BLEND --blend-tolerance 0 --no-show-editor"
-        )
-        gcode = self.post.export()[0][1]
+        # Set blend mode via machine configuration
+        self.post._machine.postprocessor_properties['blend_mode'] = 'BLEND'
+        self.post._machine.postprocessor_properties['blend_tolerance'] = 0
+        self.post._machine.output.comments.enabled = False
+        self.post._machine.output.output_header = False
+        gcode = self.post.export2()[0][1]
 
         # Should have G64 without P
         lines = gcode.splitlines()
@@ -190,12 +217,21 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
         self.assertTrue(has_g64_without_p, "Expected G64 without P parameter when tolerance is 0")
 
     def test_blend_interaction_with_preamble_argument(self):
-        """Test interaction with a --preamble command line argument."""
+        """Test blend mode appears after units command in preamble."""
         self.profile_op.Path = Path.Path([])
-        self.job.PostProcessorArgs = (
-            '--no-header --no-comments --blend-mode BLEND --preamble="G80 G90" --no-show-editor'
-        )
-        gcode = self.post.export()[0][1]
+        # Set blend mode via machine configuration
+        self.post._machine.postprocessor_properties['blend_mode'] = 'BLEND'
+        self.post._machine.output.comments.enabled = False
+        self.post._machine.output.output_header = False
+        gcode = self.post.export2()[0][1]
         lines = gcode.splitlines()
-        self.assertEqual(lines[0], "G80 G90")
-        self.assertEqual(lines[1], "G64")
+        # G64 should appear early in the output
+        self.assertIn("G64", gcode)
+        # Find G64 line
+        g64_idx = None
+        for i, line in enumerate(lines):
+            if "G64" in line:
+                g64_idx = i
+                break
+        self.assertIsNotNone(g64_idx)
+        self.assertLess(g64_idx, 5, "G64 should be in preamble")

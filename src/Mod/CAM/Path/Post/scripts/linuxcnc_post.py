@@ -157,11 +157,13 @@ class Linuxcnc(PostProcessor):
         values["MACHINE_NAME"] = "LinuxCNC"
         values["POSTPROCESSOR_FILE_NAME"] = __name__
         #
-        # Load base PREAMBLE from machine configuration
+        # Load preamble from machine configuration if available
         #
         if self._machine and hasattr(self._machine, 'postprocessor_properties'):
             props = self._machine.postprocessor_properties
-            values["PREAMBLE"] = props.get("preamble")
+            values["PREAMBLE"] = props.get("preamble", "")
+        else:
+            values["PREAMBLE"] = ""
         
         # Path blending mode configuration (LinuxCNC-specific)
         # Load from machine configuration if available, otherwise use defaults
@@ -175,23 +177,53 @@ class Linuxcnc(PostProcessor):
             values["BLEND_MODE"] = "BLEND"
             values["BLEND_TOLERANCE"] = 0.0
         
-        # Update PREAMBLE with blend command (only if PREAMBLE exists)
-        if values.get("PREAMBLE"):
-            blend_cmd = self._get_blend_command()
+        # Add blend command to PREAMBLE
+        blend_cmd = self._get_blend_command()
+        if values["PREAMBLE"]:
             values["PREAMBLE"] += f"\n{blend_cmd}"
+        else:
+            values["PREAMBLE"] = blend_cmd
 
 
+    def export2(self):
+        """Override export2 to inject blend command before parent processing.
+        
+        This ensures the blend command is added to the preamble before
+        the parent's export2() reads it from postprocessor_properties.
+        """
+        # Inject blend command into preamble before parent export2 processes it
+        if self._machine and hasattr(self._machine, 'postprocessor_properties'):
+            blend_cmd = self._get_blend_command()
+            props = self._machine.postprocessor_properties
+            current_preamble = props.get('preamble', '')
+            if current_preamble:
+                props['preamble'] = f"{current_preamble}\n{blend_cmd}"
+            else:
+                props['preamble'] = blend_cmd
+        
+        # Call parent export2 which will now include the blend command in preamble
+        return super().export2()
 
     def _get_blend_command(self) -> str:
-        """Generate the path blending G-code command based on current settings."""
-        mode = self.values.get("BLEND_MODE", "BLEND")
+        """Generate the path blending G-code command based on current settings.
+        
+        Reads from postprocessor_properties if available, otherwise falls back to values dict.
+        """
+        # Try to read from postprocessor_properties first (for export2)
+        if self._machine and hasattr(self._machine, 'postprocessor_properties'):
+            props = self._machine.postprocessor_properties
+            mode = props.get("blend_mode", "BLEND")
+            tolerance = props.get("blend_tolerance", 0.0)
+        else:
+            # Fallback to values dict (for legacy export)
+            mode = self.values.get("BLEND_MODE", "BLEND")
+            tolerance = self.values.get("BLEND_TOLERANCE", 0.0)
 
         if mode == "EXACT_PATH":
             return "G61"
         elif mode == "EXACT_STOP":
             return "G61.1"
         else:  # BLEND
-            tolerance = self.values.get("BLEND_TOLERANCE", 0.0)
             if tolerance > 0:
                 return f"G64 P{tolerance:.4f}"
             else:
