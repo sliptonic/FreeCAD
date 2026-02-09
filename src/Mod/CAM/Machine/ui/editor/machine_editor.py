@@ -91,6 +91,7 @@ class DataclassGUIGenerator:
         "translate_drill_cycles": translate("CAM_MachineEditor", "Translate Drill Cycles"),
         "translate_rapid_moves": translate("CAM_MachineEditor", "Translate Rapid Moves"),
         "split_arcs": translate("CAM_MachineEditor", "Split Arcs"),
+        "xy_before_z_after_tool_change": translate("CAM_MachineEditor", "XY Before Z After Tool Change"),
         "show_editor": translate("CAM_MachineEditor", "Show Editor After Generation"),
         "list_tools_in_preamble": translate("CAM_MachineEditor", "List Tools in Preamble"),
         "show_machine_units": translate("CAM_MachineEditor", "Show Machine Units"),
@@ -1421,6 +1422,10 @@ class MachineEditorDialog(QtGui.QDialog):
     def _on_output_field_changed(self, field_name: str, value):
         """Handle changes to main output option fields."""
         if self.machine and hasattr(self.machine.output, field_name):
+            # Special handling for units field - convert string to enum
+            if field_name == "units":
+                from Machine.models.machine import OutputUnits
+                value = OutputUnits.METRIC if value == "metric" else OutputUnits.IMPERIAL
             setattr(self.machine.output, field_name, value)
 
     def setup_postprocessor_tab(self):
