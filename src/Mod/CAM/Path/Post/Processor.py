@@ -297,6 +297,15 @@ class PostProcessor:
         
         return [
             {
+                "name": "file_extension",
+                "type": "string",
+                "label": translate("CAM", "File Extension"),
+                "default": "nc",
+                "help": translate("CAM",
+                    "Default file extension for output files (without the dot). "
+                    "Common extensions: nc, gcode, tap, ngc, sbp, etc.")
+            },
+            {
                 "name": "supports_tool_radius_compensation",
                 "type": "bool",
                 "label": translate("CAM", "Tool Radius Compensation (G41/G42)"),
@@ -1514,81 +1523,153 @@ class PostProcessor:
 
     def convert_command_to_gcode(self, command: Path.Command) -> str:
         """
-        Converts a single-line commands to gcode.
-        Specifically, this method considers 
-          - the command name,
-          - units,
-          - required precision
-
-        The method looks for the blockdelete annotation and adds the leading slash if necessary.
-        The method evaluates commments and looks for the bCNC annotation to process them.
-        For highly unusual postprocessors this method may be overridden.
-
-        This method handles the following commmands
-          - Comments (Message)
-          - G0/G00 Rapid moves
-          - G1/G01 Feed Moves
-          - G2/G02/G3/G03 arc moves
-          - G73, G74, G81, G82, G83, G84, G38.2
+        Converts a single-line command to gcode.
+        
+        This method dispatches to specialized hook methods based on command type.
+        Derived postprocessors can override individual hook methods to customize
+        specific command handling without reimplementing the entire function.
+        
+        Hook methods available for override:
+          - _convert_comment() - Comment handling
+          - _convert_rapid_move() - G0/G00 rapid positioning
+          - _convert_linear_move() - G1/G01 linear interpolation
+          - _convert_arc_move() - G2/G3 circular interpolation
+          - _convert_drill_cycle() - G73, G81-G89 canned cycles
+          - _convert_probe() - G38.2 probing
+          - _convert_dwell() - G4 dwell
+          - _convert_tool_change() - M6 tool change
+          - _convert_spindle_command() - M3/M4/M5 spindle control
+          - _convert_coolant_command() - M7/M8/M9 coolant control
+          - _convert_program_control() - M0/M1/M2/M30 program control
+          - _convert_fixture() - G54-G59.x work coordinate systems
+          - _convert_modal_command() - Other modal G-codes
+          - _convert_generic_command() - Fallback for unhandled commands
+        
+        Example override in derived class:
+            def _convert_drill_cycle(self, command):
+                if command.Name == 'G84':
+                    # Custom G84 handling
+                    return "custom G84 code"
+                # Fall back to parent for other drill cycles
+                return super()._convert_drill_cycle(command)
         """
-        from Path.Post.UtilsParse import (
-            linenumber,
-            format_command_line,
-            create_comment,
-        )
-
-        # reject unhandled commands
         import CONSTANTS
         
+        # Validate command is supported
         supported = CONSTANTS.GCODE_SUPPORTED + CONSTANTS.GCODE_FIXTURES + CONSTANTS.MCODE_SUPPORTED
-
         if command.Name not in supported and not command.Name.startswith("(") and not command.Name.startswith("T"):
             raise ValueError(f"Unsupported command: {command.Name}")
-
-        # Extract command name and parameters
+        
+        # Dispatch to appropriate hook method based on command type
         command_name = command.Name
-        params = command.Parameters
+        
+        # Comments
+        if command_name.startswith("("):
+            return self._convert_comment(command)
+        
+        # Rapid moves
+        if command_name in CONSTANTS.GCODE_MOVE_RAPID:
+            return self._convert_rapid_move(command)
+        
+        # Linear moves
+        if command_name in CONSTANTS.GCODE_MOVE_STRAIGHT:
+            return self._convert_linear_move(command)
+        
+        # Arc moves
+        if command_name in CONSTANTS.GCODE_MOVE_ARC:
+            return self._convert_arc_move(command)
+        
+        # Drill cycles
+        if command_name in CONSTANTS.GCODE_MOVE_DRILL + CONSTANTS.GCODE_DRILL_EXTENDED:
+            return self._convert_drill_cycle(command)
+        
+        # Probe
+        if command_name in CONSTANTS.GCODE_PROBE:
+            return self._convert_probe(command)
+        
+        # Dwell
+        if command_name in CONSTANTS.GCODE_DWELL:
+            return self._convert_dwell(command)
+        
+        # Tool change
+        if command_name in CONSTANTS.MCODE_TOOL_CHANGE:
+            return self._convert_tool_change(command)
+        
+        # Spindle control
+        if command_name in CONSTANTS.MCODE_SPINDLE_ON + CONSTANTS.MCODE_SPINDLE_OFF:
+            return self._convert_spindle_command(command)
+        
+        # Coolant control
+        if command_name in CONSTANTS.MCODE_COOLANT:
+            return self._convert_coolant_command(command)
+        
+        # Program control
+        if command_name in CONSTANTS.MCODE_STOP + CONSTANTS.MCODE_OPTIONAL_STOP + CONSTANTS.MCODE_END + CONSTANTS.MCODE_END_RESET:
+            return self._convert_program_control(command)
+        
+        # Fixtures
+        if command_name in CONSTANTS.GCODE_FIXTURES:
+            return self._convert_fixture(command)
+        
+        # Modal commands (G43, G80, G90, G91, G92, G93, G94, G95, G96, G97, G98, G99, etc.)
+        if command_name in CONSTANTS.GCODE_TOOL_LENGTH_OFFSET + CONSTANTS.GCODE_CYCLE_CANCEL + \
+           CONSTANTS.GCODE_DISTANCE_MODE + CONSTANTS.GCODE_OFFSET + \
+           CONSTANTS.GCODE_FEED_INVERSE_TIME + CONSTANTS.GCODE_FEED_UNITS_PER_MIN + CONSTANTS.GCODE_FEED_UNITS_PER_REV + \
+           CONSTANTS.GCODE_SPINDLE_CSS + CONSTANTS.GCODE_SPINDLE_RPM + CONSTANTS.GCODE_RETURN_MODE:
+            return self._convert_modal_command(command)
+        
+        # Fallback for any unhandled commands
+        return self._convert_generic_command(command)
+
+
+    def _convert_comment(self, command: Path.Command) -> str:
+        """
+        Converts a comment command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize comment handling.
+        """
         annotations = command.Annotations
-
-        # Command suppression is now handled by postprocessor via supported_commands property
-        # The postprocessor checks if commands are in the supported list
-
-        # handle comments
-        if command_name.startswith("("):  # comment
-            if self.values.get('OUTPUT_BCNC', False) and annotations.get("bcnc"):
-                # bCNC commands should be output even if OUTPUT_COMMENTS is false
-                # Format comment according to comment_symbol
-                comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
-                comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
-                if comment_symbol == '(':
-                    return f"({comment_text})"
-                else:
-                    return f"{comment_symbol} {comment_text}"
-            elif self.values.get('OUTPUT_COMMENTS', True):
-                # Format comment according to comment_symbol
-                comment_text = command_name[1:-1] if command_name.startswith("(") and command_name.endswith(")") else command_name[1:]
-                comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
-                Path.Log.debug(f"Formatting comment with symbol: '{comment_symbol}', text: '{comment_text}'")
-                if comment_symbol == '(':
-                    return f"({comment_text})"
-                else:
-                    return f"{comment_symbol} {comment_text}"
-            else:
-                # Comments are disabled and this is not a bCNC command - suppress it
-                return None
+        
+        # Check if comments should be output
+        if self.values.get('OUTPUT_BCNC', False) and annotations.get("bcnc"):
+            # bCNC commands should be output even if OUTPUT_COMMENTS is false
+            pass
+        elif not self.values.get('OUTPUT_COMMENTS', True):
+            # Comments are disabled and this is not a bCNC command - suppress it
+            return None
         
         # Check for blockdelete annotation
         block_delete_string = "/" if annotations.get("blockdelete") else "" 
         
-        # Filter and prepare command (simple version)
-        filtered_command = command_name
-        should_skip = False
-        if should_skip:
-            return ""
+        # Format comment according to comment_symbol
+        comment_text = command.Name[1:-1] if command.Name.startswith("(") and command.Name.endswith(")") else command.Name[1:]
+        comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+        Path.Log.debug(f"Formatting comment with symbol: '{comment_symbol}', text: '{comment_text}'")
+        if comment_symbol == '(':
+            return f"{block_delete_string}({comment_text})"
+        else:
+            return f"{block_delete_string}{comment_symbol} {comment_text}"
+
+
+    def _convert_move(self, command: Path.Command) -> str:
+        """
+        Converts a rapid move command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize rapid move handling.
+        """
+        from Path.Post.UtilsParse import format_command_line
+        
+        # Extract command components
+        command_name = command.Name
+        params = command.Parameters
+        annotations = command.Annotations
+        
+        # Check for blockdelete annotation
+        block_delete_string = "/" if annotations.get("blockdelete") else ""
         
         # Build command line
         command_line: CommandLine = []
-        command_line.append(filtered_command)
+        command_line.append(command_name)
         
         # Format parameters with clean, stateless implementation
         parameter_order = self.values.get('PARAMETER_ORDER', ['X', 'Y', 'Z', 'F', 'I', 'J', 'K', 'R', 'Q', 'P'])
@@ -1701,6 +1782,121 @@ class PostProcessor:
         gcode_string = f"{block_delete_string}{formatted_line}"
         
         return gcode_string
+
+    def _convert_rapid_move(self, command: Path.Command) -> str:
+        """
+        Converts a rapid move command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize rapid move handling.
+        """
+        return self._convert_move(command)
+
+    def _convert_linear_move(self, command: Path.Command) -> str:
+        """
+        Converts a linear move command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize linear move handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_arc_move(self, command: Path.Command) -> str:
+        """
+        Converts an arc move command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize arc move handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_drill_cycle(self, command: Path.Command) -> str:
+        """
+        Converts a drill cycle command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize drill cycle handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_probe(self, command: Path.Command) -> str:
+        """
+        Converts a probe command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize probe handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_dwell(self, command: Path.Command) -> str:
+        """
+        Converts a dwell command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize dwell handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_tool_change(self, command: Path.Command) -> str:
+        """
+        Converts a tool change command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize tool change handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_spindle_command(self, command: Path.Command) -> str:
+        """
+        Converts a spindle command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize spindle handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_coolant_command(self, command: Path.Command) -> str:
+        """
+        Converts a coolant command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize coolant handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_program_control(self, command: Path.Command) -> str:
+        """
+        Converts a program control command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize program control handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_fixture(self, command: Path.Command) -> str:
+        """
+        Converts a fixture command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize fixture handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_modal_command(self, command: Path.Command) -> str:
+        """
+        Converts a modal command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize modal handling.
+        """
+        return self._convert_move(command)
+
+
+    def _convert_generic_command(self, command: Path.Command) -> str:
+        """
+        Converts a generic command to gcode.
+        
+        This method can be overridden by derived postprocessors to customize generic handling.
+        """
+        return self._convert_move(command)
 
 
 class WrapperPost(PostProcessor):

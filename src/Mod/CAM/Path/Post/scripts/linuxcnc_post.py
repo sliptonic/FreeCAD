@@ -231,11 +231,127 @@ class Linuxcnc(PostProcessor):
 
     # Property tooltip is inherited from base class
 
+    def _convert_drill_cycle(self, command):
+        """
+        Convert drill cycle commands to G-code.
+        
+        For G84/G74 tapping cycles, check for 'rigid' annotation and convert
+        to G33.1 rigid tapping if present. Otherwise use standard conversion.
+        """
+        from Path.Post.UtilsParse import format_command_line
+        
+        # Check if this is a tapping cycle with rigid annotation
+        if command.Name in ["G84", "G74"]:
+            annotations = command.Annotations
+            is_rigid = annotations.get("rigid", "False") == "True"
+            
+            if is_rigid:
+                # Rigid tapping - convert to G33.1
+                params = command.Parameters.copy()
+                
+                # Extract pitch from F parameter
+                if 'F' not in params:
+                    Path.Log.warning(f"Rigid tapping {command.Name} missing F (pitch) parameter")
+                    return super()._convert_drill_cycle(command)
+                
+                pitch = params['F']
+                
+                # Get unit conversion function
+                def get_value(val):
+                    if self._machine and hasattr(self._machine, 'output'):
+                        from Machine.models.machine import OutputUnits
+                        if self._machine.output.units == OutputUnits.IMPERIAL:
+                            return val / 25.4
+                    return val
+                
+                pitch = get_value(pitch)
+                
+                # Build output commands
+                output = []
+                block_delete = "/" if annotations.get("blockdelete") else ""
+                
+                # Initial G33.1 command (in)
+                cmd_line = ["G33.1"]
+                cmd_line.append(f"K{pitch:.4f}")
+                
+                if 'Z' in params:
+                    z_val = get_value(params['Z'])
+                    cmd_line.append(f"Z{z_val:.4f}")
+                
+                if 'X' in params:
+                    x_val = get_value(params['X'])
+                    cmd_line.append(f"X{x_val:.4f}")
+                
+                if 'Y' in params:
+                    y_val = get_value(params['Y'])
+                    cmd_line.append(f"Y{y_val:.4f}")
+                
+                output.append(f"{block_delete}{' '.join(cmd_line)}")
+                
+                # Handle dwell if P parameter present
+                if 'P' in params:
+                    output.append(f"{block_delete}M5")
+                    output.append(f"{block_delete}G04 P{params['P']:.2f}")
+                
+                # Reverse out
+                if command.Name == "G84":
+                    # Right-hand tap: reverse spindle (M4), retract, restore (M3)
+                    output.append(f"{block_delete}M4")
+                    
+                    # Retract to R height
+                    retract_line = ["G33.1", f"K{pitch:.4f}"]
+                    if 'R' in params:
+                        r_val = get_value(params['R'])
+                        retract_line.append(f"Z{r_val:.4f}")
+                    output.append(f"{block_delete}{' '.join(retract_line)}")
+                    
+                    output.append(f"{block_delete}M3")
+                    
+                elif command.Name == "G74":
+                    # Left-hand tap: forward spindle (M3), retract, restore (M4)
+                    output.append(f"{block_delete}M3")
+                    
+                    # Retract to R height
+                    retract_line = ["G33.1", f"K{pitch:.4f}"]
+                    if 'R' in params:
+                        r_val = get_value(params['R'])
+                        retract_line.append(f"Z{r_val:.4f}")
+                    output.append(f"{block_delete}{' '.join(retract_line)}")
+                    
+                    output.append(f"{block_delete}M4")
+                
+                return "\n".join(output)
+        
+        # Not rigid tapping or not a tapping cycle - use parent implementation
+        return super()._convert_drill_cycle(command)
+    
+    def _convert_modal_command(self, command):
+        """
+        Convert modal commands to G-code.
+        
+        Suppress G80, G98, G99 if they're part of a rigid tapping operation.
+        """
+        # Check if this is G80/G98/G99 with tapping annotation
+        if command.Name in ["G80", "G98", "G99"]:
+            annotations = command.Annotations
+            # Check if this is part of a tapping operation with rigid annotation
+            if annotations.get("operation") == "tapping":
+                is_rigid = annotations.get("rigid", "False") == "True"
+                if is_rigid:
+                    # Suppress these commands for rigid tapping
+                    return None
+        
+        # Use parent implementation for other modal commands
+        return super()._convert_modal_command(command)
+
     @property
     def tooltip(self):
         tooltip: str = """
         This is a postprocessor file for the CAM workbench.
         It is used to take a pseudo-gcode fragment from a CAM object
         and output 'real' GCode suitable for a linuxcnc 3 axis mill.
+        
+        Supports rigid tapping via G33.1 when the 'rigid' annotation is present
+        on G84/G74 tapping cycles.
         """
         return tooltip

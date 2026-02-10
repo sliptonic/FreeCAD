@@ -331,6 +331,7 @@ SET(PathPythonPostScripts_SRCS
     Path/Post/scripts/marlin_legacy_post.py
     Path/Post/scripts/nccad_legacy_post.py
     Path/Post/scripts/opensbp_legacy_post.py
+    Path/Post/scripts/opensbp_post.py
     Path/Post/scripts/opensbp_pre.py
     Path/Post/scripts/philips_legacy_post.py
     Path/Post/scripts/test_post.py
