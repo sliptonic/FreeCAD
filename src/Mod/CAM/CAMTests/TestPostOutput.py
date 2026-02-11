@@ -466,6 +466,12 @@ class TestExport2Integration(unittest.TestCase):
             elif key in ['commands', 'parameters']:
                 # Set duplicates nested attribute
                 setattr(machine.output.duplicates, key, value)
+            elif key == 'output_duplicate_commands':
+                # Handle legacy test parameter name
+                setattr(machine.output.duplicates, 'commands', value)
+            elif key == 'output_duplicate_parameters':
+                # Handle legacy test parameter name
+                setattr(machine.output.duplicates, 'parameters', value)
             elif key == 'output_units':
                 # Convert string output_units to enum
                 if value == 'metric':
@@ -889,10 +895,9 @@ class TestExport2Integration(unittest.TestCase):
         with self._modify_operation_path([
             Path.Command("G0", {"X": 10.0, "Y": 10.0, "Z": 5.0, "F": 1000.0}),
             Path.Command("G1", {"X": 20.0, "Y": 10.0, "Z": 5.0, "F": 1000.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 20.0, "Z": 5.0, "F": 1000.0}),
         ]):
-            post = self._create_postprocessor(machine)
-            post.values['OUTPUT_DOUBLES'] = True
-            results = post.export2()
+            results = self._run_export2(machine)
 
             first_section_gcode = self._get_first_section_gcode(results)
             lines = [line.strip() for line in first_section_gcode.split('\n') if line.strip()]
@@ -900,6 +905,20 @@ class TestExport2Integration(unittest.TestCase):
 
             self.assertTrue(any('G0 X10.000 Y10.000 Z5.000 F60000.000' in line for line in gcode_lines),
                             "First command should have all parameters")
+
+            second_commands = [line for line in gcode_lines if 'G1' in line and 'X20.000' in line]
+            self.assertTrue(len(second_commands) > 0, "Should have G1 command with X20.000")
+            second_cmd = second_commands[0]
+            self.assertIn('Y10.000', second_cmd, "Y should appear even though unchanged from G0")
+            self.assertIn('Z5.000', second_cmd, "Z should appear even though unchanged")
+            self.assertIn('F', second_cmd, "F should appear even though unchanged")
+
+            third_commands = [line for line in gcode_lines if 'G1' in line and 'Y20.000' in line]
+            self.assertTrue(len(third_commands) > 0, "Should have G1 command with Y20.000")
+            third_cmd = third_commands[0]
+            self.assertIn('X20.000', third_cmd, "X should appear even though unchanged")
+            self.assertIn('Z5.000', third_cmd, "Z should appear even though unchanged")
+            self.assertIn('F', third_cmd, "F should appear even though unchanged")
 
     def test084_gcode_blocks_insertion(self):
         """Test that all G-code blocks from machine config are properly inserted."""
@@ -1686,3 +1705,192 @@ class TestExport2Integration(unittest.TestCase):
         # bCNC block should appear before G-code moves
         if first_block_idx is not None and first_move_idx is not None:
             self.assertLess(first_block_idx, first_move_idx, "bCNC block should appear before operation G-code")
+
+    def test105_duplicate_commands_suppression(self):
+        """
+        Test that duplicate G-code commands are suppressed when duplicates.commands is False.
+        
+        Expected behavior when duplicates.commands = False:
+            BEFORE: Multiple consecutive G1 commands
+                G1 X10.000 Y10.000
+                G1 X20.000 Y10.000
+                G1 X20.000 Y20.000
+            
+            AFTER:  Only first G1 is output, subsequent moves omit the command
+                G1 X10.000 Y10.000
+                X20.000 Y10.000
+                X20.000 Y20.000
+        """
+        # Create a path with multiple consecutive G1 moves
+        test_commands = [
+            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
+            Path.Command("G1", {"X": 10.0, "Y": 10.0, "Z": -5.0, "F": 100.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 10.0, "Z": -5.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 20.0, "Z": -5.0}),
+            Path.Command("G1", {"X": 10.0, "Y": 20.0, "Z": -5.0}),
+            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
+        ]
+        
+        with self._modify_operation_path(test_commands):
+            # Test with duplicates.commands = False (suppress duplicates)
+            machine = self._create_machine(commands=False, parameters=True)
+            
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            
+            # Split into lines and filter out empty lines and comments
+            lines = [line.strip() for line in gcode.split('\n') 
+                    if line.strip() and not line.strip().startswith('(')]
+            
+            # Count how many lines start with "G1"
+            g1_command_count = sum(1 for line in lines if line.startswith('G1'))
+            
+            # Count how many lines have X/Y/Z parameters but no G command (suppressed duplicates)
+            # These lines should start with a coordinate letter (X, Y, Z) not a G command
+            suppressed_move_count = sum(1 for line in lines 
+                                       if line and line[0] in 'XYZ' 
+                                       and not line.startswith('G'))
+            
+            # With 4 consecutive G1 moves, we should have:
+            # - Only 1 line starting with "G1" (the first one)
+            # - 3 lines with just coordinates (suppressed G1 commands)
+            self.assertEqual(g1_command_count, 1, 
+                           f"Should have only 1 G1 command when duplicates suppressed, found {g1_command_count}")
+            self.assertEqual(suppressed_move_count, 3,
+                           f"Should have 3 suppressed G1 moves (coordinates only), found {suppressed_move_count}")
+            
+            # Verify no empty G1 commands (G1 with no parameters)
+            self.assertNotIn('G1\n', gcode, "Should not have G1 command with no parameters")
+            self.assertNotIn('G1 \n', gcode, "Should not have G1 command with only whitespace")
+
+    def test106_tool_radius_compensation_property(self):
+        """
+        Test that postprocessors can declare support for G41/G42 tool radius compensation.
+        
+        This property is metadata that declares whether the postprocessor/machine supports
+        cutter compensation commands. It doesn't filter commands, but provides information
+        for the UI and documentation.
+        
+        Expected: Property can be set and retrieved correctly from postprocessor schema.
+        """
+        from Path.Post.Processor import PostProcessorFactory
+        
+        # Get a postprocessor that supports tool radius compensation (LinuxCNC)
+        linuxcnc_post = PostProcessorFactory.get_post_processor(self.job, 'linuxcnc')
+        
+        # Get the property schema
+        schema = linuxcnc_post.get_full_property_schema()
+        
+        # Find the tool radius compensation property
+        trc_property = None
+        for prop in schema:
+            if prop.get('name') == 'supports_tool_radius_compensation':
+                trc_property = prop
+                break
+        
+        # Verify the property exists in the schema
+        self.assertIsNotNone(trc_property, 
+                           "Tool radius compensation property should exist in schema")
+        
+        # Verify it's a boolean property
+        self.assertEqual(trc_property.get('type'), 'bool',
+                       "Tool radius compensation property should be boolean type")
+        
+        # Verify LinuxCNC defaults to True (supports G41/G42)
+        self.assertTrue(trc_property.get('default'),
+                      "LinuxCNC should support tool radius compensation by default")
+
+    def test107_supported_commands_property(self):
+        """
+        Test that postprocessors declare their supported G-code command list.
+        
+        This property lists all G/M codes that the postprocessor can handle. It serves
+        as documentation and validation metadata for the machine configuration.
+        
+        Expected: Property contains standard G-code commands as newline-separated list.
+        """
+        from Path.Post.Processor import PostProcessorFactory
+        
+        # Get a generic postprocessor
+        generic_post = PostProcessorFactory.get_post_processor(self.job, 'generic')
+        
+        # Get the property schema
+        schema = generic_post.get_full_property_schema()
+        
+        # Find the supported commands property
+        commands_property = None
+        for prop in schema:
+            if prop.get('name') == 'supported_commands':
+                commands_property = prop
+                break
+        
+        # Verify the property exists
+        self.assertIsNotNone(commands_property,
+                           "Supported commands property should exist in schema")
+        
+        # Verify it's a text property
+        self.assertEqual(commands_property.get('type'), 'text',
+                       "Supported commands property should be text type")
+        
+        # Verify default contains common G-code commands
+        default_commands = commands_property.get('default', '')
+        command_list = [cmd.strip() for cmd in default_commands.split('\n') if cmd.strip()]
+        
+        # Check for essential commands
+        essential_commands = ['G0', 'G1', 'G2', 'G3', 'M3', 'M6']
+        for cmd in essential_commands:
+            self.assertIn(cmd, command_list,
+                        f"Supported commands should include {cmd}")
+        
+        # Verify it's a reasonable list (not empty, not too small)
+        self.assertGreater(len(command_list), 20,
+                         "Supported commands list should contain substantial number of commands")
+
+    def test108_translate_rapid_moves(self):
+        """
+        Test that rapid moves (G0) are converted to feed moves (G1) when enabled.
+        
+        Some machines don't support rapid positioning or require controlled acceleration.
+        When translate_rapid_moves is enabled, all G0 commands are converted to G1.
+        
+        Expected behavior when enabled:
+            BEFORE: G0 X10.000 Y10.000
+                    G1 X20.000 Y10.000 F100.000
+                    G0 Z5.000
+            
+            AFTER:  G1 X10.000 Y10.000
+                    G1 X20.000 Y10.000 F100.000
+                    G1 Z5.000
+        """
+        # Create a path with G0 rapid moves
+        test_commands = [
+            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
+            Path.Command("G0", {"X": 10.0, "Y": 10.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 10.0, "F": 100.0}),
+            Path.Command("G0", {"Z": 10.0}),
+        ]
+        
+        with self._modify_operation_path(test_commands):
+            # Create machine with translate_rapid_moves enabled
+            config = self._get_full_machine_config()
+            config['processing']['translate_rapid_moves'] = True
+            machine = Machine.from_dict(config)
+            
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            
+            # Split into lines and filter out empty lines and comments
+            lines = [line.strip() for line in gcode.split('\n') 
+                    if line.strip() and not line.strip().startswith('(')]
+            
+            # Count G0 and G1 commands
+            g0_count = sum(1 for line in lines if line.startswith('G0'))
+            g1_count = sum(1 for line in lines if line.startswith('G1'))
+            
+            # With translate_rapid_moves enabled, should have NO G0 commands
+            self.assertEqual(g0_count, 0,
+                           "Should have no G0 commands when rapid move translation is enabled")
+            
+            # Should have G1 commands instead (at least the 3 rapids + 1 feed = 4 total)
+            self.assertGreaterEqual(g1_count, 4,
+                                  f"Should have at least 4 G1 commands (translated rapids + original feed), found {g1_count}")

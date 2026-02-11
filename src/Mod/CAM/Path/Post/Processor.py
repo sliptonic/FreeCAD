@@ -621,12 +621,27 @@ class PostProcessor:
             # Precision options
             if hasattr(output_options, 'precision'):
                 precision = output_options.precision
-                if hasattr(precision, 'axis'):
-                    self.values['AXIS_PRECISION'] = precision.axis
-                if hasattr(precision, 'feed'):
-                    self.values['FEED_PRECISION'] = precision.feed
-                if hasattr(precision, 'spindle'):
-                    self.values['SPINDLE_DECIMALS'] = precision.spindle
+                Path.Log.debug(f"Loading precision from machine config - axis: {getattr(precision, 'axis', 'N/A')}, feed: {getattr(precision, 'feed', 'N/A')}, spindle: {getattr(precision, 'spindle', 'N/A')}")
+                if hasattr(precision, 'axis') and precision.axis is not None:
+                    if isinstance(precision.axis, (int, float)) and precision.axis >= 0:
+                        self.values['AXIS_PRECISION'] = int(precision.axis)
+                        Path.Log.debug(f"Set AXIS_PRECISION to: {precision.axis}")
+                    else:
+                        Path.Log.warning(f"Invalid axis precision value: {precision.axis}. Must be non-negative. Using default.")
+                if hasattr(precision, 'feed') and precision.feed is not None:
+                    if isinstance(precision.feed, (int, float)) and precision.feed >= 0:
+                        self.values['FEED_PRECISION'] = int(precision.feed)
+                        Path.Log.debug(f"Set FEED_PRECISION to: {precision.feed}")
+                    else:
+                        Path.Log.warning(f"Invalid feed precision value: {precision.feed}. Must be non-negative. Using default.")
+                if hasattr(precision, 'spindle') and precision.spindle is not None:
+                    if isinstance(precision.spindle, (int, float)) and precision.spindle >= 0:
+                        self.values['SPINDLE_DECIMALS'] = int(precision.spindle)
+                        Path.Log.debug(f"Set SPINDLE_DECIMALS to: {precision.spindle}")
+                    else:
+                        Path.Log.warning(f"Invalid spindle precision value: {precision.spindle}. Must be non-negative. Using default.")
+            
+            Path.Log.debug(f"Final precision values - AXIS_PRECISION: {self.values.get('AXIS_PRECISION')}, FEED_PRECISION: {self.values.get('FEED_PRECISION')}, SPINDLE_DECIMALS: {self.values.get('SPINDLE_DECIMALS')}")
             
             # Duplicate options
             if hasattr(output_options, 'duplicates'):
@@ -1191,20 +1206,15 @@ class PostProcessor:
                     body_part = gcode_lines[num_header_lines:]
                     
                     # Apply optimizations to body only (not header comments)
-                    if body_part and self._machine and hasattr(self._machine, 'output'):
+                    if body_part:
                         # Modal command deduplication
-                        # output_duplicate_commands: True = output all, False = suppress duplicates
-                        if hasattr(self._machine.output, 'output_duplicate_commands'):
-                            if not self._machine.output.output_duplicate_commands:
-                                body_part = deduplicate_repeated_commands(body_part)
+                        # OUTPUT_DUPLICATE_COMMANDS: True = output all, False = suppress duplicates
+                        if not self.values.get('OUTPUT_DUPLICATE_COMMANDS', True):
+                            body_part = deduplicate_repeated_commands(body_part)
                         
-                        # Suppress redundant axis words (only if output_duplicate_parameters is False)
-                        # output_duplicate_parameters: True = output all parameters, False = suppress duplicates
-                        if hasattr(self._machine.output, 'output_duplicate_parameters'):
-                            if not self._machine.output.output_duplicate_parameters:
-                                body_part = suppress_redundant_axes_words(body_part)
-                        else:
-                            # Default behavior if setting not present: suppress duplicates
+                        # Suppress redundant axis words (only if OUTPUT_DOUBLES is False)
+                        # OUTPUT_DOUBLES: True = output all parameters, False = suppress duplicates
+                        if not self.values.get('OUTPUT_DOUBLES', True):
                             body_part = suppress_redundant_axes_words(body_part)
                     
                     # Filter inefficient moves (optional optimization)
@@ -1691,7 +1701,7 @@ class PostProcessor:
             else:
                 converted_value = value  # Keep as mm
             
-            precision = self.values.get('AXIS_PRECISION', 3)
+            precision = self.values.get('AXIS_PRECISION') or 3
             return f"{converted_value:.{precision}f}"
         
         def format_feed_param(value):
@@ -1712,12 +1722,14 @@ class PostProcessor:
             if is_imperial:
                 feed_value = feed_value / 25.4  # Convert mm/min to in/min
             
-            precision = self.values.get('FEED_PRECISION', 3)
+            precision = self.values.get('FEED_PRECISION') or 3
             return f"{feed_value:.{precision}f}"
         
         def format_spindle_param(value):
             """Format spindle parameter with spindle decimals."""
-            decimals = self.values.get('SPINDLE_DECIMALS', 0)
+            decimals = self.values.get('SPINDLE_DECIMALS')
+            if decimals is None:
+                decimals = 0
             return f"{value:.{decimals}f}"
         
         def format_int_param(value):
