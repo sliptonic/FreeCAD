@@ -1894,3 +1894,70 @@ class TestExport2Integration(unittest.TestCase):
             # Should have G1 commands instead (at least the 3 rapids + 1 feed = 4 total)
             self.assertGreaterEqual(g1_count, 4,
                                   f"Should have at least 4 G1 commands (translated rapids + original feed), found {g1_count}")
+
+    def test109_nested_parentheses_in_comments(self):
+        """
+        Test that nested parentheses in operation/tool names don't break G-code comments.
+        
+        When users name operations or tool controllers with parentheses like 
+        "TC: 5mm Endmill (fast)", the nested parentheses break G-code comment format.
+        
+        Note: Path.Command truncates at the first ) after opening (, so 
+        (text (nested)) becomes (text nested)). We can't recover the lost opening (,
+        but we must ensure the output doesn't have unbalanced parentheses.
+        
+        Expected behavior:
+            INPUT:  Path.Command("(Begin operation: Pocket (fast))")
+            STORED: (Begin operation: Pocket fast))  <- Path.Command truncation
+            OUTPUT: (Begin operation: Pocket fast])  <- Sanitized, balanced parens
+        """
+        # Create path with comment commands that contain nested parentheses
+        test_commands = [
+            Path.Command("(Begin operation: Test Operation (fast))"),
+            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
+            Path.Command("(Tool: 5mm Endmill (HSS))"),
+            Path.Command("G1", {"X": 10.0, "Y": 10.0, "F": 100.0}),
+            Path.Command("(End operation: Test Operation (fast))"),
+        ]
+        
+        with self._modify_operation_path(test_commands):
+            # Create machine with comments enabled
+            machine = self._create_machine(
+                comments_enabled=True,
+                output_header=False,
+                line_numbers=False
+            )
+            
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            
+            # Check that nested parentheses are sanitized
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+            
+            for line in lines:
+                if line.startswith('('):
+                    # Count parentheses - should be balanced with exactly 1 pair
+                    open_count = line.count('(')
+                    close_count = line.count(')')
+                    
+                    # Should have exactly 1 opening and 1 closing parenthesis (the comment delimiters)
+                    self.assertEqual(open_count, 1,
+                                   f"Comment should have exactly 1 opening parenthesis, found {open_count} in: {line}")
+                    self.assertEqual(close_count, 1,
+                                   f"Comment should have exactly 1 closing parenthesis, found {close_count} in: {line}")
+                    
+                    # Should not contain nested opening parentheses
+                    # Due to Path.Command truncation, we get "fast]" instead of "[fast]"
+                    # but the key is no nested ( or unbalanced )
+                    self.assertNotIn('(fast)', line,
+                                   f"Should not contain nested parentheses in: {line}")
+                    self.assertNotIn('(HSS)', line,
+                                   f"Should not contain nested parentheses in: {line}")
+                    
+                    # Verify any ) that was part of nested content is now ]
+                    if 'fast' in line.lower():
+                        self.assertIn('fast]', line,
+                                    f"Nested closing paren should be replaced with ] in: {line}")
+                    if 'hss' in line.upper():
+                        self.assertIn('HSS]', line,
+                                    f"Nested closing paren should be replaced with ] in: {line}")
