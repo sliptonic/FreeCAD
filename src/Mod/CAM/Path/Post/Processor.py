@@ -170,15 +170,18 @@ class _HeaderBuilder:
 
         # Add document name
         if self._document_name:
-            commands.append(Path.Command(f"(Document: {self._document_name})"))
+            sanitized = self._document_name.replace('(', '[').replace(')', ']')
+            commands.append(Path.Command(f"(Document: {sanitized})"))
 
         # Add description
         if self._description:
-            commands.append(Path.Command(f"(Description: {self._description})"))
+            sanitized = self._description.replace('(', '[').replace(')', ']')
+            commands.append(Path.Command(f"(Description: {sanitized})"))
 
         # Add author info
         if self._author:
-            commands.append(Path.Command(f"(Author: {self._author})"))
+            sanitized = self._author.replace('(', '[').replace(')', ']')
+            commands.append(Path.Command(f"(Author: {sanitized})"))
 
         # Add output time
         if self._output_time:
@@ -186,15 +189,19 @@ class _HeaderBuilder:
 
         # Add tools
         for tool_number, tool_name in self._tools:
-            commands.append(Path.Command(f"(T{tool_number}={tool_name})"))
+            # Sanitize tool name to prevent nested parentheses from breaking G-code comments
+            sanitized_name = tool_name.replace('(', '[').replace(')', ']')
+            commands.append(Path.Command(f"(T{tool_number}={sanitized_name})"))
 
         # Add fixtures (if needed in header)
         for fixture in self._fixtures:
-            commands.append(Path.Command(f"(Fixture: {fixture})"))
+            sanitized = fixture.replace('(', '[').replace(')', ']')
+            commands.append(Path.Command(f"(Fixture: {sanitized})"))
 
         # Add notes
         for note in self._notes:
-            commands.append(Path.Command(f"(Note: {note})"))
+            sanitized = note.replace('(', '[').replace(')', ']')
+            commands.append(Path.Command(f"(Note: {sanitized})"))
 
         return Path.Path(commands)
 
@@ -1651,9 +1658,20 @@ class PostProcessor:
         # Check for blockdelete annotation
         block_delete_string = "/" if annotations.get("blockdelete") else "" 
         
-        # Format comment according to comment_symbol
-        comment_text = command.Name[1:-1] if command.Name.startswith("(") and command.Name.endswith(")") else command.Name[1:]
+        # Get comment symbol
         comment_symbol = self.values.get('COMMENT_SYMBOL', '(')
+        
+        # Extract comment text from command name
+        # Command names come in as "(comment text)" so strip the outer delimiters
+        comment_text = command.Name[1:-1] if command.Name.startswith("(") and command.Name.endswith(")") else command.Name[1:]
+        
+        # Sanitize nested parentheses when using parenthesis comment symbol
+        # Note: Path.Command truncates at first ) after opening (, so (text (nested)) becomes (text nested))
+        # We can't recover the lost opening (, but we can clean up what remains
+        if comment_symbol == '(':
+            # Replace any remaining parentheses with square brackets
+            comment_text = comment_text.replace('(', '[').replace(')', ']')
+        
         Path.Log.debug(f"Formatting comment with symbol: '{comment_symbol}', text: '{comment_text}'")
         if comment_symbol == '(':
             return f"{block_delete_string}({comment_text})"
