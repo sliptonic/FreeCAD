@@ -57,12 +57,6 @@ class TestMachineDataclass(PathTestUtils.PathTestBase):
         machine.add_rotary_axis("C", FreeCAD.Vector(0, 0, 1), -360, 360)
         self.assertEqual(machine.machine_type, "xyzac")
 
-        # Coordinate system defaults
-        self.assertEqual(machine.reference_system["X"], FreeCAD.Vector(1, 0, 0))
-        self.assertEqual(machine.reference_system["Y"], FreeCAD.Vector(0, 1, 0))
-        self.assertEqual(machine.reference_system["Z"], FreeCAD.Vector(0, 0, 1))
-        self.assertEqual(machine.tool_axis, FreeCAD.Vector(0, 0, -1))
-
         # Units and versioning
         self.assertEqual(machine.configuration_units, "metric")
         self.assertEqual(machine.version, 1)
@@ -277,19 +271,8 @@ class TestSpindle(PathTestUtils.PathTestBase):
         self.assertEqual(spindle.max_rpm, 24000)
         self.assertEqual(spindle.min_rpm, 1000)
         self.assertEqual(spindle.tool_change, "automatic")
-        # Default tool axis should be set
-        self.assertEqual(spindle.tool_axis, FreeCAD.Vector(0, 0, -1))
         # Default spindle_wait should be 0.0
         self.assertEqual(spindle.spindle_wait, 0.0)
-
-    def test_spindle_custom_tool_axis(self):
-        """Test Spindle with custom tool axis"""
-        spindle = Spindle(
-            name="Side Spindle",
-            tool_axis=FreeCAD.Vector(1, 0, 0),
-        )
-
-        self.assertEqual(spindle.tool_axis, FreeCAD.Vector(1, 0, 0))
 
     def test_spindle_serialization(self):
         """Test to_dict and from_dict"""
@@ -300,7 +283,6 @@ class TestSpindle(PathTestUtils.PathTestBase):
             max_rpm=18000,
             min_rpm=500,
             tool_change="manual",
-            tool_axis=FreeCAD.Vector(0, 1, 0),
             spindle_wait=1.5,
         )
 
@@ -308,14 +290,12 @@ class TestSpindle(PathTestUtils.PathTestBase):
         self.assertEqual(data["name"], "Test Spindle")
         self.assertEqual(data["id"], "spindle-001")
         self.assertEqual(data["max_power_kw"], 3.0)
-        self.assertEqual(data["tool_axis"], [0, 1, 0])
         self.assertEqual(data["spindle_wait"], 1.5)
 
         restored = Spindle.from_dict(data)
         self.assertEqual(restored.name, spindle.name)
         self.assertEqual(restored.id, spindle.id)
         self.assertEqual(restored.max_power_kw, spindle.max_power_kw)
-        self.assertEqual(restored.tool_axis, spindle.tool_axis)
         self.assertEqual(restored.spindle_wait, spindle.spindle_wait)
 
 

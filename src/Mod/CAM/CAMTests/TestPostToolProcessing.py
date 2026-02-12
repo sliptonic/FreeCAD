@@ -176,7 +176,6 @@ class TestToolProcessing(unittest.TestCase):
                 "spindles": [{
                     "id": "spindle1",
                     "name": "Spindle 1",
-                    "tool_axis": [0, 0, -1],
                     "max_power_kw": 2.0,
                     "max_rpm": 24000,
                     "min_rpm": 6000,

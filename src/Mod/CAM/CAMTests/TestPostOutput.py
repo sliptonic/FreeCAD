@@ -372,7 +372,7 @@ class TestExport2Integration(unittest.TestCase):
         cls.job.OrderOutputBy = "Operation"
         cls.job.Fixtures = ["G54"]
 
-        cls.job.addProperty("App::PropertyString", "Machine", "Job", "Machine name")
+        # Machine property now exists by default
         cls.job.Machine = "Millstone"
 
         from Path.Tool.toolbit import ToolBit
@@ -594,7 +594,6 @@ class TestExport2Integration(unittest.TestCase):
                         "max_rpm": 24000,
                         "min_rpm": 6000,
                         "name": "Spindle 1",
-                        "tool_axis": [0.0, 0.0, -1.0],
                         "tool_change": "manual",
                         "coolant_flood": False,
                         "coolant_mist": False,

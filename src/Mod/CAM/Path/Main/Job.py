@@ -210,6 +210,12 @@ class ObjectJob:
             "WCS",
             QT_TRANSLATE_NOOP("App::Property", "The Work Coordinate Systems for the Job"),
         )
+        obj.addProperty(
+            "App::PropertyString",
+            "Machine",
+            "Output",
+            QT_TRANSLATE_NOOP("App::Property", "The Machine for the Job"),
+        )
 
         obj.Fixtures = ["G54"]
 
@@ -523,6 +529,15 @@ class ObjectJob:
                 QT_TRANSLATE_NOOP("App::Property", "Select the type of Job"),
             )
             obj.setEditorMode("JobType", 2)  # Hide
+
+        if not hasattr(obj, "Machine"):
+            obj.addProperty(
+                "App::PropertyString",
+                "Machine",
+                "Output",
+                QT_TRANSLATE_NOOP("App::Property", "The Machine for the Job"),
+            )
+
 
         for n in self.propertyEnumerations():
             setattr(obj, n[0], n[1])

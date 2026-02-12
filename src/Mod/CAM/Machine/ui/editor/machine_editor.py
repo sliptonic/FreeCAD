@@ -1269,6 +1269,32 @@ class MachineEditorDialog(QtGui.QDialog):
             )
             layout.addRow("Tool Change:", tool_change_combo)
 
+            # Timing fields
+            timing_widget = QtGui.QWidget()
+            timing_layout = QtGui.QFormLayout(timing_widget)
+            
+            spindle_wait_edit = QtGui.QDoubleSpinBox()
+            spindle_wait_edit.setRange(0, 60)
+            spindle_wait_edit.setDecimals(3)
+            spindle_wait_edit.setSingleStep(0.1)
+            spindle_wait_edit.setValue(spindle.spindle_wait if spindle else 0.0)
+            spindle_wait_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_spindle_field_changed(idx, "spindle_wait", value)
+            )
+            timing_layout.addRow("Spindle Wait (seconds)", spindle_wait_edit)
+            
+            coolant_delay_edit = QtGui.QDoubleSpinBox()
+            coolant_delay_edit.setRange(0, 60)
+            coolant_delay_edit.setDecimals(3)
+            coolant_delay_edit.setSingleStep(0.1)
+            coolant_delay_edit.setValue(spindle.coolant_delay if spindle else 0.0)
+            coolant_delay_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_spindle_field_changed(idx, "coolant_delay", value)
+            )
+            timing_layout.addRow("Coolant Delay (seconds)", coolant_delay_edit)
+            
+            layout.addRow(timing_widget)
+
             # Coolant fields (only for rotary spindles)
             coolant_widget = QtGui.QWidget()
             coolant_layout = QtGui.QFormLayout(coolant_widget)
@@ -1303,6 +1329,8 @@ class MachineEditorDialog(QtGui.QDialog):
                     "waterjet_pressure": waterjet_pressure_edit,
                     "plasma_amperage": plasma_amperage_edit,
                     "tool_change": tool_change_combo,
+                    "spindle_wait": spindle_wait_edit,
+                    "coolant_delay": coolant_delay_edit,
                     "coolant_flood": coolant_flood_check,
                     "coolant_mist": coolant_mist_check,
                     "rpm_widget": rpm_widget,

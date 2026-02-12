@@ -384,7 +384,6 @@ class Spindle:
     
     # Tool change and handling
     tool_change: str = "manual"
-    tool_axis: Optional[FreeCAD.Vector] = None
     
     # Coolant and support systems
     coolant_flood: bool = False
@@ -393,7 +392,6 @@ class Spindle:
     
     # Timing and control
     spindle_wait: float = 0.0  # seconds to wait after spindle start
-    power_on_delay: float = 0.0  # seconds to wait for power stabilization
     
     # Type-specific parameters
     laser_wavelength: Optional[float] = None  # nm, for lasers
@@ -406,9 +404,6 @@ class Spindle:
 
     def __post_init__(self):
         """Set default values and capabilities"""
-        if self.tool_axis is None:
-            self.tool_axis = FreeCAD.Vector(0, 0, -1)
-        
         if self.capabilities is None:
             self.capabilities = SpindleCapabilities.for_type(self.spindle_type)
         
@@ -460,12 +455,10 @@ class Spindle:
             "max_rpm": self.max_rpm,
             "min_rpm": self.min_rpm,
             "tool_change": self.tool_change,
-            "tool_axis": [self.tool_axis.x, self.tool_axis.y, self.tool_axis.z],
             "coolant_flood": self.coolant_flood,
             "coolant_mist": self.coolant_mist,
             "coolant_delay": self.coolant_delay,
             "spindle_wait": self.spindle_wait,
-            "power_on_delay": self.power_on_delay,
         }
         
         # Add type-specific parameters
@@ -486,9 +479,6 @@ class Spindle:
     @classmethod
     def from_dict(cls, data):
         """Deserialize from dictionary"""
-        tool_axis_data = data.get("tool_axis", [0, 0, -1])
-        tool_axis = FreeCAD.Vector(tool_axis_data[0], tool_axis_data[1], tool_axis_data[2])
-        
         # Parse spindle type
         spindle_type_str = data.get("spindle_type", "rotary")
         spindle_type = SpindleType(spindle_type_str)
@@ -507,12 +497,10 @@ class Spindle:
             data.get("max_rpm", 0),
             data.get("min_rpm", 0),
             data.get("tool_change", "manual"),
-            tool_axis,
             data.get("coolant_flood", False),
             data.get("coolant_mist", False),
             data.get("coolant_delay", 0.0),
             data.get("spindle_wait", 0.0),
-            data.get("power_on_delay", 0.0),
             data.get("laser_wavelength"),
             laser_focus_range,
             data.get("waterjet_pressure"),
@@ -552,16 +540,6 @@ class Machine:
     linear_axes: Dict[str, LinearAxis] = field(default_factory=dict)
     rotary_axes: Dict[str, RotaryAxis] = field(default_factory=dict)
     spindles: List[Spindle] = field(default_factory=list)
-
-    # Coordinate system
-    reference_system: Dict[str, FreeCAD.Vector] = field(
-        default_factory=lambda: {
-            "X": FreeCAD.Vector(1, 0, 0),
-            "Y": FreeCAD.Vector(0, 1, 0),
-            "Z": FreeCAD.Vector(0, 0, 1),
-        }
-    )
-    tool_axis: FreeCAD.Vector = field(default_factory=lambda: FreeCAD.Vector(0, 0, -1))
 
     # Rotary axis configuration
     primary_rotary_axis: Optional[str] = None
@@ -734,13 +712,10 @@ class Machine:
         max_rpm=0,
         min_rpm=0,
         tool_change="manual",
-        tool_axis=None,
     ):
         """Add a spindle to the configuration"""
-        if tool_axis is None:
-            tool_axis = FreeCAD.Vector(0, 0, -1)
         self.spindles.append(
-            Spindle(name, id, max_power_kw, max_rpm, min_rpm, tool_change, tool_axis)
+            Spindle(name, id, max_power_kw, max_rpm, min_rpm, tool_change)
         )
         return self
 
