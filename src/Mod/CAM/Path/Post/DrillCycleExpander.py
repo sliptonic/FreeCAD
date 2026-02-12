@@ -1,15 +1,24 @@
 # -*- coding: utf-8 -*-
-# ***************************************************************************
-# *   Copyright (c) 2025 Brad Collette                                      *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)   *
-# *   as published by the Free Software Foundation; either version 2 of    *
-# *   the License, or (at your option) any later version.                  *
-# *   for detail see the LICENCE text file.                                *
-# *                                                                         *
-# ***************************************************************************
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2026 sliptonic <shopinthewoods@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 """
 Standalone drill cycle expander for FreeCAD Path.Command objects.
 
@@ -53,22 +62,22 @@ class DrillCycleExpander:
         cmd_name = command.Name.upper()
         params = command.Parameters
         
-        # Handle modal commands
+        # Handle modal commands - filter them out after processing
         if cmd_name == 'G98':
             self.retract_mode = 'G98'
-            return [command]
+            return []  # Filter out after processing
         elif cmd_name == 'G99':
             self.retract_mode = 'G99'
-            return [command]
+            return []  # Filter out after processing
         elif cmd_name == 'G90':
             self.motion_mode = 'G90'
-            return [command]
+            return []  # Filter out after processing
         elif cmd_name == 'G91':
             self.motion_mode = 'G91'
-            return [command]
+            return []  # Filter out after processing
         elif cmd_name == 'G80':
-            # Cancel drill cycle
-            return [command]
+            # Cancel drill cycle - filter out since cycles are already expanded
+            return []
         
         # Handle drill cycles
         if cmd_name in ('G81', 'G82', 'G73', 'G83'):
@@ -269,35 +278,6 @@ class DrillCycleExpander:
             self.current_position['Y'] = cmd.Parameters['Y']
         if 'Z' in cmd.Parameters:
             self.current_position['Z'] = cmd.Parameters['Z']
-    
-    def expand_command(self, cmd: Path.Command) -> List[Path.Command]:
-        """
-        Expand a drill cycle command into basic G-code moves.
-        
-        Args:
-            cmd: The command to expand
-            
-        Returns:
-            List of expanded Path.Command objects
-        """
-        if cmd.Name in ['G81', 'G82', 'G83', 'G73']:
-            # Expand drill cycle to basic moves
-            return self._expand_drill_cycle(cmd)
-        elif cmd.Name == 'G80':
-            # G80 cancels canned cycle mode - filter out since cycles are already expanded
-            return []
-        elif cmd.Name in ['G98', 'G99']:
-            # Handle retract mode changes
-            if cmd.Name == 'G98':
-                self.retract_mode = 'G98'
-            elif cmd.Name == 'G99':
-                self.retract_mode = 'G99'
-            return []  # Filter out modal commands after processing
-        else:
-            # Update position for movement commands
-            self._update_position(cmd)
-            # Pass through other commands unchanged
-            return [cmd]
     
     def expand_commands(self, commands: List[Path.Command]) -> List[Path.Command]:
         """

@@ -52,11 +52,16 @@ import FreeCAD
 translate = FreeCAD.Qt.translate
 
 DEBUG = False
-if DEBUG:
-    Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
-    Path.Log.trackModule(Path.Log.thisModule())
-else:
-    Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
+
+# Set logging level based on DEBUG flag
+def _setup_logging():
+    if DEBUG:
+        Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
+        Path.Log.trackModule(Path.Log.thisModule())
+    else:
+        Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
+
+_setup_logging()
 
 # Define types
 Values = Dict[str, Any]

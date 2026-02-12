@@ -387,17 +387,14 @@ class TestToolProcessing(unittest.TestCase):
             gcode_without = self._get_all_gcode(results_without)
             
             lines_with = [line.strip() for line in gcode_with.split('\n') if line.strip()]
-            lines_without = [line.strip() for line in gcode_without.split('\n') if line.strip()]
             
-            # Find M6 commands in both outputs
+            # Find M6 commands in output with early_tool_prep enabled
             m6_lines_with = [i for i, line in enumerate(lines_with) if 'M6' in line]
-            m6_lines_without = [i for i, line in enumerate(lines_without) if 'M6' in line]
             
             # With early_tool_prep, should have standalone T commands (tool prep)
             # Look for lines that start with T followed by a digit
             import re
             standalone_t_with = [line for line in lines_with if re.match(r'^T\d+$', line)]
-            standalone_t_without = [line for line in lines_without if re.match(r'^T\d+$', line)]
             
             # Should have standalone T commands when early_tool_prep is enabled
             # Note: early_tool_prep only works when there are multiple tools

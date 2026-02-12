@@ -45,9 +45,9 @@ class TestPathPreferences(PathTestUtils.PathTestBase):
     def test03(self):
         """Available post processors include linuxcnc, generic and opensbp."""
         posts = Path.Preferences.allAvailablePostProcessors()
-        self.assertTrue("linuxcnc" in posts)
-        self.assertTrue("generic" in posts)
-        self.assertTrue("opensbp" in posts)
+        self.assertIn("linuxcnc", posts)
+        self.assertIn("generic", posts)
+        self.assertIn("opensbp", posts)
 
     def test10(self):
         """Default paths for tools are resolved correctly"""

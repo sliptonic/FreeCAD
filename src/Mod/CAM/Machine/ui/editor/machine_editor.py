@@ -68,25 +68,17 @@ class DataclassGUIGenerator:
 
     # Field display name overrides
     FIELD_LABELS = {
-        # Legacy labels (for backward compatibility)
-        "comments": translate("CAM_MachineEditor", "Include Comments"),
+        # Legacy labels (for backward compatibility) - non-conflicting only
         "blank_lines": translate("CAM_MachineEditor", "Include Blank Lines"),
-        "header": translate("CAM_MachineEditor", "Include Header"),
-        "line_numbers": translate("CAM_MachineEditor", "Line Numbers"),
         "path_labels": translate("CAM_MachineEditor", "Path Labels"),
         "machine_name": translate("CAM_MachineEditor", "Include Machine Name"),
         "output_double_parameters": translate("CAM_MachineEditor", "Output Duplicate Axis Values"),
-        "output_bcnc_comments": translate("CAM_MachineEditor", "Output bCNC Comments"),
         "doubles": translate("CAM_MachineEditor", "Output Duplicate Axis Values"),
         "adaptive": translate("CAM_MachineEditor", "Adaptive Output"),
         "axis_precision": translate("CAM_MachineEditor", "Axis Precision"),
         "feed_precision": translate("CAM_MachineEditor", "Feed Precision"),
         "spindle_decimals": translate("CAM_MachineEditor", "Spindle Decimals"),
-        "command_space": translate("CAM_MachineEditor", "Command Spacing"),
         "comment_symbol": translate("CAM_MachineEditor", "Comment Symbol"),
-        "line_increment": translate("CAM_MachineEditor", "Line Number Increment"),
-        "line_number_start": translate("CAM_MachineEditor", "Line Number Start"),
-        "end_of_line_chars": translate("CAM_MachineEditor", "End of Line Characters"),
         "modal": translate("CAM_MachineEditor", "Modal Output (Suppress Repeats)"),
         "translate_drill_cycles": translate("CAM_MachineEditor", "Translate Drill Cycles"),
         "translate_rapid_moves": translate("CAM_MachineEditor", "Translate Rapid Moves"),

@@ -149,12 +149,14 @@ def suppress_redundant_axes_words(gcode: List[str]) -> List[str]:
                     value = float(word[1:])
                     new_pos[axis] = value
                 except (ValueError, IndexError):
+                    # If we can't parse the value, skip updating position
                     pass
             elif axis == 'F':
                 try:
                     value = float(word[1:])
                     new_feed = value
                 except (ValueError, IndexError):
+                    # If we can't parse the value, skip updating feed rate
                     pass
         
         # Second pass: filter out redundant words

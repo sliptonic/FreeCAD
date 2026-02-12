@@ -147,14 +147,14 @@ class TestPostProcessorFactory(unittest.TestCase):
     def test020(self):
         # test creation of postprocessor object
         post = PostProcessorFactory.get_post_processor(self.job, "generic")
-        self.assertTrue(post is not None)
+        self.assertIsNotNone(post)
         self.assertTrue(hasattr(post, "export"))
         self.assertTrue(hasattr(post, "_buildPostList"))
 
     def test030(self):
         # test wrapping of old school postprocessor scripts
         post = PostProcessorFactory.get_post_processor(self.job, "linuxcnc")
-        self.assertTrue(post is not None)
+        self.assertIsNotNone(post)
         self.assertTrue(hasattr(post, "_buildPostList"))
 
     def test040(self):

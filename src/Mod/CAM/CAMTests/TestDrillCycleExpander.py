@@ -1,14 +1,28 @@
 # -*- coding: utf-8 -*-
-# ***************************************************************************
-# *   Copyright (c) 2025 Brad Collette                                      *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)   *
-# *   as published by the Free Software Foundation; either version 2 of    *
-# *   the License, or (at your option) any later version.                  *
-# *   for detail see the LICENCE text file.                                *
-# *                                                                         *
-# ***************************************************************************
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2026 sliptonic
+# SPDX-FileNotice: Part of the FreeCAD project.
+
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
+
+"""
+Test suite for DrillCycleExpander class.
+"""
 
 import unittest
 import Path
@@ -18,10 +32,6 @@ from Path.Post.DrillCycleExpander import DrillCycleExpander
 class TestDrillCycleExpander(unittest.TestCase):
     """Test the DrillCycleExpander class with Path.Command objects."""
     
-    def setUp(self):
-        """Set up test fixtures."""
-        pass
-
     def test_00_error_r_less_than_z(self):
         """Test error condition when R < Z."""
 
@@ -73,7 +83,8 @@ class TestDrillCycleExpander(unittest.TestCase):
             Path.Command('G81', {'Z': -5.0, 'R': 2.0, 'F': 100.0})  # No X/Y, should use current
         ]
         
-        result = expander.expand_commands(commands)
+        # Expand commands to update position tracking
+        expander.expand_commands(commands)
         
         # Position should be updated from first move
         self.assertEqual(expander.current_position['X'], 5.0)
@@ -126,13 +137,13 @@ class TestDrillCycleExpander(unittest.TestCase):
         result = expander.expand_commands(input_cmds)
 
         print("\n")
-        print(f"#### Input ####")
+        print("#### Input ####")
         print (f"starting position: {initial_position}")
         print (f"retract mode: {retract_mode}")
         print(Path.Path(input_cmds).toGCode())
-        print(f"#### Result ####")
+        print("#### Result ####")
         print(Path.Path(result).toGCode())
-        print(f"##########")
+        print("##########")
         
         
         self.assertEqual(len(result), len(expected_cmds))
@@ -160,13 +171,13 @@ class TestDrillCycleExpander(unittest.TestCase):
         result = expander.expand_commands(input_cmds)
 
         print("\n")
-        print(f"#### Input ####")
+        print("#### Input ####")
         print (f"starting position: {initial_position}")
         print (f"retract mode: {retract_mode}")
         print(Path.Path(input_cmds).toGCode())
-        print(f"#### Result ####")
+        print("#### Result ####")
         print(Path.Path(result).toGCode())
-        print(f"##########")
+        print("##########")
         
 
         self.assertEqual(len(result), len(expected_cmds))
@@ -200,13 +211,13 @@ class TestDrillCycleExpander(unittest.TestCase):
         result = expander.expand_commands(input_cmds)
         
         print("\n")
-        print(f"#### Input ####")
+        print("#### Input ####")
         print (f"starting position: {initial_position}")
         print (f"retract mode: {retract_mode}")
         print(Path.Path(input_cmds).toGCode())
-        print(f"#### Result ####")
+        print("#### Result ####")
         print(Path.Path(result).toGCode())
-        print(f"##########")
+        print("##########")
         
         self.assertEqual(len(result), len(expected_cmds))
         for i, (res, exp) in enumerate(zip(result, expected_cmds)):
@@ -247,13 +258,13 @@ class TestDrillCycleExpander(unittest.TestCase):
         result = expander.expand_commands(input_cmds)
         
         print("\n")
-        print(f"#### Input ####")
+        print("#### Input ####")
         print (f"starting position: {initial_position}")
         print (f"retract mode: {retract_mode}")
         print(Path.Path(input_cmds).toGCode())
-        print(f"#### Result ####")
+        print("#### Result ####")
         print(Path.Path(result).toGCode())
-        print(f"##########")
+        print("##########")
         
         self.assertEqual(len(result), len(expected_cmds))
         for i, (res, exp) in enumerate(zip(result, expected_cmds)):
@@ -356,13 +367,13 @@ class TestDrillCycleExpander(unittest.TestCase):
         
         result = expander.expand_commands(input_cmds)
         print("\n")
-        print(f"#### Input ####")
+        print("#### Input ####")
         print (f"starting position: {initial_position}")
         print (f"retract mode: {retract_mode}")
         print(Path.Path(input_cmds).toGCode())
-        print(f"#### Result ####")
+        print("#### Result ####")
         print(Path.Path(result).toGCode())
-        print(f"##########")
+        print("##########")
         
         
         self.assertEqual(len(result), len(expected_cmds))
@@ -419,13 +430,13 @@ class TestDrillCycleExpander(unittest.TestCase):
         result = expander.expand_commands(input_cmds_explicit)
         
         print("\n")
-        print(f"#### Input ####")
+        print("#### Input ####")
         print (f"starting position: {initial_position}")
         print (f"retract mode: {retract_mode}")
         print(Path.Path(input_cmds).toGCode())
-        print(f"#### Result ####")
+        print("#### Result ####")
         print(Path.Path(result).toGCode())
-        print(f"##########")
+        print("##########")
         
         self.assertEqual(len(result), len(expected_cmds))
         for i, (res, exp) in enumerate(zip(result, expected_cmds)):

@@ -690,7 +690,8 @@ class TestExport2Integration(unittest.TestCase):
             first_section_name, first_section_gcode = results[0]
             if first_section_gcode:
                 # Header comments should be at the beginning (if enabled)
-                self.assertTrue(len(first_section_gcode) > 0)
+                self.assertGreater(len(first_section_gcode), 0)
+
     def test030_header_true_comments_false(self):
         """Test that header:true and comments:false shows header but suppresses inline comments."""
         machine = self._create_machine(
@@ -1445,7 +1446,6 @@ class TestExport2Integration(unittest.TestCase):
             lines = [line.strip() for line in gcode.split('\n') if line.strip()]
             
             # With split_arcs=True, G2 should be split into multiple G1 moves
-            g2_lines = [line for line in lines if line.startswith('G2')]
             g1_lines = [line for line in lines if line.startswith('G1')]
             
             # If arc splitting worked, we should have:
@@ -1809,7 +1809,6 @@ class TestExport2Integration(unittest.TestCase):
         
         Expected: Property contains standard G-code commands as newline-separated list.
         """
-        from Path.Post.Processor import PostProcessorFactory
         
         # Get a generic postprocessor
         generic_post = PostProcessorFactory.get_post_processor(self.job, 'generic')
