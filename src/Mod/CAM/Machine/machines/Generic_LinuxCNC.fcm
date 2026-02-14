@@ -3,83 +3,67 @@
     "machine": {
         "axes": {
             "X": {
-                "joint": [
-                    [
-                        1.0,
-                        0.0,
-                        0.0
-                    ],
-                    [
-                        0,
-                        0,
-                        0
-                    ]
-                ],
-                "max": 1000,
-                "max_velocity": 10000,
-                "min": 0.0,
+                "type": "linear",
+                "role": "table_linear",
+                "parent": null,
                 "sequence": 0,
-                "type": "linear"
+                "joint": {
+                    "origin": [0, 0, 0],
+                    "axis": [1, 0, 0]
+                },
+                "limits": {
+                    "min": 0,
+                    "max": 1000
+                },
+                "max_velocity": 10000
             },
             "Y": {
-                "joint": [
-                    [
-                        0.0,
-                        1.0,
-                        0.0
-                    ],
-                    [
-                        0,
-                        0,
-                        0
-                    ]
-                ],
-                "max": 1000,
-                "max_velocity": 10000,
-                "min": 0,
+                "type": "linear",
+                "role": "table_linear",
+                "parent": null,
                 "sequence": 0,
-                "type": "linear"
+                "joint": {
+                    "origin": [0, 0, 0],
+                    "axis": [0, 1, 0]
+                },
+                "limits": {
+                    "min": 0,
+                    "max": 1000
+                },
+                "max_velocity": 10000
             },
             "Z": {
-                "joint": [
-                    [
-                        0.0,
-                        0.0,
-                        1.0
-                    ],
-                    [
-                        0,
-                        0,
-                        0
-                    ]
-                ],
-                "max": 1000,
-                "max_velocity": 10000,
-                "min": 0,
+                "type": "linear",
+                "role": "head_linear",
+                "parent": null,
                 "sequence": 0,
-                "type": "linear"
+                "joint": {
+                    "origin": [0, 0, 0],
+                    "axis": [0, 0, 1]
+                },
+                "limits": {
+                    "min": 0,
+                    "max": 1000
+                },
+                "max_velocity": 10000
             }
         },
         "description": "Basic LinuxCNC configuration",
         "manufacturer": "",
         "name": "Generic LinuxCNC",
-        "spindles": [
+        "toolheads": [
             {
-                "id": "spindle1",
-                "max_power_kw": 3.0,
-                "max_rpm": 24000,
-                "min_rpm": 6000,
-                "name": "Spindle 1",
-                "tool_axis": [
-                    0.0,
-                    0.0,
-                    -1.0
-                ],
+                "id": "toolhead1",
+                "name": "Toolhead 1",
+                "toolhead_type": "rotary",
                 "tool_change": "manual",
+                "max_power_kw": 3.0,
+                "min_rpm": 6000,
+                "max_rpm": 24000,
                 "coolant_flood": false,
                 "coolant_mist": false,
                 "coolant_delay": 0.0,
-                "spindle_wait": 0.0
+                "toolhead_wait": 0.0
             }
         ],
         "units": "metric"

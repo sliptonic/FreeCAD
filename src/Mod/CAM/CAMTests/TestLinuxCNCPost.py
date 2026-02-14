@@ -28,7 +28,7 @@ import Path
 import CAMTests.PathTestUtils as PathTestUtils
 import CAMTests.PostTestMocks as PostTestMocks
 from Path.Post.Processor import PostProcessorFactory
-from Machine.models.machine import Machine, Spindle, SpindleType
+from Machine.models.machine import Machine, Toolhead, ToolheadType
 
 
 Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
@@ -90,15 +90,15 @@ class TestLinuxCNCPost(PathTestUtils.PathTestBase):
         # Create a machine configuration for each test
         self.post._machine = Machine.create_3axis_config()
         self.post._machine.name = "Test LinuxCNC Machine"
-        # Add a default spindle (required by export2)
-        spindle = Spindle(
-            name="Default Spindle",
-            spindle_type=SpindleType.ROTARY,
+        # Add a default toolhead (required by export2)
+        toolhead = Toolhead(
+            name="Default Toolhead",
+            toolhead_type=ToolheadType.ROTARY,
             min_rpm=0,
             max_rpm=24000,
             max_power_kw=1.0
         )
-        self.post._machine.spindles = [spindle]
+        self.post._machine.toolheads = [toolhead]
 
     def tearDown(self):
         """tearDown()...

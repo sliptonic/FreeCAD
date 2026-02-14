@@ -475,21 +475,21 @@ class TestExport2Integration(unittest.TestCase):
 
     def _create_machine(self, **output_options):
         """Helper to create a machine with specified output options."""
-        from Machine.models.machine import Machine, OutputUnits, Spindle, SpindleType
+        from Machine.models.machine import Machine, OutputUnits, Toolhead, ToolheadType
         machine = Machine.create_3axis_config()
         machine.name = "TestMachine"
         
-        # Add a default spindle since post processor expects spindle index 0
-        default_spindle = Spindle(
-            name="Default Spindle",
-            spindle_type=SpindleType.ROTARY,
-            id="spindle1",
+        # Add a default toolhead since post processor expects toolhead index 0
+        default_toolhead = Toolhead(
+            name="Default Toolhead",
+            toolhead_type=ToolheadType.ROTARY,
+            id="toolhead1",
             max_power_kw=2.2,
             max_rpm=24000,
             min_rpm=6000,
             tool_change="manual"
         )
-        machine.spindles = [default_spindle]
+        machine.toolheads = [default_toolhead]
         
         for key, value in output_options.items():
             # Handle nested output structure

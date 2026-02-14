@@ -27,7 +27,7 @@ import json
 from typing import Optional, Dict, Any, get_origin, get_args
 from dataclasses import fields
 from enum import Enum
-from Machine.models.machine import Machine, MachineFactory, LinearAxis, RotaryAxis, Spindle, SpindleType
+from Machine.models.machine import Machine, MachineFactory, LinearAxis, RotaryAxis, Toolhead, ToolheadType, AxisRole, Kinematics, BaseFrame
 from Path.Main.Gui.Editor import CodeEditor
 from Path.Post.Processor import PostProcessorFactory
 from Machine.ui.editor.postprocessor_properties import PostProcessorPropertyManager
@@ -66,8 +66,8 @@ class DataclassGUIGenerator:
         "post_fixture_change",
         "pre_rotary_move",
         "post_rotary_move",
-        "pre_spindle_change",
-        "post_spindle_change",
+        "pre_toolhead_change",
+        "post_toolhead_change",
         "safetyblock",
         "drill_cycles_to_translate",
         "suppress_commands",
@@ -84,7 +84,7 @@ class DataclassGUIGenerator:
         "adaptive": translate("CAM_MachineEditor", "Adaptive Output"),
         "axis_precision": translate("CAM_MachineEditor", "Axis Precision"),
         "feed_precision": translate("CAM_MachineEditor", "Feed Precision"),
-        "spindle_decimals": translate("CAM_MachineEditor", "Spindle Decimals"),
+        "toolhead_decimals": translate("CAM_MachineEditor", "Toolhead Decimals"),
         "comment_symbol": translate("CAM_MachineEditor", "Comment Symbol"),
         "modal": translate("CAM_MachineEditor", "Modal Output (Suppress Repeats)"),
         "translate_drill_cycles": translate("CAM_MachineEditor", "Translate Drill Cycles"),
@@ -97,14 +97,14 @@ class DataclassGUIGenerator:
         "show_operation_labels": translate("CAM_MachineEditor", "Show Operation Labels"),
         "tool_before_change": translate("CAM_MachineEditor", "Output T Before M6"),
         "chipbreaking_amount": translate("CAM_MachineEditor", "Chipbreaking Amount (mm)"),
-        "spindle_wait": translate("CAM_MachineEditor", "Spindle Wait Time (seconds)"),
+        "toolhead_wait": translate("CAM_MachineEditor", "Toolhead Wait Time (seconds)"),
         "postprocessor_file_name": translate("CAM_MachineEditor", "Post Processor"),
         "postprocessor_args": translate("CAM_MachineEditor", "Post Processor Arguments"),
         "use_tlo": translate("CAM_MachineEditor", "Use Tool Length Offset"),
         "output_tool_length_offset": translate("CAM_MachineEditor", "Output Tool Length Offset (G43)"),
         "remote_post": translate("CAM_MachineEditor", "Enable Remote Posting"),
-        "stop_spindle_for_tool_change": translate(
-            "CAM_MachineEditor", "Stop Spindle for Tool Change"
+        "stop_toolhead_for_tool_change": translate(
+            "CAM_MachineEditor", "Stop Toolhead for Tool Change"
         ),
         "enable_coolant": translate("CAM_MachineEditor", "Enable Coolant"),
         "enable_machine_specific_commands": translate(
@@ -141,18 +141,36 @@ class DataclassGUIGenerator:
         "line_numbers": translate("CAM_MachineEditor", "Line Numbers"),
         "line_number_start": translate("CAM_MachineEditor", "Line Number Start"),
         "line_number_prefix": translate("CAM_MachineEditor", "Line Number Prefix"),
-        "line_increment": translate("CAM_MachineEditor", "Line Number Increment"),
+        "line_increment": translate("CAM_MachineEditor", "Line Increment"),
         "command_space": translate("CAM_MachineEditor", "Command Space"),
         "end_of_line_chars": translate("CAM_MachineEditor", "End of Line Chars"),
         
         # Precision field labels
         "axis": translate("CAM_MachineEditor", "Axis Precision"),
         "feed": translate("CAM_MachineEditor", "Feed Precision"),
-        "spindle": translate("CAM_MachineEditor", "Spindle Precision"),
+        "toolhead": translate("CAM_MachineEditor", "Toolhead Precision"),
         
         # Duplicate field labels
         "commands": translate("CAM_MachineEditor", "Duplicate Commands"),
         "parameters": translate("CAM_MachineEditor", "Duplicate Parameters"),
+        
+        # Kinematics field labels
+        "kinematics": translate("CAM_MachineEditor", "Kinematics"),
+        "base_frame": translate("CAM_MachineEditor", "Base Frame"),
+        "origin": translate("CAM_MachineEditor", "Origin"),
+        "orientation_quaternion": translate("CAM_MachineEditor", "Orientation Quaternion"),
+        "tcp_supported": translate("CAM_MachineEditor", "TCP Supported"),
+        "dwo_supported": translate("CAM_MachineEditor", "DWO Supported"),
+        "notes": translate("CAM_MachineEditor", "Kinematics Notes"),
+        
+        # Axis field labels
+        "role": translate("CAM_MachineEditor", "Role"),
+        "parent": translate("CAM_MachineEditor", "Parent Axis"),
+        "sequence": translate("CAM_MachineEditor", "Sequence"),
+        "joint_origin": translate("CAM_MachineEditor", "Joint Origin"),
+        "joint_axis": translate("CAM_MachineEditor", "Joint Axis"),
+        "solution_preference": translate("CAM_MachineEditor", "Solution Preference"),
+        "allow_flip": translate("CAM_MachineEditor", "Allow Flip"),
     }
 
     @staticmethod
@@ -452,9 +470,6 @@ class MachineEditorDialog(QtGui.QDialog):
         # Populate GUI from machine object
         self.populate_from_machine(self.machine)
 
-        # Update spindle button state
-        self._update_spindle_button_state()
-
         # Set focus and select the name field for new machines
         if not machine_filename:
             self.name_edit.setFocus()
@@ -592,105 +607,188 @@ class MachineEditorDialog(QtGui.QDialog):
             vector = combo.itemData(combo.currentIndex())
             self.machine.rotary_axes[axis_name].rotation_vector = FreeCAD.Vector(*vector)
 
+    def _on_linear_direction_changed(self, axis_name, combo):
+        """Update linear axis direction vector."""
+        if self.machine and axis_name in self.machine.linear_axes:
+            vector = combo.itemData(combo.currentIndex())
+            self.machine.linear_axes[axis_name].direction_vector = FreeCAD.Vector(*vector)
+
     def _on_rotary_prefer_positive_changed(self, axis_name, checked):
         """Update rotary axis prefer_positive."""
         if self.machine and axis_name in self.machine.rotary_axes:
             self.machine.rotary_axes[axis_name].prefer_positive = checked
 
-    def _on_spindle_field_changed(self, spindle_index, field_name, value):
-        """Update spindle field in Machine object when UI field changes.
+    def _on_axis_role_changed(self, axis_name, combo, axis_type):
+        """Update axis role."""
+        if self.machine:
+            role = combo.itemData(combo.currentIndex())
+            if axis_type == "linear" and axis_name in self.machine.linear_axes:
+                self.machine.linear_axes[axis_name].role = role
+            elif axis_type == "rotary" and axis_name in self.machine.rotary_axes:
+                self.machine.rotary_axes[axis_name].role = role
+
+    def _on_axis_parent_changed(self, axis_name, combo, axis_type):
+        """Update axis parent relationship."""
+        if self.machine:
+            parent = combo.itemData(combo.currentIndex())
+            if parent == "None":
+                parent = None
+            if axis_type == "linear" and axis_name in self.machine.linear_axes:
+                self.machine.linear_axes[axis_name].parent = parent
+            elif axis_type == "rotary" and axis_name in self.machine.rotary_axes:
+                self.machine.rotary_axes[axis_name].parent = parent
+
+    def _on_axis_sequence_changed(self, axis_name, value, axis_type):
+        """Update axis sequence."""
+        if self.machine:
+            if axis_type == "linear" and axis_name in self.machine.linear_axes:
+                self.machine.linear_axes[axis_name].sequence = value
+            elif axis_type == "rotary" and axis_name in self.machine.rotary_axes:
+                self.machine.rotary_axes[axis_name].sequence = value
+
+    def _on_joint_origin_changed(self, axis_name, origin_values, axis_type):
+        """Update axis joint origin."""
+        if self.machine:
+            if axis_type == "linear" and axis_name in self.machine.linear_axes:
+                self.machine.linear_axes[axis_name].joint_origin = origin_values
+            elif axis_type == "rotary" and axis_name in self.machine.rotary_axes:
+                self.machine.rotary_axes[axis_name].joint_origin = origin_values
+
+    def _on_solution_preference_changed(self, axis_name, combo):
+        """Update rotary axis solution preference."""
+        if self.machine and axis_name in self.machine.rotary_axes:
+            preference = combo.itemData(combo.currentIndex())
+            self.machine.rotary_axes[axis_name].solution_preference = preference
+
+    def _on_allow_flip_changed(self, axis_name, checked):
+        """Update rotary axis allow flip setting."""
+        if self.machine and axis_name in self.machine.rotary_axes:
+            self.machine.rotary_axes[axis_name].allow_flip = checked
+
+    def _on_kinematics_field_changed(self, field_name, value):
+        """Update kinematics field."""
+        if self.machine:
+            if field_name == "tcp_supported":
+                self.machine.kinematics.tcp_supported = value
+            elif field_name == "dwo_supported":
+                self.machine.kinematics.dwo_supported = value
+            elif field_name == "notes":
+                self.machine.kinematics.notes = value
+            elif field_name == "origin_x":
+                self.machine.kinematics.base_frame.origin[0] = value
+            elif field_name == "origin_y":
+                self.machine.kinematics.base_frame.origin[1] = value
+            elif field_name == "origin_z":
+                self.machine.kinematics.base_frame.origin[2] = value
+            elif field_name == "quat_w":
+                self.machine.kinematics.base_frame.orientation_quaternion[0] = value
+            elif field_name == "quat_x":
+                self.machine.kinematics.base_frame.orientation_quaternion[1] = value
+            elif field_name == "quat_y":
+                self.machine.kinematics.base_frame.orientation_quaternion[2] = value
+            elif field_name == "quat_z":
+                self.machine.kinematics.base_frame.orientation_quaternion[3] = value
+
+    def _on_toolhead_field_changed(self, toolhead_index, field_name, value):
+        """Update toolhead field in Machine object when UI field changes.
 
         Args:
-            spindle_index: Index of the spindle in machine.spindles
+            toolhead_index: Index of the toolhead in machine.toolheads
             field_name: Name of the field being updated
             value: New value for the field
         """
-        if self.machine and spindle_index < len(self.machine.spindles):
-            spindle = self.machine.spindles[spindle_index]
-            setattr(spindle, field_name, value)
+        if self.machine and toolhead_index < len(self.machine.toolheads):
+            toolhead = self.machine.toolheads[toolhead_index]
+            setattr(toolhead, field_name, value)
             
-            # Update visibility if spindle type changed
-            if field_name == "spindle_type":
-                self._update_spindle_type_visibility(spindle_index)
+            # Update visibility if toolhead type changed
+            if field_name == "toolhead_type":
+                self._update_toolhead_type_visibility(toolhead_index)
 
-    def _update_spindle_type_visibility(self, spindle_index):
-        """Update visibility of type-specific fields based on spindle type."""
-        if spindle_index >= len(self.spindle_edits):
+    def _update_toolhead_type_visibility(self, toolhead_index):
+        """Update visibility of type-specific fields based on toolhead type."""
+        if toolhead_index >= len(self.toolhead_edits):
             return
             
-        edits = self.spindle_edits[spindle_index]
-        spindle_type = edits["spindle_type"].itemData(edits["spindle_type"].currentIndex())
+        edits = self.toolhead_edits[toolhead_index]
+        toolhead_type = edits["type"].itemData(edits["type"].currentIndex())
         
-        # Show/hide RPM fields (only for rotary spindles)
-        show_rpm = spindle_type == SpindleType.ROTARY
+        # Show/hide RPM fields (only for rotary toolheads)
+        show_rpm = toolhead_type == ToolheadType.ROTARY
         edits["rpm_widget"].setVisible(show_rpm)
         
         # Show/hide laser fields
-        show_laser = spindle_type == SpindleType.LASER
+        show_laser = toolhead_type == ToolheadType.LASER
         edits["laser_widget"].setVisible(show_laser)
         
         # Show/hide waterjet fields
-        show_waterjet = spindle_type == SpindleType.WATERJET
+        show_waterjet = toolhead_type == ToolheadType.WATERJET
         edits["waterjet_widget"].setVisible(show_waterjet)
         
         # Show/hide plasma fields
-        show_plasma = spindle_type == SpindleType.PLASMA
+        show_plasma = toolhead_type == ToolheadType.PLASMA
         edits["plasma_widget"].setVisible(show_plasma)
         
-        # Show/hide coolant fields (only for rotary spindles)
-        show_coolant = spindle_type == SpindleType.ROTARY
+        # Show/hide coolant fields (only for rotary toolheads)
+        show_coolant = toolhead_type == ToolheadType.ROTARY
         edits["coolant_widget"].setVisible(show_coolant)
         
         # Hide type-specific group if no type-specific fields are visible
         type_specific_visible = show_rpm or show_laser or show_waterjet or show_plasma
         edits["type_specific_group"].setVisible(type_specific_visible)
 
-    def _add_spindle(self):
-        """Add a new spindle to the machine."""
-        if self.machine and len(self.machine.spindles) < 9:
-            new_index = len(self.machine.spindles) + 1
-            new_spindle = Spindle(
-                name=f"Spindle {new_index}",
-                spindle_type=SpindleType.ROTARY,
-                id=f"spindle{new_index}",
+    def _add_toolhead(self):
+        """Add a new toolhead to the machine."""
+        if self.machine and len(self.machine.toolheads) < 9:
+            new_index = len(self.machine.toolheads) + 1
+            new_toolhead = Toolhead(
+                name=f"Toolhead {new_index}",
+                toolhead_type=ToolheadType.ROTARY,
+                id=f"toolhead{new_index}",
                 max_power_kw=3.0,
                 max_rpm=24000,
                 min_rpm=6000,
                 tool_change="manual",
             )
-            self.machine.spindles.append(new_spindle)
-            self.update_spindles()
-            self._update_spindle_button_state()
+            self.machine.toolheads.append(new_toolhead)
+            self.update_toolheads()
+            self._update_toolhead_button_state()
             # Set focus to the new tab
-            self.spindles_tabs.setCurrentIndex(len(self.machine.spindles) - 1)
+            self.toolheads_tabs.setCurrentIndex(len(self.machine.toolheads) - 1)
 
-    def _remove_spindle(self, index):
-        """Remove a spindle from the machine with confirmation.
+    def _remove_toolhead(self, index):
+        """Remove a toolhead from the machine with confirmation.
 
         Args:
-            index: Index of the tab/spindle to remove
+            index: Index of the tab/toolhead to remove
         """
-        if not self.machine or len(self.machine.spindles) <= 1:
-            return  # Don't allow removing the last spindle
+        if not self.machine or len(self.machine.toolheads) <= 1:
+            return  # Don't allow removing the last toolhead
 
-        spindle = self.machine.spindles[index]
+        toolhead = self.machine.toolheads[index]
         reply = QtGui.QMessageBox.question(
             self,
-            translate("CAM_MachineEditor", "Remove Spindle"),
-            translate("CAM_MachineEditor", f"Remove '{spindle.name}'? This cannot be undone."),
+            translate("CAM_MachineEditor", "Remove Toolhead"),
+            translate("CAM_MachineEditor", f"Remove '{toolhead.name}'? This cannot be undone."),
             QtGui.QMessageBox.Yes | QtGui.QMessageBox.No,
             QtGui.QMessageBox.No,
         )
 
         if reply == QtGui.QMessageBox.Yes:
-            self.machine.spindles.pop(index)
-            self.update_spindles()
-            self._update_spindle_button_state()
+            self.machine.toolheads.pop(index)
+            self.update_toolheads()
+            self._update_toolhead_button_state()
 
-    def _update_spindle_button_state(self):
-        """Enable/disable the add spindle button based on count."""
+    def _update_toolhead_button_state(self):
+        """Enable/disable the add toolhead button based on count."""
         if self.machine:
-            self.add_spindle_button.setEnabled(len(self.machine.spindles) < 9)
+            toolhead_count = len(self.machine.toolheads)
+            should_enable = toolhead_count < 9
+            self.add_toolhead_button.setEnabled(should_enable)
+            Path.Log.debug(f"Toolhead button state: count={toolhead_count}, enabled={should_enable}")
+        else:
+            self.add_toolhead_button.setEnabled(True)
+            Path.Log.debug("Toolhead button state: no machine, enabled=True")
 
     def _on_manufacturer_changed(self, text):
         """Update manufacturer when text changes."""
@@ -760,7 +858,7 @@ class MachineEditorDialog(QtGui.QDialog):
                 if axis_name in old_linear_axes:
                     self.machine.linear_axes[axis_name] = old_linear_axes[axis_name]
                 else:
-                    # Create with defaults
+                    # Create with enhanced multi-axis support
                     self.machine.linear_axes[axis_name] = LinearAxis(
                         name=axis_name,
                         direction_vector=(
@@ -775,6 +873,10 @@ class MachineEditorDialog(QtGui.QDialog):
                         min_limit=0,
                         max_limit=1000,
                         max_velocity=10000,
+                        sequence=0,
+                        role=AxisRole.TABLE_LINEAR,  # Default role
+                        parent=None,  # Default no parent
+                        joint_origin=[0, 0, 0],  # Default origin
                     )
 
             # Clear and rebuild rotary axes
@@ -798,6 +900,11 @@ class MachineEditorDialog(QtGui.QDialog):
                         max_velocity=36000,
                         sequence=0,
                         prefer_positive=True,
+                        role=AxisRole.TABLE_ROTARY,  # Default role
+                        parent=None,  # Default no parent
+                        joint_origin=[0, 0, 0],  # Default origin
+                        solution_preference="shortest",  # Default solution
+                        allow_flip=True,  # Default allow flip
                     )
 
             self.update_axes()
@@ -806,7 +913,7 @@ class MachineEditorDialog(QtGui.QDialog):
         """Set up the machine configuration tab with form fields.
 
         Creates input fields for machine name, manufacturer, description,
-        units, type, spindle count, axes configuration, and spindles.
+        units, type, toolhead count, axes configuration, and toolheads.
         Connects change handlers for dynamic updates.
         """
         layout = QtGui.QFormLayout(self.machine_tab)
@@ -866,19 +973,98 @@ class MachineEditorDialog(QtGui.QDialog):
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         layout.addRow(translate("CAM_MachineEditor", "Type"), self.type_combo)
 
+        # Kinematics group
+        self.kinematics_group = QtGui.QGroupBox(translate("CAM_MachineEditor", "Kinematics"))
+        kinematics_layout = QtGui.QFormLayout(self.kinematics_group)
+        
+        # Base frame section
+        base_frame_group = QtGui.QGroupBox(translate("CAM_MachineEditor", "Base Frame"))
+        base_frame_group.setCheckable(True)
+        base_frame_group.setChecked(True)  # Ensure it's expanded by default
+        base_frame_layout = QtGui.QGridLayout(base_frame_group)
+        
+        # Origin fields
+        base_frame_layout.addWidget(QtGui.QLabel("X:"), 0, 0)
+        self.origin_x_spin = QtGui.QDoubleSpinBox()
+        self.origin_x_spin.setRange(-9999, 9999)
+        self.origin_x_spin.setDecimals(3)
+        self.origin_x_spin.valueChanged.connect(lambda v: self._on_kinematics_field_changed("origin_x", v))
+        base_frame_layout.addWidget(self.origin_x_spin, 0, 1)
+        
+        base_frame_layout.addWidget(QtGui.QLabel("Y:"), 0, 2)
+        self.origin_y_spin = QtGui.QDoubleSpinBox()
+        self.origin_y_spin.setRange(-9999, 9999)
+        self.origin_y_spin.setDecimals(3)
+        self.origin_y_spin.valueChanged.connect(lambda v: self._on_kinematics_field_changed("origin_y", v))
+        base_frame_layout.addWidget(self.origin_y_spin, 0, 3)
+        
+        base_frame_layout.addWidget(QtGui.QLabel("Z:"), 0, 4)
+        self.origin_z_spin = QtGui.QDoubleSpinBox()
+        self.origin_z_spin.setRange(-9999, 9999)
+        self.origin_z_spin.setDecimals(3)
+        self.origin_z_spin.valueChanged.connect(lambda v: self._on_kinematics_field_changed("origin_z", v))
+        base_frame_layout.addWidget(self.origin_z_spin, 0, 5)
+        
+        # Quaternion fields
+        base_frame_layout.addWidget(QtGui.QLabel("W:"), 1, 0)
+        self.quat_w_spin = QtGui.QDoubleSpinBox()
+        self.quat_w_spin.setRange(-1, 1)
+        self.quat_w_spin.setDecimals(3)
+        self.quat_w_spin.valueChanged.connect(lambda v: self._on_kinematics_field_changed("quat_w", v))
+        base_frame_layout.addWidget(self.quat_w_spin, 1, 1)
+        
+        base_frame_layout.addWidget(QtGui.QLabel("X:"), 1, 2)
+        self.quat_x_spin = QtGui.QDoubleSpinBox()
+        self.quat_x_spin.setRange(-1, 1)
+        self.quat_x_spin.setDecimals(3)
+        self.quat_x_spin.valueChanged.connect(lambda v: self._on_kinematics_field_changed("quat_x", v))
+        base_frame_layout.addWidget(self.quat_x_spin, 1, 3)
+        
+        base_frame_layout.addWidget(QtGui.QLabel("Y:"), 1, 4)
+        self.quat_y_spin = QtGui.QDoubleSpinBox()
+        self.quat_y_spin.setRange(-1, 1)
+        self.quat_y_spin.setDecimals(3)
+        self.quat_y_spin.valueChanged.connect(lambda v: self._on_kinematics_field_changed("quat_y", v))
+        base_frame_layout.addWidget(self.quat_y_spin, 1, 5)
+        
+        base_frame_layout.addWidget(QtGui.QLabel("Z:"), 1, 6)
+        self.quat_z_spin = QtGui.QDoubleSpinBox()
+        self.quat_z_spin.setRange(-1, 1)
+        self.quat_z_spin.setDecimals(3)
+        self.quat_z_spin.valueChanged.connect(lambda v: self._on_kinematics_field_changed("quat_z", v))
+        base_frame_layout.addWidget(self.quat_z_spin, 1, 7)
+        
+        kinematics_layout.addRow(base_frame_group)
+        
+        # TCP/DWO support
+        self.tcp_supported_check = QtGui.QCheckBox()
+        self.tcp_supported_check.toggled.connect(lambda v: self._on_kinematics_field_changed("tcp_supported", v))
+        kinematics_layout.addRow(translate("CAM_MachineEditor", "TCP Supported"), self.tcp_supported_check)
+        
+        self.dwo_supported_check = QtGui.QCheckBox()
+        self.dwo_supported_check.toggled.connect(lambda v: self._on_kinematics_field_changed("dwo_supported", v))
+        kinematics_layout.addRow(translate("CAM_MachineEditor", "DWO Supported"), self.dwo_supported_check)
+        
+        # Notes
+        self.kinematics_notes_edit = QtGui.QLineEdit()
+        self.kinematics_notes_edit.textChanged.connect(lambda: self._on_kinematics_field_changed("notes", self.kinematics_notes_edit.text()))
+        kinematics_layout.addRow(translate("CAM_MachineEditor", "Notes"), self.kinematics_notes_edit)
+        
+        layout.addRow(self.kinematics_group)
+
         # Axes group
         self.axes_group = QtGui.QGroupBox(translate("CAM_MachineEditor", "Axes"))
         self.axes_layout = QtGui.QVBoxLayout(self.axes_group)
         self.axes_group.setVisible(False)  # Initially hidden, shown when axes are configured
         layout.addRow(self.axes_group)
 
-        # Spindles group
-        self.spindles_group = QtGui.QGroupBox(translate("CAM_MachineEditor", "Spindles"))
-        spindles_layout = QtGui.QVBoxLayout(self.spindles_group)
+        # Toolheads group
+        self.toolheads_group = QtGui.QGroupBox(translate("CAM_MachineEditor", "Toolheads"))
+        toolheads_layout = QtGui.QVBoxLayout(self.toolheads_group)
 
-        self.spindles_tabs = QtGui.QTabWidget()
-        self.spindles_tabs.setTabsClosable(True)
-        self.spindles_tabs.tabCloseRequested.connect(self._remove_spindle)
+        self.toolheads_tabs = QtGui.QTabWidget()
+        self.toolheads_tabs.setTabsClosable(True)
+        self.toolheads_tabs.tabCloseRequested.connect(self._remove_toolhead)
 
         # Add + button to the tab bar corner, vertically centered
         corner_container = QtGui.QWidget()
@@ -886,22 +1072,25 @@ class MachineEditorDialog(QtGui.QDialog):
         corner_container_layout.setContentsMargins(0, 0, 0, 0)
         corner_container_layout.setSpacing(0)
         corner_container_layout.addStretch()
-        self.add_spindle_button = QtGui.QPushButton("+")
-        self.add_spindle_button.setToolTip(translate("CAM_MachineEditor", "Add Spindle"))
-        self.add_spindle_button.clicked.connect(self._add_spindle)
-        self.add_spindle_button.setSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Fixed)
-        corner_container_layout.addWidget(self.add_spindle_button, 0, QtCore.Qt.AlignCenter)
+        self.add_toolhead_button = QtGui.QPushButton("+")
+        self.add_toolhead_button.setToolTip(translate("CAM_MachineEditor", "Add Toolhead"))
+        self.add_toolhead_button.clicked.connect(self._add_toolhead)
+        self.add_toolhead_button.setSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Fixed)
+        # Ensure button is initially enabled
+        self.add_toolhead_button.setEnabled(True)
+        corner_container_layout.addWidget(self.add_toolhead_button, 0, QtCore.Qt.AlignCenter)
         corner_container_layout.addStretch()
-        self.spindles_tabs.setCornerWidget(corner_container, QtCore.Qt.TopRightCorner)
+        self.toolheads_tabs.setCornerWidget(corner_container, QtCore.Qt.TopRightCorner)
 
-        spindles_layout.addWidget(self.spindles_tabs)
-        layout.addRow(self.spindles_group)
+        toolheads_layout.addWidget(self.toolheads_tabs)
+        layout.addRow(self.toolheads_group)
 
     def update_axes(self):
         """Update the axes configuration UI based on machine type and units.
 
         Dynamically creates input fields for all axes based on the selected
-        machine type. Uses flattened structure with type property.
+        machine type. Supports enhanced multi-axis configuration with roles,
+        parent relationships, and joint configuration.
         """
         # Get current units for suffixes and conversion
         units = self.units_combo.itemData(self.units_combo.currentIndex())
@@ -932,15 +1121,22 @@ class MachineEditorDialog(QtGui.QDialog):
             return
         config = self.MACHINE_TYPES[type_key]
 
-        # Create axes group
-        all_axes = config.get("linear", []) + config.get("rotary", [])
-        if not all_axes:
-            self.axes_group.setVisible(False)
-            return
-
-        # Get axes directly from machine object
+        # Check if machine has axes (from loaded machine or from type config)
         linear_axes = list(self.machine.linear_axes.keys()) if self.machine else []
         rotary_axes = list(self.machine.rotary_axes.keys()) if self.machine else []
+        all_axis_names = linear_axes + rotary_axes
+        
+        # If no axes in machine, try to get from type config
+        if not all_axis_names:
+            config_axes = config.get("linear", []) + config.get("rotary", [])
+            if not config_axes:
+                self.axes_group.setVisible(False)
+                return
+            # Use config axes for new machines
+            all_axis_names = config_axes
+        
+        # Show axes group since we have axes
+        self.axes_group.setVisible(True)
 
         # Linear axes
         if linear_axes:
@@ -949,6 +1145,62 @@ class MachineEditorDialog(QtGui.QDialog):
 
             for axis in linear_axes:
                 axis_obj = self.machine.linear_axes[axis]
+                
+                # Create grid layout for this axis
+                axis_grid = QtGui.QGridLayout()
+                
+                # Role dropdown
+                role_combo = QtGui.QComboBox()
+                for role in AxisRole:
+                    if role in [AxisRole.TABLE_LINEAR, AxisRole.HEAD_LINEAR]:
+                        role_combo.addItem(role.value.replace("_", " ").title(), role)
+                current_role_index = role_combo.findData(axis_obj.role)
+                if current_role_index >= 0:
+                    role_combo.setCurrentIndex(current_role_index)
+                role_combo.currentIndexChanged.connect(
+                    lambda idx, ax=axis, combo=role_combo: self._on_axis_role_changed(ax, combo, "linear")
+                )
+                
+                # Parent dropdown
+                parent_combo = QtGui.QComboBox()
+                parent_combo.addItem("None", None)
+                for other_axis in all_axis_names:
+                    if other_axis != axis:
+                        parent_combo.addItem(other_axis, other_axis)
+                if axis_obj.parent:
+                    parent_index = parent_combo.findData(axis_obj.parent)
+                    if parent_index >= 0:
+                        parent_combo.setCurrentIndex(parent_index)
+                parent_combo.currentIndexChanged.connect(
+                    lambda idx, ax=axis, combo=parent_combo: self._on_axis_parent_changed(ax, combo, "linear")
+                )
+                
+                # Sequence
+                sequence_spin = QtGui.QSpinBox()
+                sequence_spin.setRange(0, 10)
+                sequence_spin.setValue(axis_obj.sequence)
+                sequence_spin.valueChanged.connect(
+                    lambda value, ax=axis: self._on_axis_sequence_changed(ax, value, "linear")
+                )
+                
+                # Direction vector combo
+                direction_combo = QtGui.QComboBox()
+                for label, vector in self.ROTATIONAL_AXIS_OPTIONS:
+                    direction_combo.addItem(label, vector)
+                direction_vec = [
+                    axis_obj.direction_vector.x,
+                    axis_obj.direction_vector.y,
+                    axis_obj.direction_vector.z,
+                ]
+                for i, (label, vector) in enumerate(self.ROTATIONAL_AXIS_OPTIONS):
+                    if vector == direction_vec:
+                        direction_combo.setCurrentIndex(i)
+                        break
+                direction_combo.currentIndexChanged.connect(
+                    lambda idx, ax=axis, combo=direction_combo: self._on_linear_direction_changed(ax, combo)
+                )
+                
+                # Limits and velocity
                 converted_min = (
                     axis_obj.min_limit if units == "metric" else axis_obj.min_limit / 25.4
                 )
@@ -981,20 +1233,67 @@ class MachineEditorDialog(QtGui.QDialog):
                         edit, suffix, ax, fld
                     )
                 )
-
-                axis_layout = QtGui.QHBoxLayout()
-                axis_layout.addWidget(QtGui.QLabel("Min"))
-                axis_layout.addWidget(min_edit)
-                axis_layout.addWidget(QtGui.QLabel("Max"))
-                axis_layout.addWidget(max_edit)
-                axis_layout.addWidget(QtGui.QLabel("Max Vel"))
-                axis_layout.addWidget(vel_edit)
-
-                linear_layout.addRow(f"{axis}", axis_layout)
+                
+                # Joint origin
+                origin_x_spin = QtGui.QDoubleSpinBox()
+                origin_x_spin.setRange(-9999, 9999)
+                origin_x_spin.setDecimals(3)
+                origin_x_spin.setValue(axis_obj.joint_origin[0])
+                
+                origin_y_spin = QtGui.QDoubleSpinBox()
+                origin_y_spin.setRange(-9999, 9999)
+                origin_y_spin.setDecimals(3)
+                origin_y_spin.setValue(axis_obj.joint_origin[1])
+                
+                origin_z_spin = QtGui.QDoubleSpinBox()
+                origin_z_spin.setRange(-9999, 9999)
+                origin_z_spin.setDecimals(3)
+                origin_z_spin.setValue(axis_obj.joint_origin[2])
+                
+                def update_joint_origin(ax, x_val, y_val, z_val):
+                    self._on_joint_origin_changed(ax, [x_val, y_val, z_val], "linear")
+                
+                origin_x_spin.valueChanged.connect(lambda v, ax=axis: update_joint_origin(ax, v, origin_y_spin.value(), origin_z_spin.value()))
+                origin_y_spin.valueChanged.connect(lambda v, ax=axis: update_joint_origin(ax, origin_x_spin.value(), v, origin_z_spin.value()))
+                origin_z_spin.valueChanged.connect(lambda v, ax=axis: update_joint_origin(ax, origin_x_spin.value(), origin_y_spin.value(), v))
+                
+                # Layout the grid
+                axis_grid.addWidget(QtGui.QLabel("Role:"), 0, 0, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(role_combo, 0, 1)
+                axis_grid.addWidget(QtGui.QLabel("Parent:"), 0, 2, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(parent_combo, 0, 3)
+                axis_grid.addWidget(QtGui.QLabel("Seq:"), 0, 4, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(sequence_spin, 0, 5)
+                axis_grid.addWidget(QtGui.QLabel("Dir:"), 0, 6, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(direction_combo, 0, 7)
+                
+                axis_grid.addWidget(QtGui.QLabel("Min:"), 1, 0, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(min_edit, 1, 1)
+                axis_grid.addWidget(QtGui.QLabel("Max:"), 1, 2, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(max_edit, 1, 3)
+                axis_grid.addWidget(QtGui.QLabel("Vel:"), 1, 4, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(vel_edit, 1, 5)
+                
+                axis_grid.addWidget(QtGui.QLabel("Origin:"), 2, 0, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(origin_x_spin, 2, 1)
+                axis_grid.addWidget(origin_y_spin, 2, 2)
+                axis_grid.addWidget(origin_z_spin, 2, 3)
+                
+                axis_label = QtGui.QLabel(f"{axis}")
+                axis_label.setMinimumWidth(30)
+                linear_layout.addRow(axis_label, axis_grid)
+                
                 self.axis_edits[axis] = {
+                    "role": role_combo,
+                    "parent": parent_combo,
+                    "sequence": sequence_spin,
+                    "direction": direction_combo,
                     "min": min_edit,
                     "max": max_edit,
                     "max_velocity": vel_edit,
+                    "origin_x": origin_x_spin,
+                    "origin_y": origin_y_spin,
+                    "origin_z": origin_z_spin,
                     "type": "linear",
                 }
             self.axes_layout.addWidget(linear_group)
@@ -1006,7 +1305,45 @@ class MachineEditorDialog(QtGui.QDialog):
 
             for axis in rotary_axes:
                 axis_obj = self.machine.rotary_axes[axis]
-
+                
+                # Create grid layout for this axis
+                axis_grid = QtGui.QGridLayout()
+                
+                # Role dropdown
+                role_combo = QtGui.QComboBox()
+                for role in AxisRole:
+                    if role in [AxisRole.TABLE_ROTARY, AxisRole.HEAD_ROTARY]:
+                        role_combo.addItem(role.value.replace("_", " ").title(), role)
+                current_role_index = role_combo.findData(axis_obj.role)
+                if current_role_index >= 0:
+                    role_combo.setCurrentIndex(current_role_index)
+                role_combo.currentIndexChanged.connect(
+                    lambda idx, ax=axis, combo=role_combo: self._on_axis_role_changed(ax, combo, "rotary")
+                )
+                
+                # Parent dropdown
+                parent_combo = QtGui.QComboBox()
+                parent_combo.addItem("None", None)
+                for other_axis in all_axis_names:
+                    if other_axis != axis:
+                        parent_combo.addItem(other_axis, other_axis)
+                if axis_obj.parent:
+                    parent_index = parent_combo.findData(axis_obj.parent)
+                    if parent_index >= 0:
+                        parent_combo.setCurrentIndex(parent_index)
+                parent_combo.currentIndexChanged.connect(
+                    lambda idx, ax=axis, combo=parent_combo: self._on_axis_parent_changed(ax, combo, "rotary")
+                )
+                
+                # Sequence
+                sequence_spin = QtGui.QSpinBox()
+                sequence_spin.setRange(0, 10)
+                sequence_spin.setValue(axis_obj.sequence)
+                sequence_spin.valueChanged.connect(
+                    lambda value, ax=axis: self._on_axis_sequence_changed(ax, value, "rotary")
+                )
+                
+                # Limits and velocity
                 min_edit = QtGui.QLineEdit()
                 min_edit.setText(f"{axis_obj.min_limit:.2f}{angle_suffix}")
                 min_edit.editingFinished.connect(
@@ -1030,166 +1367,248 @@ class MachineEditorDialog(QtGui.QDialog):
                         edit, suffix, ax, fld
                     )
                 )
-
-                # Sequence number for rotary axes
-                sequence_spin = QtGui.QSpinBox()
-                sequence_spin.setRange(0, 10)
-                sequence_spin.setValue(axis_obj.sequence)
-                sequence_spin.valueChanged.connect(
-                    lambda value, ax=axis: self._on_rotary_sequence_changed(ax, value)
-                )
-
-                # Joint (rotation axis) combo
+                
+                # Joint axis combo
                 joint_combo = QtGui.QComboBox()
                 for label, vector in self.ROTATIONAL_AXIS_OPTIONS:
                     joint_combo.addItem(label, vector)
-                # Get rotation vector from axis object
                 rotation_vec = [
                     axis_obj.rotation_vector.x,
                     axis_obj.rotation_vector.y,
                     axis_obj.rotation_vector.z,
                 ]
-                # Find matching option and set it
                 for i, (label, vector) in enumerate(self.ROTATIONAL_AXIS_OPTIONS):
                     if vector == rotation_vec:
                         joint_combo.setCurrentIndex(i)
                         break
                 joint_combo.currentIndexChanged.connect(
-                    lambda index, ax=axis, combo=joint_combo: self._on_rotary_joint_changed(
-                        ax, combo
-                    )
+                    lambda index, ax=axis, combo=joint_combo: self._on_rotary_joint_changed(ax, combo)
                 )
-
-                prefer_positive = QtGui.QCheckBox()
-                prefer_positive.setChecked(axis_obj.prefer_positive)
-                prefer_positive.stateChanged.connect(
+                
+                # Joint origin
+                origin_x_spin = QtGui.QDoubleSpinBox()
+                origin_x_spin.setRange(-9999, 9999)
+                origin_x_spin.setDecimals(3)
+                origin_x_spin.setValue(axis_obj.joint_origin[0])
+                
+                origin_y_spin = QtGui.QDoubleSpinBox()
+                origin_y_spin.setRange(-9999, 9999)
+                origin_y_spin.setDecimals(3)
+                origin_y_spin.setValue(axis_obj.joint_origin[1])
+                
+                origin_z_spin = QtGui.QDoubleSpinBox()
+                origin_z_spin.setRange(-9999, 9999)
+                origin_z_spin.setDecimals(3)
+                origin_z_spin.setValue(axis_obj.joint_origin[2])
+                
+                def update_rotary_origin(ax, x_val, y_val, z_val):
+                    self._on_joint_origin_changed(ax, [x_val, y_val, z_val], "rotary")
+                
+                origin_x_spin.valueChanged.connect(lambda v, ax=axis: update_rotary_origin(ax, v, origin_y_spin.value(), origin_z_spin.value()))
+                origin_y_spin.valueChanged.connect(lambda v, ax=axis: update_rotary_origin(ax, origin_x_spin.value(), v, origin_z_spin.value()))
+                origin_z_spin.valueChanged.connect(lambda v, ax=axis: update_rotary_origin(ax, origin_x_spin.value(), origin_y_spin.value(), v))
+                
+                # Solution preference
+                solution_combo = QtGui.QComboBox()
+                solution_combo.addItem("Shortest", "shortest")
+                solution_combo.addItem("Positive", "positive")
+                solution_combo.addItem("Negative", "negative")
+                current_solution_index = solution_combo.findData(axis_obj.solution_preference)
+                if current_solution_index >= 0:
+                    solution_combo.setCurrentIndex(current_solution_index)
+                solution_combo.currentIndexChanged.connect(
+                    lambda idx, ax=axis, combo=solution_combo: self._on_solution_preference_changed(ax, combo)
+                )
+                
+                # Allow flip checkbox
+                allow_flip_check = QtGui.QCheckBox()
+                allow_flip_check.setChecked(axis_obj.allow_flip)
+                allow_flip_check.toggled.connect(
+                    lambda checked, ax=axis: self._on_allow_flip_changed(ax, checked)
+                )
+                
+                # Legacy prefer_positive checkbox
+                prefer_positive_check = QtGui.QCheckBox()
+                prefer_positive_check.setChecked(axis_obj.prefer_positive)
+                prefer_positive_check.stateChanged.connect(
                     lambda state, ax=axis: self._on_rotary_prefer_positive_changed(
                         ax, state == QtCore.Qt.Checked
                     )
                 )
-
-                # Grid layout
-                axis_grid = QtGui.QGridLayout()
-
-                # Row 0: Min, Max, Vel
-                axis_grid.addWidget(QtGui.QLabel("Min"), 0, 0, QtCore.Qt.AlignRight)
-                axis_grid.addWidget(min_edit, 0, 1)
-                axis_grid.addWidget(QtGui.QLabel("Max"), 0, 2, QtCore.Qt.AlignRight)
-                axis_grid.addWidget(max_edit, 0, 3)
-                axis_grid.addWidget(QtGui.QLabel("Max Vel"), 0, 4, QtCore.Qt.AlignRight)
-                axis_grid.addWidget(vel_edit, 0, 5)
-
-                # Row 1: Sequence, Joint, Prefer+
-                axis_grid.addWidget(QtGui.QLabel("Sequence"), 1, 0, QtCore.Qt.AlignRight)
-                axis_grid.addWidget(sequence_spin, 1, 1)
-                axis_grid.addWidget(QtGui.QLabel("Joint"), 1, 2, QtCore.Qt.AlignRight)
-                axis_grid.addWidget(joint_combo, 1, 3)
-                axis_grid.addWidget(QtGui.QLabel("Prefer+"), 1, 4, QtCore.Qt.AlignRight)
-                axis_grid.addWidget(prefer_positive, 1, 5)
-
+                
+                # Layout the grid
+                axis_grid.addWidget(QtGui.QLabel("Role:"), 0, 0, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(role_combo, 0, 1)
+                axis_grid.addWidget(QtGui.QLabel("Parent:"), 0, 2, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(parent_combo, 0, 3)
+                axis_grid.addWidget(QtGui.QLabel("Seq:"), 0, 4, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(sequence_spin, 0, 5)
+                
+                axis_grid.addWidget(QtGui.QLabel("Min:"), 1, 0, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(min_edit, 1, 1)
+                axis_grid.addWidget(QtGui.QLabel("Max:"), 1, 2, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(max_edit, 1, 3)
+                axis_grid.addWidget(QtGui.QLabel("Vel:"), 1, 4, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(vel_edit, 1, 5)
+                
+                axis_grid.addWidget(QtGui.QLabel("Joint:"), 2, 0, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(joint_combo, 2, 1)
+                axis_grid.addWidget(QtGui.QLabel("Origin:"), 2, 2, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(origin_x_spin, 2, 3)
+                axis_grid.addWidget(origin_y_spin, 2, 4)
+                axis_grid.addWidget(origin_z_spin, 2, 5)
+                
+                axis_grid.addWidget(QtGui.QLabel("Solution:"), 3, 0, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(solution_combo, 3, 1)
+                axis_grid.addWidget(QtGui.QLabel("Flip:"), 3, 2, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(allow_flip_check, 3, 3)
+                axis_grid.addWidget(QtGui.QLabel("Prefer+:"), 3, 4, QtCore.Qt.AlignRight)
+                axis_grid.addWidget(prefer_positive_check, 3, 5)
+                
                 axis_label = QtGui.QLabel(f"{axis}")
-                axis_label.setMinimumWidth(30)  # Prevent layout shift when axis names change
+                axis_label.setMinimumWidth(30)
                 rotary_layout.addRow(axis_label, axis_grid)
-
+                
                 self.axis_edits[axis] = {
+                    "role": role_combo,
+                    "parent": parent_combo,
+                    "sequence": sequence_spin,
                     "min": min_edit,
                     "max": max_edit,
                     "max_velocity": vel_edit,
-                    "sequence": sequence_spin,
                     "joint": joint_combo,
-                    "prefer_positive": prefer_positive,
-                    "type": "angular",
+                    "origin_x": origin_x_spin,
+                    "origin_y": origin_y_spin,
+                    "origin_z": origin_z_spin,
+                    "solution": solution_combo,
+                    "allow_flip": allow_flip_check,
+                    "prefer_positive": prefer_positive_check,
+                    "type": "rotary",
                 }
             self.axes_layout.addWidget(rotary_group)
 
         # Show axes group if any axes configured
         self.axes_group.setVisible(bool(linear_axes or rotary_axes))
 
-    def update_spindles(self):
-        """Update the spindle configuration UI based on spindle count.
+    def update_toolheads(self):
+        """Update the toolhead configuration UI based on toolhead count.
 
-        Dynamically creates tabbed interface for multiple spindles with
+        Dynamically creates tabbed interface for multiple toolheads with
         input fields for type, name, ID, power, speed, and type-specific parameters.
-        Updates Machine.spindles directly.
+        Updates Machine.toolheads directly.
         """
-        # Clear existing spindle tabs - this properly disconnects signals
-        while self.spindles_tabs.count() > 0:
-            tab = self.spindles_tabs.widget(0)
+        initial_count = len(self.machine.toolheads) if self.machine else 0
+        Path.Log.debug(f"update_toolheads() called with {initial_count} existing toolheads")
+        
+        # Clear existing toolhead tabs - this properly disconnects signals
+        while self.toolheads_tabs.count() > 0:
+            tab = self.toolheads_tabs.widget(0)
             if tab:
                 tab.blockSignals(True)
                 tab.deleteLater()
-            self.spindles_tabs.removeTab(0)
+            self.toolheads_tabs.removeTab(0)
 
-        self.spindle_edits = []
-        count = len(self.machine.spindles) if self.machine else 1
-
-        # Ensure machine has at least 1 spindle
+        self.toolhead_edits = []
+        count = len(self.machine.toolheads) if self.machine else 1
+        Path.Log.debug(f"Target toolhead count: {count}")
+        
+        # Ensure machine has at least 1 toolhead
         if self.machine:
-            while len(self.machine.spindles) < count:
-                self.machine.spindles.append(
-                    Spindle(
-                        name=f"Spindle {len(self.machine.spindles) + 1}",
-                        spindle_type=SpindleType.ROTARY,
-                        id=f"spindle{len(self.machine.spindles) + 1}",
+            # Always ensure at least 1 toolhead, even if current count is 0
+            target_count = max(count, 1)
+            Path.Log.debug(f"Target count after max(count, 1): {target_count}")
+            while len(self.machine.toolheads) < target_count:
+                Path.Log.debug(f"Adding toolhead, current count: {len(self.machine.toolheads)}")
+                self.machine.toolheads.append(
+                    Toolhead(
+                        name=f"Toolhead {len(self.machine.toolheads) + 1}",
+                        toolhead_type=ToolheadType.ROTARY,
+                        id=f"toolhead{len(self.machine.toolheads) + 1}",
                         max_power_kw=3.0,
                         max_rpm=24000,
                         min_rpm=6000,
                         tool_change="manual",
                     )
                 )
-            while len(self.machine.spindles) > count:
-                self.machine.spindles.pop()
+            while len(self.machine.toolheads) > count:
+                self.machine.toolheads.pop()
+            
+            Path.Log.debug(f"After toolhead adjustment, count: {len(self.machine.toolheads)}")
 
-        for i in range(count):
+        for i in range(max(count, 1)):
             tab = QtGui.QWidget()
             layout = QtGui.QFormLayout(tab)
 
-            # Get spindle object or use defaults
-            spindle = (
-                self.machine.spindles[i]
-                if self.machine and i < len(self.machine.spindles)
+            # Get toolhead object or use defaults
+            toolhead = (
+                self.machine.toolheads[i]
+                if self.machine and i < len(self.machine.toolheads)
                 else None
             )
 
-            # Spindle type selection
+            # Toolhead type selection
             type_combo = QtGui.QComboBox()
-            for spindle_type in SpindleType:
-                type_combo.addItem(spindle_type.value.title(), spindle_type)
+            for toolhead_type in ToolheadType:
+                type_combo.addItem(toolhead_type.value.title(), toolhead_type)
             
-            if spindle:
-                index = type_combo.findData(spindle.spindle_type)
+            if toolhead:
+                index = type_combo.findData(toolhead.toolhead_type)
                 if index >= 0:
                     type_combo.setCurrentIndex(index)
             
             type_combo.currentIndexChanged.connect(
-                lambda idx, spindle_idx=i, combo=type_combo: self._on_spindle_field_changed(
-                    spindle_idx, "spindle_type", combo.itemData(combo.currentIndex())
+                lambda idx, toolhead_idx=i, combo=type_combo: self._on_toolhead_field_changed(
+                    toolhead_idx, "toolhead_type", combo.itemData(combo.currentIndex())
                 )
             )
             layout.addRow("Type", type_combo)
 
             # Name field
             name_edit = QtGui.QLineEdit()
-            name_edit.setText(spindle.name if spindle else f"Spindle {i+1}")
+            name_edit.setText(toolhead.name if toolhead else f"Toolhead {i+1}")
             name_edit.textChanged.connect(
-                lambda text, idx=i: self._on_spindle_field_changed(idx, "name", text)
+                lambda text, idx=i: self._on_toolhead_field_changed(idx, "name", text)
             )
             layout.addRow("Name", name_edit)
 
             # ID field
             id_edit = QtGui.QLineEdit()
-            id_edit.setText(spindle.id if spindle and spindle.id else f"spindle{i+1}")
+            id_edit.setText(toolhead.id if toolhead and toolhead.id else f"toolhead{i+1}")
             id_edit.textChanged.connect(
-                lambda text, idx=i: self._on_spindle_field_changed(idx, "id", text)
+                lambda text, idx=i: self._on_toolhead_field_changed(idx, "id", text)
             )
             layout.addRow("ID", id_edit)
+
+            # Tool change method
+            tool_change_combo = QtGui.QComboBox()
+            tool_change_options = [
+                ("Manual", "manual"),
+                ("Automatic", "automatic"),
+                ("Probe", "probe"),
+                ("Fixed", "fixed"),
+                ("None", "none")
+            ]
+            for label, value in tool_change_options:
+                tool_change_combo.addItem(label, value)
+            
+            if toolhead and toolhead.tool_change:
+                index = tool_change_combo.findData(toolhead.tool_change)
+                if index >= 0:
+                    tool_change_combo.setCurrentIndex(index)
+            
+            tool_change_combo.currentIndexChanged.connect(
+                lambda idx, toolhead_idx=i, combo=tool_change_combo: self._on_toolhead_field_changed(
+                    toolhead_idx, "tool_change", combo.itemData(combo.currentIndex())
+                )
+            )
+            layout.addRow("Tool Change", tool_change_combo)
 
             # Power specification
             max_power_edit = QtGui.QDoubleSpinBox()
             max_power_edit.setRange(0, 100)
-            max_power_edit.setValue(spindle.max_power_kw if spindle else 3.0)
+            max_power_edit.setValue(toolhead.max_power_kw if toolhead else 3.0)
             max_power_edit.valueChanged.connect(
-                lambda value, idx=i: self._on_spindle_field_changed(idx, "max_power_kw", value)
+                lambda value, idx=i: self._on_toolhead_field_changed(idx, "max_power_kw", value)
             )
             layout.addRow("Max Power (kW)", max_power_edit)
 
@@ -1197,160 +1616,147 @@ class MachineEditorDialog(QtGui.QDialog):
             type_specific_group = QtGui.QGroupBox("Type-Specific Settings")
             type_specific_layout = QtGui.QVBoxLayout(type_specific_group)
             
-            # Rotary spindle fields (RPM)
+            # Rotary toolhead fields (RPM)
             rpm_widget = QtGui.QWidget()
             rpm_layout = QtGui.QFormLayout(rpm_widget)
             
             max_rpm_edit = QtGui.QSpinBox()
             max_rpm_edit.setRange(0, 100000)
-            max_rpm_edit.setValue(int(spindle.max_rpm) if spindle else 24000)
+            max_rpm_edit.setValue(int(toolhead.max_rpm) if toolhead else 24000)
             max_rpm_edit.valueChanged.connect(
-                lambda value, idx=i: self._on_spindle_field_changed(idx, "max_rpm", value)
+                lambda value, idx=i: self._on_toolhead_field_changed(idx, "max_rpm", value)
             )
             rpm_layout.addRow("Max RPM", max_rpm_edit)
-
+            
             min_rpm_edit = QtGui.QSpinBox()
             min_rpm_edit.setRange(0, 100000)
-            min_rpm_edit.setValue(int(spindle.min_rpm) if spindle else 6000)
+            min_rpm_edit.setValue(int(toolhead.min_rpm) if toolhead else 6000)
             min_rpm_edit.valueChanged.connect(
-                lambda value, idx=i: self._on_spindle_field_changed(idx, "min_rpm", value)
+                lambda value, idx=i: self._on_toolhead_field_changed(idx, "min_rpm", value)
             )
             rpm_layout.addRow("Min RPM", min_rpm_edit)
-
-            # Laser fields
+            
+            type_specific_layout.addWidget(rpm_widget)
+            
+            # Laser toolhead fields
             laser_widget = QtGui.QWidget()
             laser_layout = QtGui.QFormLayout(laser_widget)
             
-            laser_wavelength_edit = QtGui.QDoubleSpinBox()
-            laser_wavelength_edit.setRange(200, 2000)  # Common laser wavelength range
-            laser_wavelength_edit.setDecimals(1)
-            laser_wavelength_edit.setValue(spindle.laser_wavelength if spindle and spindle.laser_wavelength is not None else 1064.0)
-            laser_wavelength_edit.valueChanged.connect(
-                lambda value, idx=i: self._on_spindle_field_changed(idx, "laser_wavelength", value)
+            wavelength_edit = QtGui.QDoubleSpinBox()
+            wavelength_edit.setRange(200, 2000)
+            wavelength_edit.setDecimals(1)
+            wavelength_edit.setValue(toolhead.laser_wavelength if toolhead and toolhead.laser_wavelength is not None else 1064.0)
+            wavelength_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_toolhead_field_changed(idx, "laser_wavelength", value)
             )
-            laser_layout.addRow("Wavelength (nm)", laser_wavelength_edit)
-
-            # Waterjet fields
+            laser_layout.addRow("Wavelength (nm)", wavelength_edit)
+            
+            type_specific_layout.addWidget(laser_widget)
+            
+            # Waterjet toolhead fields
             waterjet_widget = QtGui.QWidget()
             waterjet_layout = QtGui.QFormLayout(waterjet_widget)
             
-            waterjet_pressure_edit = QtGui.QDoubleSpinBox()
-            waterjet_pressure_edit.setRange(1000, 10000)  # Common pressure range
-            waterjet_pressure_edit.setValue(spindle.waterjet_pressure if spindle and spindle.waterjet_pressure is not None else 4000.0)
-            waterjet_pressure_edit.valueChanged.connect(
-                lambda value, idx=i: self._on_spindle_field_changed(idx, "waterjet_pressure", value)
+            pressure_edit = QtGui.QDoubleSpinBox()
+            pressure_edit.setRange(0, 10000)
+            pressure_edit.setDecimals(0)
+            pressure_edit.setValue(toolhead.waterjet_pressure if toolhead and toolhead.waterjet_pressure is not None else 4000.0)
+            pressure_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_toolhead_field_changed(idx, "waterjet_pressure", value)
             )
-            waterjet_layout.addRow("Pressure (bar)", waterjet_pressure_edit)
-
-            # Plasma fields
+            waterjet_layout.addRow("Pressure (bar)", pressure_edit)
+            
+            type_specific_layout.addWidget(waterjet_widget)
+            
+            # Plasma toolhead fields
             plasma_widget = QtGui.QWidget()
             plasma_layout = QtGui.QFormLayout(plasma_widget)
             
-            plasma_amperage_edit = QtGui.QDoubleSpinBox()
-            plasma_amperage_edit.setRange(10, 200)  # Common amperage range
-            plasma_amperage_edit.setValue(spindle.plasma_amperage if spindle and spindle.plasma_amperage is not None else 45.0)
-            plasma_amperage_edit.valueChanged.connect(
-                lambda value, idx=i: self._on_spindle_field_changed(idx, "plasma_amperage", value)
+            amperage_edit = QtGui.QDoubleSpinBox()
+            amperage_edit.setRange(0, 500)
+            amperage_edit.setDecimals(1)
+            amperage_edit.setValue(toolhead.plasma_amperage if toolhead and toolhead.plasma_amperage is not None else 45.0)
+            amperage_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_toolhead_field_changed(idx, "plasma_amperage", value)
             )
-            plasma_layout.addRow("Amperage", plasma_amperage_edit)
-
-            # Add type-specific widgets to layout
-            type_specific_layout.addWidget(rpm_widget)
-            type_specific_layout.addWidget(laser_widget)
-            type_specific_layout.addWidget(waterjet_widget)
+            plasma_layout.addRow("Amperage", amperage_edit)
+            
             type_specific_layout.addWidget(plasma_widget)
-            layout.addRow(type_specific_group)
-
-            # Common fields
-            tool_change_combo = QtGui.QComboBox()
-            tool_change_combo.addItem("Manual", "manual")
-            tool_change_combo.addItem("ATC", "atc")
-            if spindle:
-                index = tool_change_combo.findData(spindle.tool_change)
-                if index >= 0:
-                    tool_change_combo.setCurrentIndex(index)
-            tool_change_combo.currentIndexChanged.connect(
-                lambda idx, spindle_idx=i, combo=tool_change_combo: self._on_spindle_field_changed(
-                    spindle_idx, "tool_change", combo.itemData(combo.currentIndex())
-                )
-            )
-            layout.addRow("Tool Change:", tool_change_combo)
-
-            # Timing fields
-            timing_widget = QtGui.QWidget()
-            timing_layout = QtGui.QFormLayout(timing_widget)
             
-            spindle_wait_edit = QtGui.QDoubleSpinBox()
-            spindle_wait_edit.setRange(0, 60)
-            spindle_wait_edit.setDecimals(3)
-            spindle_wait_edit.setSingleStep(0.1)
-            spindle_wait_edit.setValue(spindle.spindle_wait if spindle else 0.0)
-            spindle_wait_edit.valueChanged.connect(
-                lambda value, idx=i: self._on_spindle_field_changed(idx, "spindle_wait", value)
-            )
-            timing_layout.addRow("Spindle Wait (seconds)", spindle_wait_edit)
-            
-            coolant_delay_edit = QtGui.QDoubleSpinBox()
-            coolant_delay_edit.setRange(0, 60)
-            coolant_delay_edit.setDecimals(3)
-            coolant_delay_edit.setSingleStep(0.1)
-            coolant_delay_edit.setValue(spindle.coolant_delay if spindle else 0.0)
-            coolant_delay_edit.valueChanged.connect(
-                lambda value, idx=i: self._on_spindle_field_changed(idx, "coolant_delay", value)
-            )
-            timing_layout.addRow("Coolant Delay (seconds)", coolant_delay_edit)
-            
-            layout.addRow(timing_widget)
-
-            # Coolant fields (only for rotary spindles)
+            # Coolant fields
             coolant_widget = QtGui.QWidget()
             coolant_layout = QtGui.QFormLayout(coolant_widget)
             
             coolant_flood_check = QtGui.QCheckBox()
-            coolant_flood_check.setChecked(spindle.coolant_flood if spindle else False)
+            coolant_flood_check.setChecked(toolhead.coolant_flood if toolhead else False)
             coolant_flood_check.toggled.connect(
-                lambda checked, idx=i: self._on_spindle_field_changed(idx, "coolant_flood", checked)
+                lambda checked, idx=i: self._on_toolhead_field_changed(idx, "coolant_flood", checked)
             )
             coolant_layout.addRow("Coolant Flood", coolant_flood_check)
-
+            
             coolant_mist_check = QtGui.QCheckBox()
-            coolant_mist_check.setChecked(spindle.coolant_mist if spindle else False)
+            coolant_mist_check.setChecked(toolhead.coolant_mist if toolhead else False)
             coolant_mist_check.toggled.connect(
-                lambda checked, idx=i: self._on_spindle_field_changed(idx, "coolant_mist", checked)
+                lambda checked, idx=i: self._on_toolhead_field_changed(idx, "coolant_mist", checked)
             )
             coolant_layout.addRow("Coolant Mist", coolant_mist_check)
             
-            layout.addRow(coolant_widget)
-
-            # Store widgets for later updates
-            self.spindles_tabs.addTab(tab, f"Spindle {i+1}")
-            self.spindle_edits.append(
-                {
-                    "spindle_type": type_combo,
-                    "name": name_edit,
-                    "id": id_edit,
-                    "max_power_kw": max_power_edit,
-                    "max_rpm": max_rpm_edit,
-                    "min_rpm": min_rpm_edit,
-                    "laser_wavelength": laser_wavelength_edit,
-                    "waterjet_pressure": waterjet_pressure_edit,
-                    "plasma_amperage": plasma_amperage_edit,
-                    "tool_change": tool_change_combo,
-                    "spindle_wait": spindle_wait_edit,
-                    "coolant_delay": coolant_delay_edit,
-                    "coolant_flood": coolant_flood_check,
-                    "coolant_mist": coolant_mist_check,
-                    "rpm_widget": rpm_widget,
-                    "laser_widget": laser_widget,
-                    "waterjet_widget": waterjet_widget,
-                    "plasma_widget": plasma_widget,
-                    "coolant_widget": coolant_widget,
-                    "type_specific_group": type_specific_group,
-                }
+            coolant_delay_edit = QtGui.QDoubleSpinBox()
+            coolant_delay_edit.setRange(0, 60)
+            coolant_delay_edit.setDecimals(1)
+            coolant_delay_edit.setValue(toolhead.coolant_delay if toolhead else 0.0)
+            coolant_delay_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_toolhead_field_changed(idx, "coolant_delay", value)
             )
+            coolant_layout.addRow("Coolant Delay (s)", coolant_delay_edit)
             
-            # Update visibility based on initial spindle type
-            self._update_spindle_type_visibility(i)
+            # Wait time field
+            wait_edit = QtGui.QDoubleSpinBox()
+            wait_edit.setRange(0, 60)
+            wait_edit.setDecimals(1)
+            wait_edit.setValue(toolhead.toolhead_wait if toolhead else 0.0)
+            wait_edit.valueChanged.connect(
+                lambda value, idx=i: self._on_toolhead_field_changed(idx, "toolhead_wait", value)
+            )
+            coolant_layout.addRow("Wait Time (s)", wait_edit)
+            
+            type_specific_layout.addWidget(coolant_widget)
+            
+            layout.addWidget(type_specific_group)
+            
+            # Add tab to toolheads tabs
+            self.toolheads_tabs.addTab(tab, toolhead.name if toolhead else f"Toolhead {i+1}")
+            
+            # Store widget references for updates
+            self.toolhead_edits.append({
+                "type": type_combo,
+                "name": name_edit,
+                "id": id_edit,
+                "max_power_kw": max_power_edit,
+                "max_rpm": max_rpm_edit,
+                "min_rpm": min_rpm_edit,
+                "wavelength": wavelength_edit,
+                "pressure": pressure_edit,
+                "amperage": amperage_edit,
+                "coolant_flood": coolant_flood_check,
+                "coolant_mist": coolant_mist_check,
+                "coolant_delay": coolant_delay_edit,
+                "wait": wait_edit,
+                "rpm_widget": rpm_widget,
+                "laser_widget": laser_widget,
+                "waterjet_widget": waterjet_widget,
+                "plasma_widget": plasma_widget,
+                "coolant_widget": coolant_widget,
+                "type_specific_group": type_specific_group,
+            })
+            
+            # Update visibility based on initial toolhead type
+            self._update_toolhead_type_visibility(i)
+
+        # Update button state
+        self._update_toolhead_button_state()
+        final_count = len(self.machine.toolheads) if self.machine else 0
+        Path.Log.debug(f"update_toolheads() completed with {final_count} toolheads")
 
     def setup_output_tab(self):
         """Set up the output options configuration tab."""
@@ -1784,7 +2190,7 @@ class MachineEditorDialog(QtGui.QDialog):
         # Update top-level machine post-processing fields
         top_level_fields = [
             "use_tlo",
-            "stop_spindle_for_tool_change",
+            "stop_toolhead_for_tool_change",
             "enable_coolant",
             "enable_machine_specific_commands",
         ]
@@ -1896,6 +2302,29 @@ class MachineEditorDialog(QtGui.QDialog):
             Path.Log.warning(f"Failed to load postprocessor properties for {post_name}: {e}")
             self.post_properties_group.setVisible(False)
 
+    def populate_kinematics_fields(self):
+        """Populate kinematics fields from machine object."""
+        if not self.machine:
+            return
+        
+        # Base frame origin
+        self.origin_x_spin.setValue(self.machine.kinematics.base_frame.origin[0])
+        self.origin_y_spin.setValue(self.machine.kinematics.base_frame.origin[1])
+        self.origin_z_spin.setValue(self.machine.kinematics.base_frame.origin[2])
+        
+        # Base frame quaternion
+        self.quat_w_spin.setValue(self.machine.kinematics.base_frame.orientation_quaternion[0])
+        self.quat_x_spin.setValue(self.machine.kinematics.base_frame.orientation_quaternion[1])
+        self.quat_y_spin.setValue(self.machine.kinematics.base_frame.orientation_quaternion[2])
+        self.quat_z_spin.setValue(self.machine.kinematics.base_frame.orientation_quaternion[3])
+        
+        # TCP/DWO support
+        self.tcp_supported_check.setChecked(self.machine.kinematics.tcp_supported)
+        self.dwo_supported_check.setChecked(self.machine.kinematics.dwo_supported)
+        
+        # Notes
+        self.kinematics_notes_edit.setText(self.machine.kinematics.notes)
+
     def populate_from_machine(self, machine: Machine):
         """Populate UI fields from Machine object.
 
@@ -1906,6 +2335,9 @@ class MachineEditorDialog(QtGui.QDialog):
         self.manufacturer_edit.setText(machine.manufacturer)
         self.description_edit.setText(machine.description)
         units = machine.configuration_units
+        
+        # Populate kinematics fields
+        self.populate_kinematics_fields()
         self.units_combo.blockSignals(True)
         index = self.units_combo.findData(units)
         if index >= 0:
@@ -1935,26 +2367,11 @@ class MachineEditorDialog(QtGui.QDialog):
             self.updatePostProcessorProperties()
 
         # Get units for suffixes in populate
-        units = self.units_combo.itemData(self.units_combo.currentIndex())
-
-        # Update axes UI after loading machine data
+        self.update_toolheads()  # Update toolheads UI
+        self._update_toolhead_button_state()
+        
+        # Update axes to show joint details from loaded machine
         self.update_axes()
-
-        # Ensure at least 1 spindle
-        if len(machine.spindles) == 0:
-            machine.spindles.append(
-                Spindle(
-                    name="Spindle 1",
-                    spindle_type=SpindleType.ROTARY,
-                    id="spindle1",
-                    max_power_kw=3.0,
-                    max_rpm=24000,
-                    min_rpm=6000,
-                    tool_change="manual",
-                )
-            )
-        self.update_spindles()  # Update spindles UI
-        self._update_spindle_button_state()
 
         # Post processor configuration - populate dynamically generated widgets
         if self.enable_machine_postprocessor and hasattr(self, "post_widgets"):
@@ -1968,7 +2385,7 @@ class MachineEditorDialog(QtGui.QDialog):
             Machine object with configuration from UI
         """
         # The machine object is already up-to-date from signal handlers
-        # (both axes and spindles update in real-time)
+        # (both axes and toolheads update in real-time)
         return self.machine
 
     def to_data(self) -> Dict[str, Any]:
@@ -1977,7 +2394,7 @@ class MachineEditorDialog(QtGui.QDialog):
         Returns:
             Dict containing complete machine configuration in JSON format
         """
-        # Update machine from UI first (spindles need to be synchronized)
+        # Update machine from UI first (toolheads need to be synchronized)
         machine = self.to_machine()
 
         # Use Machine's to_dict method for serialization

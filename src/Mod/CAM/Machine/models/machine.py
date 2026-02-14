@@ -72,6 +72,15 @@ class OutputUnits(Enum):
     IMPERIAL = "imperial"
 
 
+class AxisRole(Enum):
+    """Axis role in kinematic chain."""
+    
+    TABLE_LINEAR = "table_linear"
+    TABLE_ROTARY = "table_rotary"
+    HEAD_LINEAR = "head_linear"
+    HEAD_ROTARY = "head_rotary"
+
+
 # ============================================================================
 # Post-Processor Configuration Dataclasses
 # ============================================================================
@@ -171,6 +180,24 @@ class ProcessingOptions:
 
 
 @dataclass
+class BaseFrame:
+    """Base coordinate frame definition."""
+    
+    origin: List[float] = field(default_factory=lambda: [0, 0, 0])
+    orientation_quaternion: List[float] = field(default_factory=lambda: [0, 0, 0, 1])
+
+
+@dataclass
+class Kinematics:
+    """Machine kinematics configuration."""
+    
+    base_frame: BaseFrame = field(default_factory=BaseFrame)
+    tcp_supported: bool = False
+    dwo_supported: bool = False
+    notes: str = ""
+
+
+@dataclass
 class LinearAxis:
     """Represents a single linear axis in a machine configuration"""
 
@@ -180,10 +207,17 @@ class LinearAxis:
     max_limit: float = 1000
     max_velocity: float = 10000
     sequence: int = 0
+    role: AxisRole = AxisRole.TABLE_LINEAR
+    parent: Optional[str] = None
+    joint_origin: List[float] = field(default_factory=lambda: [0, 0, 0])
 
     def __post_init__(self):
         """Normalize direction vector and validate parameters after initialization"""
-        self.direction_vector = self.direction_vector.normalize()
+        if self.direction_vector is None or self.direction_vector.Length < 1e-6:
+            # Default to X-axis if vector is null or zero-length
+            self.direction_vector = FreeCAD.Vector(1, 0, 0)
+        else:
+            self.direction_vector = self.direction_vector.normalize()
 
         # Validate limits
         if self.min_limit >= self.max_limit:
@@ -214,6 +248,9 @@ class LinearAxis:
             "max_limit": self.max_limit,
             "max_velocity": self.max_velocity,
             "sequence": self.sequence,
+            "role": self.role.value,
+            "parent": self.parent,
+            "joint_origin": self.joint_origin,
         }
 
     @classmethod
@@ -229,6 +266,9 @@ class LinearAxis:
             data.get("max_limit", 1000),
             data.get("max_velocity", 10000),
             data.get("sequence", 0),
+            AxisRole(data.get("role", "table_linear")),
+            data.get("parent"),
+            data.get("joint_origin", [0, 0, 0]),
         )
 
 
@@ -243,6 +283,11 @@ class RotaryAxis:
     max_velocity: float = 36000
     sequence: int = 0
     prefer_positive: bool = True
+    role: AxisRole = AxisRole.TABLE_ROTARY
+    parent: Optional[str] = None
+    joint_origin: List[float] = field(default_factory=lambda: [0, 0, 0])
+    solution_preference: str = "shortest"  # "shortest", "positive", "negative"
+    allow_flip: bool = True
 
     def __post_init__(self):
         """Normalize rotation vector and validate parameters after initialization"""
@@ -282,6 +327,11 @@ class RotaryAxis:
             "max_velocity": self.max_velocity,
             "sequence": self.sequence,
             "prefer_positive": self.prefer_positive,
+            "role": self.role.value,
+            "parent": self.parent,
+            "joint_origin": self.joint_origin,
+            "solution_preference": self.solution_preference,
+            "allow_flip": self.allow_flip,
         }
 
     @classmethod
@@ -298,14 +348,19 @@ class RotaryAxis:
             data.get("max_velocity", 36000),
             data.get("sequence", 0),
             data.get("prefer_positive", True),
+            AxisRole(data.get("role", "table_rotary")),
+            data.get("parent"),
+            data.get("joint_origin", [0, 0, 0]),
+            data.get("solution_preference", "shortest"),
+            data.get("allow_flip", True),
         )
 
 
 from enum import Enum
 
 
-class SpindleType(Enum):
-    """Types of spindles/tools supported by the machine."""
+class ToolheadType(Enum):
+    """Types of toolheads/tools supported by the machine."""
     ROTARY = "rotary"           # Traditional rotary spindle (router, drill, etc.)
     LASER = "laser"            # Laser cutting/engraving
     WATERJET = "waterjet"      # Waterjet cutting
@@ -314,8 +369,8 @@ class SpindleType(Enum):
 
 
 @dataclass
-class SpindleCapabilities:
-    """Defines the capabilities of a spindle based on its type."""
+class ToolheadCapabilities:
+    """Defines the capabilities of a toolhead based on its type."""
     
     # Motion capabilities
     can_rotate: bool = True
@@ -338,49 +393,49 @@ class SpindleCapabilities:
     has_auto_focus: bool = False     # For lasers
     
     @classmethod
-    def for_type(cls, spindle_type: SpindleType) -> "SpindleCapabilities":
-        """Get default capabilities for a given spindle type."""
+    def for_type(cls, toolhead_type: "ToolheadType") -> "ToolheadCapabilities":
+        """Get default capabilities for a given toolhead type."""
         capabilities = {
-            SpindleType.ROTARY: cls(
+            ToolheadType.ROTARY: cls(
                 can_rotate=True, can_move_z=True, can_move_xy=False,
                 has_power_control=True, has_speed_control=True, has_pulse_control=False,
                 uses_coolant=True, uses_assist_gas=False, uses_water=False,
                 can_turn_on_off=True, has_probing=False, has_auto_focus=False
             ),
-            SpindleType.LASER: cls(
+            ToolheadType.LASER: cls(
                 can_rotate=False, can_move_z=True, can_move_xy=False,
                 has_power_control=True, has_speed_control=False, has_pulse_control=True,
                 uses_coolant=False, uses_assist_gas=True, uses_water=False,
                 can_turn_on_off=True, has_probing=False, has_auto_focus=True
             ),
-            SpindleType.WATERJET: cls(
+            ToolheadType.WATERJET: cls(
                 can_rotate=False, can_move_z=True, can_move_xy=False,
                 has_power_control=True, has_speed_control=False, has_pulse_control=False,
                 uses_coolant=False, uses_assist_gas=False, uses_water=True,
                 can_turn_on_off=True, has_probing=False, has_auto_focus=False
             ),
-            SpindleType.PLASMA: cls(
+            ToolheadType.PLASMA: cls(
                 can_rotate=False, can_move_z=True, can_move_xy=False,
                 has_power_control=True, has_speed_control=False, has_pulse_control=False,
                 uses_coolant=False, uses_assist_gas=True, uses_water=False,
                 can_turn_on_off=True, has_probing=False, has_auto_focus=False
             ),
         }
-        return capabilities.get(spindle_type, capabilities[SpindleType.ROTARY])
+        return capabilities.get(toolhead_type, capabilities[ToolheadType.ROTARY])
 
 
 @dataclass
-class Spindle:
-    """Represents a single spindle/tool in a machine configuration"""
+class Toolhead:
+    """Represents a single toolhead in a machine configuration"""
 
     name: str
-    spindle_type: SpindleType = SpindleType.ROTARY
+    toolhead_type: ToolheadType = ToolheadType.ROTARY
     id: Optional[str] = None
     
     # Power and performance specifications
     max_power_kw: float = 0
-    max_rpm: float = 0  # Only relevant for rotary spindles
-    min_rpm: float = 0  # Only relevant for rotary spindles
+    max_rpm: float = 0  # Only relevant for rotary toolheads
+    min_rpm: float = 0  # Only relevant for rotary toolheads
     
     # Tool change and handling
     tool_change: str = "manual"
@@ -391,7 +446,7 @@ class Spindle:
     coolant_delay: float = 0.0
     
     # Timing and control
-    spindle_wait: float = 0.0  # seconds to wait after spindle start
+    toolhead_wait: float = 0.0  # seconds to wait after toolhead start
     
     # Type-specific parameters
     laser_wavelength: Optional[float] = None  # nm, for lasers
@@ -400,57 +455,78 @@ class Spindle:
     plasma_amperage: Optional[float] = None  # amps, for plasma
     
     # Capabilities (auto-generated based on type)
-    capabilities: Optional[SpindleCapabilities] = None
+    capabilities: Optional[ToolheadCapabilities] = None
 
     def __post_init__(self):
         """Set default values and capabilities"""
         if self.capabilities is None:
-            self.capabilities = SpindleCapabilities.for_type(self.spindle_type)
+            self.capabilities = ToolheadCapabilities.for_type(self.toolhead_type)
         
         # Set type-specific defaults
-        if self.spindle_type == SpindleType.LASER:
+        if self.toolhead_type == ToolheadType.LASER:
             if self.laser_wavelength is None:
                 self.laser_wavelength = 1064.0  # Default fiber laser wavelength
-        elif self.spindle_type == SpindleType.WATERJET:
+        elif self.toolhead_type == ToolheadType.WATERJET:
             if self.waterjet_pressure is None:
                 self.waterjet_pressure = 4000.0  # Default 4000 bar
-        elif self.spindle_type == SpindleType.PLASMA:
+        elif self.toolhead_type == ToolheadType.PLASMA:
             if self.plasma_amperage is None:
                 self.plasma_amperage = 45.0  # Default 45 amps
 
     def is_rotary(self) -> bool:
-        """Check if this is a rotary spindle."""
-        return self.spindle_type == SpindleType.ROTARY
+        """Check if this is a rotary toolhead."""
+        return self.toolhead_type == ToolheadType.ROTARY
 
     def is_laser(self) -> bool:
-        """Check if this is a laser spindle."""
-        return self.spindle_type == SpindleType.LASER
+        """Check if this is a laser toolhead."""
+        return self.toolhead_type == ToolheadType.LASER
 
     def is_waterjet(self) -> bool:
-        """Check if this is a waterjet spindle."""
-        return self.spindle_type == SpindleType.WATERJET
+        """Check if this is a waterjet toolhead."""
+        return self.toolhead_type == ToolheadType.WATERJET
 
     def is_plasma(self) -> bool:
-        """Check if this is a plasma spindle."""
-        return self.spindle_type == SpindleType.PLASMA
+        """Check if this is a plasma toolhead."""
+        return self.toolhead_type == ToolheadType.PLASMA
 
     def can_use_coolant(self) -> bool:
-        """Check if this spindle can use coolant."""
+        """Check if this toolhead can use coolant."""
         return self.capabilities.uses_coolant if self.capabilities else False
 
     def can_control_speed(self) -> bool:
-        """Check if this spindle can control speed."""
+        """Check if this toolhead can control speed."""
         return self.capabilities.has_speed_control if self.capabilities else False
 
     def can_control_power(self) -> bool:
-        """Check if this spindle can control power."""
+        """Check if this toolhead can control power."""
         return self.capabilities.has_power_control if self.capabilities else False
+
+    # Legacy compatibility properties
+    @property
+    def spindle_wait(self) -> float:
+        """Legacy compatibility property for toolhead_wait."""
+        return self.toolhead_wait
+    
+    @spindle_wait.setter
+    def spindle_wait(self, value: float):
+        """Legacy compatibility setter for toolhead_wait."""
+        self.toolhead_wait = value
+    
+    @property
+    def spindle_type(self) -> ToolheadType:
+        """Legacy compatibility property for toolhead_type."""
+        return self.toolhead_type
+    
+    @spindle_type.setter
+    def spindle_type(self, value: ToolheadType):
+        """Legacy compatibility setter for toolhead_type."""
+        self.toolhead_type = value
 
     def to_dict(self):
         """Serialize to dictionary for JSON persistence"""
         data = {
             "name": self.name,
-            "spindle_type": self.spindle_type.value,
+            "toolhead_type": self.toolhead_type.value,
             "max_power_kw": self.max_power_kw,
             "max_rpm": self.max_rpm,
             "min_rpm": self.min_rpm,
@@ -458,7 +534,7 @@ class Spindle:
             "coolant_flood": self.coolant_flood,
             "coolant_mist": self.coolant_mist,
             "coolant_delay": self.coolant_delay,
-            "spindle_wait": self.spindle_wait,
+            "toolhead_wait": self.toolhead_wait,
         }
         
         # Add type-specific parameters
@@ -479,9 +555,9 @@ class Spindle:
     @classmethod
     def from_dict(cls, data):
         """Deserialize from dictionary"""
-        # Parse spindle type
-        spindle_type_str = data.get("spindle_type", "rotary")
-        spindle_type = SpindleType(spindle_type_str)
+        # Parse toolhead type
+        toolhead_type_str = data.get("toolhead_type", data.get("spindle_type", "rotary"))
+        toolhead_type = ToolheadType(toolhead_type_str)
         
         # Parse laser focus range
         laser_focus_range = None
@@ -491,7 +567,7 @@ class Spindle:
         
         return cls(
             data["name"],
-            spindle_type,
+            toolhead_type,
             data.get("id"),
             data.get("max_power_kw", 0),
             data.get("max_rpm", 0),
@@ -500,7 +576,7 @@ class Spindle:
             data.get("coolant_flood", False),
             data.get("coolant_mist", False),
             data.get("coolant_delay", 0.0),
-            data.get("spindle_wait", 0.0),
+            data.get("toolhead_wait", data.get("spindle_wait", 0.0)),
             data.get("laser_wavelength"),
             laser_focus_range,
             data.get("waterjet_pressure"),
@@ -539,9 +615,12 @@ class Machine:
     # Machine components
     linear_axes: Dict[str, LinearAxis] = field(default_factory=dict)
     rotary_axes: Dict[str, RotaryAxis] = field(default_factory=dict)
-    spindles: List[Spindle] = field(default_factory=list)
+    toolheads: List[Toolhead] = field(default_factory=list)
 
-    # Rotary axis configuration
+    # Kinematics configuration
+    kinematics: Kinematics = field(default_factory=Kinematics)
+
+    # Rotary axis configuration (legacy - will be deprecated)
     primary_rotary_axis: Optional[str] = None
     secondary_rotary_axis: Optional[str] = None
     compound_moves: bool = True
@@ -760,28 +839,43 @@ class Machine:
         """Get a rotary axis by name"""
         return self.rotary_axes.get(name)
 
-    def get_spindle_by_index(self, index):
-        """Get a spindle by its index in the list"""
-        if 0 <= index < len(self.spindles):
-            return self.spindles[index]
-        raise ValueError(f"Spindle index {index} out of range")
+    def get_spindle_by_index(self, index: int) -> Optional[Toolhead]:
+        """Get toolhead by index (legacy compatibility method).
+        
+        Args:
+            index: Index of the toolhead to retrieve
+            
+        Returns:
+            Toolhead object if found, None otherwise
+        """
+        if 0 <= index < len(self.toolheads):
+            return self.toolheads[index]
+        return None
+    
+    @property
+    def spindles(self) -> List[Toolhead]:
+        """Legacy compatibility property for toolheads."""
+        return self.toolheads
+    
+    @spindles.setter
+    def spindles(self, value: List[Toolhead]):
+        """Legacy compatibility setter for toolheads."""
+        self.toolheads = value
 
     def get_spindle_by_name(self, name):
-        """Get a spindle by name (case-insensitive)"""
+        """Get a toolhead by name (case-insensitive)"""
         name_lower = name.lower()
-        for spindle in self.spindles:
-            if spindle.name.lower() == name_lower:
-                return spindle
-        raise ValueError(f"Spindle with name '{name}' not found")
+        for toolhead in self.spindles:
+            if toolhead.name.lower() == name_lower:
+                return toolhead
+        raise ValueError(f"Toolhead with name '{name}' not found")
 
     def get_spindle_by_id(self, id):
-        """Get a spindle by ID (if present)"""
-        if id is None:
-            raise ValueError("ID cannot be None")
-        for spindle in self.spindles:
-            if spindle.id == id:
-                return spindle
-        raise ValueError(f"Spindle with ID '{id}' not found")
+        """Get a toolhead by ID"""
+        for toolhead in self.spindles:
+            if toolhead.id == id:
+                return toolhead
+        raise ValueError(f"Toolhead with ID '{id}' not found")
 
     @classmethod
     def create_AC_table_config(cls, a_limits=(-120, 120), c_limits=(-360, 360)):
@@ -858,35 +952,45 @@ class Machine:
 
     def to_dict(self):
         """Serialize configuration to dictionary for JSON persistence"""
-        # Build flattened axes structure
+        # Build flattened axes structure with enhanced fields
         axes = {}
 
         # Add linear axes from LinearAxis objects
         for axis_name, axis_obj in self.linear_axes.items():
             dir_vec = axis_obj.direction_vector
-            joint = [[dir_vec.x, dir_vec.y, dir_vec.z], [0, 0, 0]]
+            joint = [axis_obj.joint_origin, [dir_vec.x, dir_vec.y, dir_vec.z]]
 
             axes[axis_name] = {
                 "type": "linear",
-                "min": axis_obj.min_limit,
-                "max": axis_obj.max_limit,
-                "max_velocity": axis_obj.max_velocity,
-                "joint": joint,
+                "role": axis_obj.role.value,
+                "parent": axis_obj.parent,
                 "sequence": axis_obj.sequence,
+                "joint": joint,
+                "limits": {
+                    "min": axis_obj.min_limit,
+                    "max": axis_obj.max_limit
+                },
+                "max_velocity": axis_obj.max_velocity,
             }
 
         # Add rotary axes
         for axis_name, axis_obj in self.rotary_axes.items():
             rot_vec = axis_obj.rotation_vector
-            joint = [[0, 0, 0], [rot_vec.x, rot_vec.y, rot_vec.z]]
+            joint = [axis_obj.joint_origin, [rot_vec.x, rot_vec.y, rot_vec.z]]
+            
             axes[axis_name] = {
-                "type": "angular",
-                "min": axis_obj.min_limit,
-                "max": axis_obj.max_limit,
-                "max_velocity": axis_obj.max_velocity,
-                "joint": joint,
+                "type": "rotary",
+                "role": axis_obj.role.value,
+                "parent": axis_obj.parent,
                 "sequence": axis_obj.sequence,
-                "prefer_positive": axis_obj.prefer_positive,
+                "joint": joint,
+                "limits": {
+                    "min": axis_obj.min_limit,
+                    "max": axis_obj.max_limit
+                },
+                "max_velocity": axis_obj.max_velocity,
+                "solution_preference": axis_obj.solution_preference,
+                "allow_flip": axis_obj.allow_flip,
             }
 
         data = {
@@ -896,8 +1000,17 @@ class Machine:
                 "manufacturer": self.manufacturer,
                 "description": self.description,
                 "units": self.configuration_units,
+                "kinematics": {
+                    "base_frame": {
+                        "origin": self.kinematics.base_frame.origin,
+                        "orientation_quaternion": self.kinematics.base_frame.orientation_quaternion
+                    },
+                    "tcp_supported": self.kinematics.tcp_supported,
+                    "dwo_supported": self.kinematics.dwo_supported,
+                    "notes": self.kinematics.notes
+                },
                 "axes": axes,
-                "spindles": [spindle.to_dict() for spindle in self.spindles],
+                "toolheads": [toolhead.to_dict() for toolhead in self.toolheads],
             },
             "version": self.version,
         }
@@ -976,6 +1089,96 @@ class Machine:
         self.secondary_rotary_axis = None
         self.compound_moves = True
 
+    def validate_kinematic_chain(self) -> List[str]:
+        """Validate the kinematic chain configuration.
+        
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors = []
+        
+        # Check for circular dependencies in parent relationships
+        all_axes = {**self.linear_axes, **self.rotary_axes}
+        
+        for axis_name, axis_obj in all_axes.items():
+            if axis_obj.parent is not None:
+                if axis_obj.parent not in all_axes:
+                    errors.append(f"Axis {axis_name} references non-existent parent {axis_obj.parent}")
+                else:
+                    # Check for circular dependencies
+                    visited = set()
+                    current = axis_obj.parent
+                    while current is not None and current not in visited:
+                        visited.add(current)
+                        parent_axis = all_axes.get(current)
+                        if parent_axis and parent_axis.parent == axis_name:
+                            errors.append(f"Circular dependency detected: {axis_name} -> {current} -> {axis_name}")
+                            break
+                        current = parent_axis.parent if parent_axis else None
+        
+        # Validate sequence numbers are unique within each chain
+        chains = self._get_kinematic_chains()
+        for chain_name, chain_axes in chains.items():
+            sequences = [axis.sequence for axis in chain_axes]
+            if len(sequences) != len(set(sequences)):
+                errors.append(f"Duplicate sequence numbers in chain {chain_name}")
+        
+        return errors
+    
+    def _get_kinematic_chains(self) -> Dict[str, List]:
+        """Group axes by their kinematic chains.
+        
+        Returns:
+            Dictionary mapping chain names to lists of axes
+        """
+        chains = {}
+        all_axes = {**self.linear_axes, **self.rotary_axes}
+        
+        # Find root axes (those with no parent)
+        root_axes = [name for name, axis in all_axes.items() if axis.parent is None]
+        
+        for root_name in root_axes:
+            chain = []
+            visited = set()
+            
+            def collect_chain(axis_name):
+                if axis_name in visited or axis_name not in all_axes:
+                    return
+                visited.add(axis_name)
+                chain.append(all_axes[axis_name])
+                
+                # Find children
+                for child_name, child_axis in all_axes.items():
+                    if child_axis.parent == axis_name:
+                        collect_chain(child_name)
+            
+            collect_chain(root_name)
+            chains[root_name] = chain
+        
+        return chains
+    
+    def get_axis_chain(self, axis_name: str) -> List[str]:
+        """Get the kinematic chain for a specific axis.
+        
+        Args:
+            axis_name: Name of the axis
+            
+        Returns:
+            List of axis names from root to the specified axis
+        """
+        all_axes = {**self.linear_axes, **self.rotary_axes}
+        chain = []
+        
+        def build_chain(name):
+            if name in all_axes:
+                parent = all_axes[name].parent
+                if parent:
+                    build_chain(parent)
+                chain.append(name)
+        
+        build_chain(axis_name)
+        return chain
+
     @classmethod
     def create_3axis_config(cls) -> "Machine":
         """Create standard 3-axis XYZ configuration (no rotary axes)"""
@@ -1046,29 +1249,61 @@ class Machine:
         config.linear_axes = {}
         config.rotary_axes = {}
 
-        # Determine primary/secondary rotary axes
-        rotary_axis_names = [
-            name for name, axis_data in axes.items() if axis_data.get("type") == "angular"
-        ]
-        rotary_axis_names.sort()  # Sort to get consistent ordering
-
-        if len(rotary_axis_names) > 0:
-            config.primary_rotary_axis = rotary_axis_names[0]
-        if len(rotary_axis_names) > 1:
-            config.secondary_rotary_axis = rotary_axis_names[1]
-
-        # Parse linear and rotary axes
+        # Parse linear and rotary axes with enhanced fields
         for axis_name, axis_data in axes.items():
             axis_type = axis_data.get("type", "linear")
-
+            limits = axis_data.get("limits", {})
+            joint = axis_data.get("joint", [[0, 0, 0], [0, 0, 0]])
+            
+            # Handle both old array format [[origin], [axis]] and new object format {"origin": [], "axis": []}
+            if isinstance(joint, dict) and "origin" in joint and "axis" in joint:
+                # New object format
+                joint_origin = joint.get("origin", [0, 0, 0])
+                axis_vector = joint.get("axis", [0, 0, 0])
+            elif isinstance(joint, list) and len(joint) >= 2:
+                # Old array format - need to detect which element is which
+                vec0 = FreeCAD.Vector(joint[0][0], joint[0][1], joint[0][2]) if len(joint[0]) >= 3 else FreeCAD.Vector(0, 0, 0)
+                vec1 = FreeCAD.Vector(joint[1][0], joint[1][1], joint[1][2]) if len(joint[1]) >= 3 else FreeCAD.Vector(0, 0, 0)
+                
+                if axis_type == "linear":
+                    # For linear axes, check which vector has non-zero magnitude
+                    if vec0.Length > 1e-6:  # joint[0] is direction vector (old structure)
+                        axis_vector = [vec0.x, vec0.y, vec0.z]
+                        joint_origin = joint[1] if len(joint[1]) >= 3 else [0, 0, 0]
+                    elif vec1.Length > 1e-6:  # joint[1] is direction vector (new structure)
+                        axis_vector = [vec1.x, vec1.y, vec1.z]
+                        joint_origin = joint[0] if len(joint[0]) >= 3 else [0, 0, 0]
+                    else:
+                        # Both vectors are zero, use defaults
+                        axis_vector = [1, 0, 0]  # Default X-axis
+                        joint_origin = [0, 0, 0]
+                        Path.Log.warning(f"Invalid joint data for linear axis {axis_name}, using defaults")
+                else:
+                    # For rotary axes, joint[1] is usually the rotation vector
+                    if vec1.Length > 1e-6:
+                        axis_vector = [vec1.x, vec1.y, vec1.z]
+                        joint_origin = joint[0] if len(joint[0]) >= 3 else [0, 0, 0]
+                    else:
+                        # Fallback - assume joint[0] is rotation vector
+                        axis_vector = [vec0.x, vec0.y, vec0.z]
+                        joint_origin = [0, 0, 0]
+                        Path.Log.warning(f"Invalid joint data for rotary axis {axis_name}, using defaults")
+            else:
+                # Malformed joint data - use defaults
+                joint_origin = [0, 0, 0]
+                axis_vector = [1, 0, 0] if axis_type == "linear" else [0, 0, 1]
+                Path.Log.warning(f"Malformed joint data for axis {axis_name}, using defaults")
+            
             if axis_type == "linear":
-                # Extract direction vector from joint
-                joint = axis_data.get("joint", [[1, 0, 0], [0, 0, 0]])
-                direction_vec = FreeCAD.Vector(joint[0][0], joint[0][1], joint[0][2])
+                # Create linear axis with parsed joint data
+                direction_vec = FreeCAD.Vector(axis_vector[0], axis_vector[1], axis_vector[2])
 
-                min_limit = axis_data.get("min", 0)
-                max_limit = axis_data.get("max", 1000)
+                min_limit = limits.get("min", 0)
+                max_limit = limits.get("max", 1000)
                 max_velocity = axis_data.get("max_velocity", 10000)
+                role = AxisRole(axis_data.get("role", "table_linear"))
+                parent = axis_data.get("parent")
+                sequence = axis_data.get("sequence", 0)
 
                 config.linear_axes[axis_name] = LinearAxis(
                     name=axis_name,
@@ -1076,14 +1311,25 @@ class Machine:
                     min_limit=min_limit,
                     max_limit=max_limit,
                     max_velocity=max_velocity,
+                    sequence=sequence,
+                    role=role,
+                    parent=parent,
+                    joint_origin=joint_origin,
                 )
-            elif axis_type == "angular":
-                joint = axis_data.get("joint", [[0, 0, 0], [0, 0, 1]])
-                rotation_vec = FreeCAD.Vector(joint[1][0], joint[1][1], joint[1][2])
+            elif axis_type in ["angular", "rotary"]:  # Support both old and new type names
+                # Create rotary axis with parsed joint data
+                rotation_vec = FreeCAD.Vector(axis_vector[0], axis_vector[1], axis_vector[2])
 
-                min_limit = axis_data.get("min", -360)
-                max_limit = axis_data.get("max", 360)
+                min_limit = limits.get("min", -360)
+                max_limit = limits.get("max", 360)
                 max_velocity = axis_data.get("max_velocity", 36000)
+                role = AxisRole(axis_data.get("role", "table_rotary"))
+                parent = axis_data.get("parent")
+                sequence = axis_data.get("sequence", 0)
+                solution_preference = axis_data.get("solution_preference", "shortest")
+                allow_flip = axis_data.get("allow_flip", True)
+                
+                # Legacy support for prefer_positive
                 prefer_positive = axis_data.get("prefer_positive", True)
 
                 config.rotary_axes[axis_name] = RotaryAxis(
@@ -1092,12 +1338,37 @@ class Machine:
                     min_limit=min_limit,
                     max_limit=max_limit,
                     max_velocity=max_velocity,
+                    sequence=sequence,
                     prefer_positive=prefer_positive,
+                    role=role,
+                    parent=parent,
+                    joint_origin=joint_origin,
+                    solution_preference=solution_preference,
+                    allow_flip=allow_flip,
                 )
 
-        # Parse spindles if present
-        spindles = machine_data.get("spindles", [])
-        config.spindles = [Spindle.from_dict(s) for s in spindles]
+        # Parse kinematics if present
+        kinematics_data = machine_data.get("kinematics", {})
+        if kinematics_data:
+            base_frame_data = kinematics_data.get("base_frame", {})
+            config.kinematics.base_frame.origin = base_frame_data.get("origin", [0, 0, 0])
+            config.kinematics.base_frame.orientation_quaternion = base_frame_data.get("orientation_quaternion", [0, 0, 0, 1])
+            config.kinematics.tcp_supported = kinematics_data.get("tcp_supported", False)
+            config.kinematics.dwo_supported = kinematics_data.get("dwo_supported", False)
+            config.kinematics.notes = kinematics_data.get("notes", "")
+        
+        # Determine primary/secondary rotary axes for legacy compatibility
+        rotary_axis_names = list(config.rotary_axes.keys())
+        rotary_axis_names.sort()  # Sort to get consistent ordering
+
+        if len(rotary_axis_names) > 0:
+            config.primary_rotary_axis = rotary_axis_names[0]
+        if len(rotary_axis_names) > 1:
+            config.secondary_rotary_axis = rotary_axis_names[1]
+
+        # Parse toolheads if present
+        toolheads = machine_data.get("toolheads", machine_data.get("spindles", []))
+        config.toolheads = [Toolhead.from_dict(s) for s in toolheads]
 
         # Parse post-processor settings if present
         post_data = data.get("postprocessor", {})

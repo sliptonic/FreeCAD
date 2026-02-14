@@ -16,7 +16,7 @@ import pathlib
 import CAMTests.PathTestUtils as PathTestUtils
 from Machine.models.machine import (
     Machine,
-    Spindle,
+    Toolhead,
     OutputOptions,
     ProcessingOptions,
     MachineFactory,
@@ -253,50 +253,50 @@ class TestProcessingOptions(PathTestUtils.PathTestBase):
         self.assertNotEqual(opts1, opts2)
 
 
-class TestSpindle(PathTestUtils.PathTestBase):
-    """Test Spindle dataclass"""
+class TestToolhead(PathTestUtils.PathTestBase):
+    """Test Toolhead dataclass"""
 
-    def test_spindle_initialization(self):
-        """Test Spindle initialization with defaults"""
-        spindle = Spindle(
-            name="Main Spindle",
+    def test_toolhead_initialization(self):
+        """Test Toolhead initialization with defaults"""
+        toolhead = Toolhead(
+            name="Main Toolhead",
             max_power_kw=5.5,
             max_rpm=24000,
             min_rpm=1000,
             tool_change="automatic",
         )
 
-        self.assertEqual(spindle.name, "Main Spindle")
-        self.assertEqual(spindle.max_power_kw, 5.5)
-        self.assertEqual(spindle.max_rpm, 24000)
-        self.assertEqual(spindle.min_rpm, 1000)
-        self.assertEqual(spindle.tool_change, "automatic")
-        # Default spindle_wait should be 0.0
-        self.assertEqual(spindle.spindle_wait, 0.0)
+        self.assertEqual(toolhead.name, "Main Toolhead")
+        self.assertEqual(toolhead.max_power_kw, 5.5)
+        self.assertEqual(toolhead.max_rpm, 24000)
+        self.assertEqual(toolhead.min_rpm, 1000)
+        self.assertEqual(toolhead.tool_change, "automatic")
+        # Default toolhead_wait should be 0.0
+        self.assertEqual(toolhead.toolhead_wait, 0.0)
 
-    def test_spindle_serialization(self):
+    def test_toolhead_serialization(self):
         """Test to_dict and from_dict"""
-        spindle = Spindle(
-            name="Test Spindle",
-            id="spindle-001",
+        toolhead = Toolhead(
+            name="Test Toolhead",
+            id="toolhead-001",
             max_power_kw=3.0,
             max_rpm=18000,
             min_rpm=500,
             tool_change="manual",
-            spindle_wait=1.5,
+            toolhead_wait=1.5,
         )
 
-        data = spindle.to_dict()
-        self.assertEqual(data["name"], "Test Spindle")
-        self.assertEqual(data["id"], "spindle-001")
+        data = toolhead.to_dict()
+        self.assertEqual(data["name"], "Test Toolhead")
+        self.assertEqual(data["id"], "toolhead-001")
         self.assertEqual(data["max_power_kw"], 3.0)
-        self.assertEqual(data["spindle_wait"], 1.5)
+        self.assertEqual(data["toolhead_wait"], 1.5)
 
-        restored = Spindle.from_dict(data)
-        self.assertEqual(restored.name, spindle.name)
-        self.assertEqual(restored.id, spindle.id)
-        self.assertEqual(restored.max_power_kw, spindle.max_power_kw)
-        self.assertEqual(restored.spindle_wait, spindle.spindle_wait)
+        restored = Toolhead.from_dict(data)
+        self.assertEqual(restored.name, toolhead.name)
+        self.assertEqual(restored.id, toolhead.id)
+        self.assertEqual(restored.max_power_kw, toolhead.max_power_kw)
+        self.assertEqual(restored.toolhead_wait, toolhead.toolhead_wait)
 
 
 class TestMachineFactory(PathTestUtils.PathTestBase):
@@ -339,14 +339,14 @@ class TestMachineFactory(PathTestUtils.PathTestBase):
         machine.add_linear_axis("Y", FreeCAD.Vector(0, 1, 0))
         machine.add_linear_axis("Z", FreeCAD.Vector(0, 0, 1))
 
-        # Add a spindle
-        spindle = Spindle(
-            name="Main Spindle",
+        # Add a toolhead
+        toolhead = Toolhead(
+            name="Main Toolhead",
             max_power_kw=5.5,
             max_rpm=24000,
             min_rpm=1000,
         )
-        machine.spindles.append(spindle)
+        machine.toolheads.append(toolhead)
 
         # Save configuration
         filepath = MachineFactory.save_configuration(machine, "test_machine.fcm")
@@ -361,8 +361,8 @@ class TestMachineFactory(PathTestUtils.PathTestBase):
         self.assertEqual(loaded_machine.description, "Test description")
         self.assertEqual(loaded_machine.machine_type, "xyz")
         self.assertEqual(loaded_machine.configuration_units, "metric")
-        self.assertEqual(len(loaded_machine.spindles), 1)
-        self.assertEqual(loaded_machine.spindles[0].name, "Main Spindle")
+        self.assertEqual(len(loaded_machine.toolheads), 1)
+        self.assertEqual(loaded_machine.toolheads[0].name, "Main Toolhead")
 
     def test_save_configuration_auto_filename(self):
         """Test saving with automatic filename generation"""
@@ -387,7 +387,7 @@ class TestMachineFactory(PathTestUtils.PathTestBase):
         # The data structure has nested "machine" key
         self.assertIn("machine", data)
         self.assertEqual(data["machine"]["name"], "New Machine")
-        self.assertIn("spindles", data["machine"])
+        self.assertIn("toolheads", data["machine"])
 
     def test_list_configuration_files(self):
         """Test listing available configuration files"""
@@ -463,9 +463,9 @@ class TestMachineFactory(PathTestUtils.PathTestBase):
             configuration_units="metric",
         )
 
-        # Add spindle
-        machine.spindles.append(
-            Spindle(
+        # Add toolhead
+        machine.toolheads.append(
+            Toolhead(
                 name="Main",
                 max_power_kw=7.5,
                 max_rpm=30000,
@@ -486,7 +486,7 @@ class TestMachineFactory(PathTestUtils.PathTestBase):
         # Verify all components
         self.assertEqual(loaded.name, machine.name)
         self.assertEqual(loaded.manufacturer, machine.manufacturer)
-        self.assertEqual(len(loaded.spindles), 1)
+        self.assertEqual(len(loaded.toolheads), 1)
         self.assertFalse(loaded.output.comments.enabled)
         self.assertEqual(loaded.output.precision.axis, 4)
         self.assertEqual(loaded.output.formatting.line_increment, 5)
