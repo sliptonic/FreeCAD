@@ -35,6 +35,13 @@ import re
 
 translate = FreeCAD.Qt.translate
 
+debug = False
+if debug:
+    Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
+    Path.Log.trackModule(Path.Log.thisModule())
+else:
+    Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
+
 
 class DataclassGUIGenerator:
     """Generates Qt widgets dynamically from dataclass definitions.
@@ -1487,9 +1494,12 @@ class MachineEditorDialog(QtGui.QDialog):
         new_style_count = 0
         
         Path.Log.debug(f"Machine Editor: Filtering {total_postprocessors} postprocessors for new-style architecture")
+        Path.Log.debug(f"Machine Editor: Postprocessors found: {postProcessors}")
         
         for post in postProcessors:
             Path.Log.debug(f"Machine Editor: Processing postprocessor: {post}")
+            if post == "generic_plasma":
+                Path.Log.debug(f"Machine Editor: *** Processing generic_plasma specifically ***")
             # Check if this is a new-style post processor by testing for property schema support
             try:
                 processor = PostProcessorFactory.get_post_processor(None, post)
@@ -1513,15 +1523,20 @@ class MachineEditorDialog(QtGui.QDialog):
                     continue
                 
                 # Check for schema methods (these are class methods, so check on the class)
-                if (hasattr(processor_class, 'get_property_schema') and 
-                    callable(getattr(processor_class, 'get_property_schema')) and
-                    hasattr(processor_class, 'get_common_property_schema') and
-                    callable(getattr(processor_class, 'get_common_property_schema'))):
+                has_get_property_schema = hasattr(processor_class, 'get_property_schema') and callable(getattr(processor_class, 'get_property_schema'))
+                has_get_common_property_schema = hasattr(processor_class, 'get_common_property_schema') and callable(getattr(processor_class, 'get_common_property_schema'))
+                
+                Path.Log.debug(f"Machine Editor: {post} - has_get_property_schema: {has_get_property_schema}, has_get_common_property_schema: {has_get_common_property_schema}")
+                
+                if has_get_property_schema and has_get_common_property_schema:
                     
                     # Test that the methods actually return meaningful schema data
                     try:
                         common_schema = processor_class.get_common_property_schema()
                         specific_schema = processor_class.get_property_schema()
+                        
+                        Path.Log.debug(f"Machine Editor: {post} - common_schema type: {type(common_schema)}, len: {len(common_schema) if hasattr(common_schema, '__len__') else 'N/A'}")
+                        Path.Log.debug(f"Machine Editor: {post} - specific_schema type: {type(specific_schema)}, len: {len(specific_schema) if hasattr(specific_schema, '__len__') else 'N/A'}")
                         
                         # New-style post processors should return non-empty lists with proper structure
                         if (isinstance(common_schema, list) and len(common_schema) > 0 and
@@ -1535,8 +1550,15 @@ class MachineEditorDialog(QtGui.QDialog):
                                 found_generic = True
                         else:
                             Path.Log.debug(f"Machine Editor: Skipped postprocessor with invalid schema: {post}")
+                            Path.Log.debug(f"Machine Editor: {post} - common_schema valid: {isinstance(common_schema, list) and len(common_schema) > 0}")
+                            Path.Log.debug(f"Machine Editor: {post} - specific_schema valid: {isinstance(specific_schema, list)}")
+                            if isinstance(common_schema, list) and len(common_schema) > 0:
+                                prop_names = [prop.get('name', 'NO_NAME') for prop in common_schema[:3]]  # First 3 props
+                                Path.Log.debug(f"Machine Editor: {post} - sample prop names: {prop_names}")
                     except Exception as schema_error:
                         Path.Log.debug(f"Machine Editor: Schema test failed for {post}: {schema_error}")
+                        import traceback
+                        Path.Log.debug(f"Machine Editor: Schema test traceback for {post}: {traceback.format_exc()}")
                 else:
                     Path.Log.debug(f"Machine Editor: Skipped legacy postprocessor: {post}")
             except Exception as e:
