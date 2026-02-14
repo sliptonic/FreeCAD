@@ -257,7 +257,11 @@ class CommandPathPost:
             return
 
         policy = Path.Preferences.defaultOutputPolicy()
-        generator = FilenameGenerator(job=self.candidate)
+        file_ext = postprocessor.get_file_extension() if use_new_flow else None
+        generator = FilenameGenerator(
+            job=self.candidate,
+            file_extension=file_ext,
+        )
         generated_filename = generator.generate_filenames()
 
         for item in post_data:

@@ -66,7 +66,9 @@ class Linuxcnc(PostProcessor):
         
         # Override defaults for LinuxCNC
         for prop in common_props:
-            if prop["name"] == "supports_tool_radius_compensation":
+            if prop["name"] == "file_extension":
+                prop["default"] = "ngc"
+            elif prop["name"] == "supports_tool_radius_compensation":
                 prop["default"] = True
             elif prop["name"] == "preamble":
                 prop["default"] = "G17 G54 G40 G49 G80 G90"

@@ -512,6 +512,30 @@ class PostProcessor:
         """Get the units used by the post processor."""
         return self._units
 
+    def get_file_extension(self):
+        """Return the effective file extension for output files.
+
+        Resolution order:
+        1. Machine postprocessor_properties['file_extension'] (user override)
+        2. PostProcessor schema default for 'file_extension'
+        3. 'nc' fallback
+
+        Returns:
+            Extension string without leading dot (e.g. 'sbp', 'gcode', 'nc').
+        """
+        # Check machine properties first
+        if self._machine and hasattr(self._machine, 'postprocessor_properties'):
+            ext = self._machine.postprocessor_properties.get('file_extension', '')
+            if ext:
+                return ext
+
+        # Fall back to schema default
+        for prop in self.get_full_property_schema():
+            if prop['name'] == 'file_extension':
+                return prop.get('default', 'nc')
+
+        return 'nc'
+
     def _buildPostList(self, early_tool_prep=False):
         """Determine the specific objects and order to postprocess.
 
@@ -524,147 +548,123 @@ class PostProcessor:
         """
         return PostList.buildPostList(self, early_tool_prep)
 
-    def export2(self) -> Union[None, GCodeSections]:
+    def _merge_machine_config(self):
+        """Merge machine configuration into the values dict.
+        
+        Maps machine config output options to the legacy values dict keys
+        used throughout the postprocessor. Subclasses can override to add
+        custom config merging.
         """
-        Process jobs through all postprocessing stages to produce final G-code.
+        if not (self._machine and hasattr(self._machine, 'output')):
+            return
+            
+        # Map machine config to values dict keys using new nested structure
+        output_options = self._machine.output
         
-        Assumes Stage 0 (Configuration) is complete.
+        # Main output options
+        if hasattr(output_options, 'output_tool_length_offset'):
+            self.values['OUTPUT_TOOL_LENGTH_OFFSET'] = output_options.output_tool_length_offset
+        if hasattr(output_options, 'remote_post'):
+            self.values['REMOTE_POST'] = output_options.remote_post
         
-        Stages:
-        0. Pre-processing Dialog - Collect user input before processing
-        1. Ordering - Build ordered list of postables
-        2. Command Expansion - Canned cycles, arc splitting
-        3. Command Conversion - Convert Path.Commands to G-code strings
-        4. G-code Optimization - Deduplication, line numbering
-        5. Output Production - Assemble final structure
-        6. Remote Posting - Post-processing network operations
+        # Header options
+        if hasattr(output_options, 'header'):
+            header = output_options.header
+            if hasattr(header, 'include_date'):
+                self.values['OUTPUT_HEADER'] = header.include_date  # Using include_date as master switch
+            if hasattr(header, 'include_tool_list'):
+                self.values['LIST_TOOLS_IN_HEADER'] = header.include_tool_list
+            if hasattr(header, 'include_fixture_list'):
+                self.values['LIST_FIXTURES_IN_HEADER'] = header.include_fixture_list
+            if hasattr(header, 'include_machine_name'):
+                self.values['MACHINE_NAME_IN_HEADER'] = header.include_machine_name
+            if hasattr(header, 'include_description'):
+                self.values['DESCRIPTION_IN_HEADER'] = header.include_description
+            if hasattr(header, 'include_project_file'):
+                self.values['PROJECT_FILE_IN_HEADER'] = header.include_project_file
+            if hasattr(header, 'include_units'):
+                self.values['OUTPUT_UNITS_IN_HEADER'] = header.include_units
+            if hasattr(header, 'include_document_name'):
+                self.values['DOCUMENT_NAME_IN_HEADER'] = header.include_document_name
+        
+        # Comment options
+        if hasattr(output_options, 'comments'):
+            comments = output_options.comments
+            if hasattr(comments, 'enabled'):
+                self.values['OUTPUT_COMMENTS'] = comments.enabled
+            if hasattr(comments, 'symbol'):
+                self.values['COMMENT_SYMBOL'] = comments.symbol
+                Path.Log.debug(f"Set COMMENT_SYMBOL to: {comments.symbol}")
+            if hasattr(comments, 'include_operation_labels'):
+                self.values['OUTPUT_OPERATION_LABELS'] = comments.include_operation_labels
+            if hasattr(comments, 'include_blank_lines'):
+                self.values['OUTPUT_BLANK_LINES'] = comments.include_blank_lines
+            if hasattr(comments, 'output_bcnc_comments'):
+                Path.Log.debug(f"Found output_bcnc_comments: {comments.output_bcnc_comments}")
+                self.values['OUTPUT_BCNC'] = comments.output_bcnc_comments
+                Path.Log.debug(f"Set OUTPUT_BCNC to: {self.values['OUTPUT_BCNC']}")
+        
+        # Formatting options
+        if hasattr(output_options, 'formatting'):
+            formatting = output_options.formatting
+            if hasattr(formatting, 'line_numbers'):
+                self.values['OUTPUT_LINE_NUMBERS'] = formatting.line_numbers
+            if hasattr(formatting, 'line_number_start'):
+                self.values['line_number'] = formatting.line_number_start
+            if hasattr(formatting, 'line_increment'):
+                self.values['LINE_INCREMENT'] = formatting.line_increment
+            if hasattr(formatting, 'line_number_prefix'):
+                self.values['LINE_NUMBER_PREFIX'] = formatting.line_number_prefix
+            if hasattr(formatting, 'command_space'):
+                self.values['COMMAND_SPACE'] = formatting.command_space
+            if hasattr(formatting, 'end_of_line_chars'):
+                self.values['END_OF_LINE_CHARS'] = formatting.end_of_line_chars
+        
+        # Precision options
+        if hasattr(output_options, 'precision'):
+            precision = output_options.precision
+            Path.Log.debug(f"Loading precision from machine config - axis: {getattr(precision, 'axis', 'N/A')}, feed: {getattr(precision, 'feed', 'N/A')}, spindle: {getattr(precision, 'spindle', 'N/A')}")
+            if hasattr(precision, 'axis') and precision.axis is not None:
+                if isinstance(precision.axis, (int, float)) and precision.axis >= 0:
+                    self.values['AXIS_PRECISION'] = int(precision.axis)
+                    Path.Log.debug(f"Set AXIS_PRECISION to: {precision.axis}")
+                else:
+                    Path.Log.warning(f"Invalid axis precision value: {precision.axis}. Must be non-negative. Using default.")
+            if hasattr(precision, 'feed') and precision.feed is not None:
+                if isinstance(precision.feed, (int, float)) and precision.feed >= 0:
+                    self.values['FEED_PRECISION'] = int(precision.feed)
+                    Path.Log.debug(f"Set FEED_PRECISION to: {precision.feed}")
+                else:
+                    Path.Log.warning(f"Invalid feed precision value: {precision.feed}. Must be non-negative. Using default.")
+            if hasattr(precision, 'spindle') and precision.spindle is not None:
+                if isinstance(precision.spindle, (int, float)) and precision.spindle >= 0:
+                    self.values['SPINDLE_DECIMALS'] = int(precision.spindle)
+                    Path.Log.debug(f"Set SPINDLE_DECIMALS to: {precision.spindle}")
+                else:
+                    Path.Log.warning(f"Invalid spindle precision value: {precision.spindle}. Must be non-negative. Using default.")
+        
+        Path.Log.debug(f"Final precision values - AXIS_PRECISION: {self.values.get('AXIS_PRECISION')}, FEED_PRECISION: {self.values.get('FEED_PRECISION')}, SPINDLE_DECIMALS: {self.values.get('SPINDLE_DECIMALS')}")
+        
+        # Duplicate options
+        if hasattr(output_options, 'duplicates'):
+            duplicates = output_options.duplicates
+            if hasattr(duplicates, 'commands'):
+                self.values['OUTPUT_DUPLICATE_COMMANDS'] = duplicates.commands
+            if hasattr(duplicates, 'parameters'):
+                self.values['OUTPUT_DOUBLES'] = duplicates.parameters
+
+    def _build_header(self, postables):
+        """Build the G-code header from job/machine metadata.
+        
+        Creates a _HeaderBuilder populated with machine name, project file,
+        document name, description, author, and timestamp based on machine
+        config settings. Also collects tool and fixture info from postables.
+        
+        Subclasses can override to customize header content.
+        
+        Returns:
+            _HeaderBuilder instance with header data populated.
         """
-        from Path.Post.GcodeProcessingUtils import (
-            deduplicate_repeated_commands,
-            suppress_redundant_axes_words,
-            filter_inefficient_moves,
-            insert_line_numbers,
-        )
-
-        Path.Log.debug("Starting export2()")
-        
-        # ===== STAGE 0: PRE-PROCESSING DIALOG =====
-        # Allow post processors to collect user input before processing begins
-        if not self.pre_processing_dialog():
-            Path.Log.info("Pre-processing dialog cancelled - aborting export")
-            return None
-        
-        # Merge machine configuration into values dict
-        if self._machine and hasattr(self._machine, 'output'):
-            # Map machine config to values dict keys using new nested structure
-            output_options = self._machine.output
-            
-            # Main output options
-            if hasattr(output_options, 'output_tool_length_offset'):
-                self.values['OUTPUT_TOOL_LENGTH_OFFSET'] = output_options.output_tool_length_offset
-            if hasattr(output_options, 'remote_post'):
-                self.values['REMOTE_POST'] = output_options.remote_post
-            
-            # Header options
-            if hasattr(output_options, 'header'):
-                header = output_options.header
-                if hasattr(header, 'include_date'):
-                    self.values['OUTPUT_HEADER'] = header.include_date  # Using include_date as master switch
-                if hasattr(header, 'include_tool_list'):
-                    self.values['LIST_TOOLS_IN_HEADER'] = header.include_tool_list
-                if hasattr(header, 'include_fixture_list'):
-                    self.values['LIST_FIXTURES_IN_HEADER'] = header.include_fixture_list
-                if hasattr(header, 'include_machine_name'):
-                    self.values['MACHINE_NAME_IN_HEADER'] = header.include_machine_name
-                if hasattr(header, 'include_description'):
-                    self.values['DESCRIPTION_IN_HEADER'] = header.include_description
-                if hasattr(header, 'include_project_file'):
-                    self.values['PROJECT_FILE_IN_HEADER'] = header.include_project_file
-                if hasattr(header, 'include_units'):
-                    self.values['OUTPUT_UNITS_IN_HEADER'] = header.include_units
-                if hasattr(header, 'include_document_name'):
-                    self.values['DOCUMENT_NAME_IN_HEADER'] = header.include_document_name
-            
-            # Comment options
-            if hasattr(output_options, 'comments'):
-                comments = output_options.comments
-                if hasattr(comments, 'enabled'):
-                    self.values['OUTPUT_COMMENTS'] = comments.enabled
-                if hasattr(comments, 'symbol'):
-                    self.values['COMMENT_SYMBOL'] = comments.symbol
-                    Path.Log.debug(f"Set COMMENT_SYMBOL to: {comments.symbol}")
-                if hasattr(comments, 'include_operation_labels'):
-                    self.values['OUTPUT_OPERATION_LABELS'] = comments.include_operation_labels
-                if hasattr(comments, 'include_blank_lines'):
-                    self.values['OUTPUT_BLANK_LINES'] = comments.include_blank_lines
-                if hasattr(comments, 'output_bcnc_comments'):
-                    Path.Log.debug(f"Found output_bcnc_comments: {comments.output_bcnc_comments}")
-                    self.values['OUTPUT_BCNC'] = comments.output_bcnc_comments
-                    Path.Log.debug(f"Set OUTPUT_BCNC to: {self.values['OUTPUT_BCNC']}")
-            
-            # Formatting options
-            if hasattr(output_options, 'formatting'):
-                formatting = output_options.formatting
-                if hasattr(formatting, 'line_numbers'):
-                    self.values['OUTPUT_LINE_NUMBERS'] = formatting.line_numbers
-                if hasattr(formatting, 'line_number_start'):
-                    self.values['line_number'] = formatting.line_number_start
-                if hasattr(formatting, 'line_increment'):
-                    self.values['LINE_INCREMENT'] = formatting.line_increment
-                if hasattr(formatting, 'line_number_prefix'):
-                    self.values['LINE_NUMBER_PREFIX'] = formatting.line_number_prefix
-                if hasattr(formatting, 'command_space'):
-                    self.values['COMMAND_SPACE'] = formatting.command_space
-                if hasattr(formatting, 'end_of_line_chars'):
-                    self.values['END_OF_LINE_CHARS'] = formatting.end_of_line_chars
-            
-            # Precision options
-            if hasattr(output_options, 'precision'):
-                precision = output_options.precision
-                Path.Log.debug(f"Loading precision from machine config - axis: {getattr(precision, 'axis', 'N/A')}, feed: {getattr(precision, 'feed', 'N/A')}, spindle: {getattr(precision, 'spindle', 'N/A')}")
-                if hasattr(precision, 'axis') and precision.axis is not None:
-                    if isinstance(precision.axis, (int, float)) and precision.axis >= 0:
-                        self.values['AXIS_PRECISION'] = int(precision.axis)
-                        Path.Log.debug(f"Set AXIS_PRECISION to: {precision.axis}")
-                    else:
-                        Path.Log.warning(f"Invalid axis precision value: {precision.axis}. Must be non-negative. Using default.")
-                if hasattr(precision, 'feed') and precision.feed is not None:
-                    if isinstance(precision.feed, (int, float)) and precision.feed >= 0:
-                        self.values['FEED_PRECISION'] = int(precision.feed)
-                        Path.Log.debug(f"Set FEED_PRECISION to: {precision.feed}")
-                    else:
-                        Path.Log.warning(f"Invalid feed precision value: {precision.feed}. Must be non-negative. Using default.")
-                if hasattr(precision, 'spindle') and precision.spindle is not None:
-                    if isinstance(precision.spindle, (int, float)) and precision.spindle >= 0:
-                        self.values['SPINDLE_DECIMALS'] = int(precision.spindle)
-                        Path.Log.debug(f"Set SPINDLE_DECIMALS to: {precision.spindle}")
-                    else:
-                        Path.Log.warning(f"Invalid spindle precision value: {precision.spindle}. Must be non-negative. Using default.")
-            
-            Path.Log.debug(f"Final precision values - AXIS_PRECISION: {self.values.get('AXIS_PRECISION')}, FEED_PRECISION: {self.values.get('FEED_PRECISION')}, SPINDLE_DECIMALS: {self.values.get('SPINDLE_DECIMALS')}")
-            
-            # Duplicate options
-            if hasattr(output_options, 'duplicates'):
-                duplicates = output_options.duplicates
-                if hasattr(duplicates, 'commands'):
-                    self.values['OUTPUT_DUPLICATE_COMMANDS'] = duplicates.commands
-                if hasattr(duplicates, 'parameters'):
-                    self.values['OUTPUT_DOUBLES'] = duplicates.parameters
-        
-        # ===== STAGE 1: ORDERING =====
-        # Process all jobs (currently only first job supported)
-        all_job_sections = []
-        
-        # Get early_tool_prep setting from machine config
-        early_tool_prep = False
-        if self._machine and hasattr(self._machine, 'processing'):
-            early_tool_prep = getattr(self._machine.processing, 'early_tool_prep', False)
-
-        # Build ordered postables for this job
-        postables = self._buildPostList(early_tool_prep)
-        
-        # ===== STAGE 2: COMMAND EXPANSION =====
-        # Expand commands and collect header information
         gcodeheader = _HeaderBuilder()
         
         # Only add header information if output_header is enabled
@@ -708,63 +708,10 @@ class PostProcessor:
                     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     gcodeheader.add_output_time(timestamp)
         
-        # Process each section's postables
-        for section_name, sublist in postables:
-            Path.Log.debug(f"Processing section {section_name} with {len(sublist)} postables")
-            for item in sublist:
-                # Canned cycle termination and expansion
-                # Check if this item has drill cycle commands
-                has_drill_cycles = False
-                if hasattr(item, 'Path') and item.Path:
-                    drill_commands = ['G73', 'G74', 'G81', 'G82', 'G83', 'G84', 'G85', 'G86', 'G87', 'G88', 'G89']
-                    has_drill_cycles = any(cmd.Name in drill_commands for cmd in item.Path.Commands)
-                
-                if has_drill_cycles:
-                    item.Path = PostUtils.cannedCycleTerminator(item.Path)
-                    
-                    # Drill cycle translation is now handled by postprocessor via drill_cycles_to_translate property
-                    # The postprocessor will check its properties and translate cycles as needed
-                
-                # Arc splitting
-                if hasattr(item, 'Path') and item.Path:
-                    if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.split_arcs:
-                        item.Path = PostUtils.splitArcs(item.Path)
-                
-                # Spindle wait - inject G4 pause after M3/M4 spindle start commands
-                if hasattr(item, 'Path') and item.Path:
-                    if self._machine:
-                        spindle = self._machine.get_spindle_by_index(0)
-                        if spindle and spindle.spindle_wait > 0:
-                            wait_time = spindle.spindle_wait
-                            new_commands = []
-                            for cmd in item.Path.Commands:
-                                new_commands.append(cmd)
-                                # After spindle start commands, inject G4 pause
-                                if cmd.Name in CONSTANTS.MCODE_SPINDLE_ON:
-                                    # Create G4 dwell command with P parameter
-                                    pause_cmd = Path.Command('G4', {'P': wait_time})
-                                    new_commands.append(pause_cmd)
-                            # Replace Path with modified command list
-                            item.Path = Path.Path(new_commands)
-
-                # coolant control
-                if hasattr(item, 'Path') and item.Path:
-                    if self._machine:
-                        spindle = self._machine.get_spindle_by_index(0)
-                        if spindle.coolant_delay > 0:
-                            new_commands = []
-                            for cmd in item.Path.Commands:
-                                new_commands.append(cmd)
-                                # After spindle start commands, inject G4 pause
-                            if cmd.Name in CONSTANTS.MCODE_COOLANT_ON:
-                                # Create G4 dwell command with P parameter
-                                pause_cmd = Path.Command('G4', {'P': spindle.coolant_delay})
-                                new_commands.append(pause_cmd)
-                            # Replace Path with modified command list
-                            item.Path = Path.Path(new_commands)
-                
-                # Collect header information
-                if self.values.get('OUTPUT_HEADER', True):
+        # Collect tool and fixture info from postables
+        if self.values.get('OUTPUT_HEADER', True):
+            for section_name, sublist in postables:
+                for item in sublist:
                     if hasattr(item, 'ToolNumber'):  # Tool controller
                         # Check if tools should be listed in header
                         list_tools = True
@@ -783,10 +730,117 @@ class PostProcessor:
                             if hasattr(item, 'Path') and item.Path and item.Path.Commands:
                                 fixture_name = item.Path.Commands[0].Name
                                 gcodeheader.add_fixture(fixture_name)
+        
+        return gcodeheader
 
-                # translate rapid moves
-                # If machine processing.translate_rapid_moves is True, replace G0/G00 with G1 and use tool controller rapid rate.
-                if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.translate_rapid_moves:
+    def _expand_canned_cycles(self, postables):
+        """Terminate canned drill cycles in postable paths.
+        
+        Adds cycle termination commands (G80) after canned cycle sequences.
+        Drill cycle translation is handled separately by the postprocessor
+        via the drill_cycles_to_translate property.
+        
+        Subclasses can override to customize canned cycle handling.
+        """
+        for section_name, sublist in postables:
+            for item in sublist:
+                has_drill_cycles = False
+                if hasattr(item, 'Path') and item.Path:
+                    drill_commands = ['G73', 'G74', 'G81', 'G82', 'G83', 'G84', 'G85', 'G86', 'G87', 'G88', 'G89']
+                    has_drill_cycles = any(cmd.Name in drill_commands for cmd in item.Path.Commands)
+                
+                if has_drill_cycles:
+                    item.Path = PostUtils.cannedCycleTerminator(item.Path)
+
+    def _expand_split_arcs(self, postables):
+        """Split arc commands into linear segments if configured.
+        
+        When machine processing.split_arcs is True, replaces G2/G3 arc
+        commands with sequences of G1 linear moves.
+        
+        Subclasses can override to customize arc handling.
+        """
+        if not (self._machine and hasattr(self._machine, 'processing') and self._machine.processing.split_arcs):
+            return
+            
+        for section_name, sublist in postables:
+            for item in sublist:
+                if hasattr(item, 'Path') and item.Path:
+                    item.Path = PostUtils.splitArcs(item.Path)
+
+    def _expand_spindle_wait(self, postables):
+        """Inject G4 dwell after spindle start commands (M3/M4).
+        
+        When a spindle has spindle_wait > 0, inserts a G4 pause command
+        after each spindle start command to allow the spindle to reach speed.
+        
+        Subclasses can override to customize spindle wait behavior.
+        """
+        if not self._machine:
+            return
+            
+        spindle = self._machine.get_spindle_by_index(0)
+        if not (spindle and spindle.spindle_wait > 0):
+            return
+            
+        wait_time = spindle.spindle_wait
+        for section_name, sublist in postables:
+            for item in sublist:
+                if hasattr(item, 'Path') and item.Path:
+                    new_commands = []
+                    for cmd in item.Path.Commands:
+                        new_commands.append(cmd)
+                        # After spindle start commands, inject G4 pause
+                        if cmd.Name in CONSTANTS.MCODE_SPINDLE_ON:
+                            # Create G4 dwell command with P parameter
+                            pause_cmd = Path.Command('G4', {'P': wait_time})
+                            new_commands.append(pause_cmd)
+                    # Replace Path with modified command list
+                    item.Path = Path.Path(new_commands)
+
+    def _expand_coolant_delay(self, postables):
+        """Inject G4 dwell after coolant on commands.
+        
+        When a spindle has coolant_delay > 0, inserts a G4 pause command
+        after each coolant on command.
+        
+        Subclasses can override to customize coolant delay behavior.
+        """
+        if not self._machine:
+            return
+            
+        spindle = self._machine.get_spindle_by_index(0)
+        if not (spindle and spindle.coolant_delay > 0):
+            return
+            
+        for section_name, sublist in postables:
+            for item in sublist:
+                if hasattr(item, 'Path') and item.Path:
+                    new_commands = []
+                    for cmd in item.Path.Commands:
+                        new_commands.append(cmd)
+                        # After coolant on commands, inject G4 pause
+                        if cmd.Name in CONSTANTS.MCODE_COOLANT_ON:
+                            # Create G4 dwell command with P parameter
+                            pause_cmd = Path.Command('G4', {'P': spindle.coolant_delay})
+                            new_commands.append(pause_cmd)
+                    # Replace Path with modified command list
+                    item.Path = Path.Path(new_commands)
+
+    def _expand_translate_rapids(self, postables):
+        """Replace G0 rapid moves with G1 linear moves.
+        
+        When machine processing.translate_rapid_moves is True, replaces
+        G0/G00 commands with G1 using the tool controller rapid rate.
+        
+        Subclasses can override to customize rapid move translation.
+        """
+        if not (self._machine and hasattr(self._machine, 'processing') and self._machine.processing.translate_rapid_moves):
+            return
+            
+        for section_name, sublist in postables:
+            for item in sublist:
+                if hasattr(item, 'Path') and item.Path:
                     new_commands = []
                     Path.Log.debug(f"Translating rapid moves for {item.Label}")
                     for cmd in item.Path.Commands:
@@ -795,88 +849,104 @@ class PostProcessor:
                         new_commands.append(cmd)
                     item.Path = Path.Path(new_commands)
 
-        # XY before Z after tool change
-        # Decompose first move after tool change to move XY first, then Z
-        if self._machine and hasattr(self._machine, 'processing') and self._machine.processing.xy_before_z_after_tool_change:
-            Path.Log.debug("Processing XY before Z after tool change")
-            for section_name, sublist in postables:
-                # Track whether we just saw a tool change
-                tool_change_seen = False
+    def _expand_xy_before_z(self, postables):
+        """Decompose first move after tool change into XY then Z.
+        
+        When machine processing.xy_before_z_after_tool_change is True,
+        splits the first move command after a tool change into two moves:
+        first XY positioning, then Z plunge. This is a safety feature to
+        prevent plunging into the workpiece before positioning.
+        
+        Subclasses can override to customize post-tool-change move ordering.
+        """
+        if not (self._machine and hasattr(self._machine, 'processing') and self._machine.processing.xy_before_z_after_tool_change):
+            return
+            
+        Path.Log.debug("Processing XY before Z after tool change")
+        for section_name, sublist in postables:
+            # Track whether we just saw a tool change
+            tool_change_seen = False
+            
+            for item in sublist:
+                # Check if this is a tool change item
+                if hasattr(item, 'ToolNumber'):
+                    tool_change_seen = True
+                    Path.Log.debug(f"Tool change detected: T{item.ToolNumber}")
+                    continue
                 
-                for item in sublist:
-                    # Check if this is a tool change item
-                    if hasattr(item, 'ToolNumber'):
-                        tool_change_seen = True
-                        Path.Log.debug(f"Tool change detected: T{item.ToolNumber}")
-                        continue
+                # Process operations - check for moves after tool change
+                if hasattr(item, 'Path') and item.Path:
+                    new_commands = []
+                    first_move_processed = False
                     
-                    # Process operations - check for moves after tool change
-                    if hasattr(item, 'Path') and item.Path:
-                        new_commands = []
-                        first_move_processed = False
+                    for cmd in item.Path.Commands:
+                        # Check if this is a tool change command (M6)
+                        if cmd.Name in CONSTANTS.MCODE_TOOL_CHANGE:
+                            new_commands.append(cmd)
+                            tool_change_seen = True
+                            first_move_processed = False
+                            Path.Log.debug(f"M6 tool change detected in operation")
+                            continue
                         
-                        for cmd in item.Path.Commands:
-                            # Check if this is a tool change command (M6)
-                            if cmd.Name in CONSTANTS.MCODE_TOOL_CHANGE:
-                                new_commands.append(cmd)
-                                tool_change_seen = True
-                                first_move_processed = False
-                                Path.Log.debug(f"M6 tool change detected in operation")
-                                continue
+                        # Check if this is the first move after tool change
+                        if tool_change_seen and not first_move_processed and cmd.Name in CONSTANTS.GCODE_MOVE_ALL:
+                            # Check if this move has both XY and Z components
+                            has_xy = 'X' in cmd.Parameters or 'Y' in cmd.Parameters
+                            has_z = 'Z' in cmd.Parameters
                             
-                            # Check if this is the first move after tool change
-                            if tool_change_seen and not first_move_processed and cmd.Name in CONSTANTS.GCODE_MOVE_ALL:
-                                # Check if this move has both XY and Z components
-                                has_xy = 'X' in cmd.Parameters or 'Y' in cmd.Parameters
-                                has_z = 'Z' in cmd.Parameters
+                            if has_xy and has_z:
+                                Path.Log.debug(f"Decomposing first move after tool change: {cmd.Name}")
                                 
-                                if has_xy and has_z:
-                                    Path.Log.debug(f"Decomposing first move after tool change: {cmd.Name}")
-                                    
-                                    # Create XY-only move (first)
-                                    xy_params = {}
-                                    for param in ['X', 'Y', 'A', 'B', 'C']:
-                                        if param in cmd.Parameters:
-                                            xy_params[param] = cmd.Parameters[param]
-                                    
-                                    if xy_params:
-                                        xy_cmd = Path.Command(cmd.Name, xy_params)
-                                        new_commands.append(xy_cmd)
-                                        Path.Log.debug(f"  XY move: {cmd.Name} {xy_params}")
-                                    
-                                    # Create Z-only move (second)
-                                    z_params = {'Z': cmd.Parameters['Z']}
-                                    # Preserve other non-XY parameters (like F, S, etc.)
-                                    for param in cmd.Parameters:
-                                        if param not in ['X', 'Y', 'Z', 'A', 'B', 'C']:
-                                            z_params[param] = cmd.Parameters[param]
-                                    
-                                    z_cmd = Path.Command(cmd.Name, z_params)
-                                    new_commands.append(z_cmd)
-                                    Path.Log.debug(f"  Z move: {cmd.Name} {z_params}")
-                                    
-                                    first_move_processed = True
-                                    tool_change_seen = False  # Reset after decomposing the move
-                                else:
-                                    # Move doesn't have both XY and Z, just add it as-is
-                                    new_commands.append(cmd)
-                                    if has_xy or has_z:
-                                        first_move_processed = True
-                                        tool_change_seen = False  # Reset after processing any move
+                                # Create XY-only move (first)
+                                xy_params = {}
+                                for param in ['X', 'Y', 'A', 'B', 'C']:
+                                    if param in cmd.Parameters:
+                                        xy_params[param] = cmd.Parameters[param]
+                                
+                                if xy_params:
+                                    xy_cmd = Path.Command(cmd.Name, xy_params)
+                                    new_commands.append(xy_cmd)
+                                    Path.Log.debug(f"  XY move: {cmd.Name} {xy_params}")
+                                
+                                # Create Z-only move (second)
+                                z_params = {'Z': cmd.Parameters['Z']}
+                                # Preserve other non-XY parameters (like F, S, etc.)
+                                for param in cmd.Parameters:
+                                    if param not in ['X', 'Y', 'Z', 'A', 'B', 'C']:
+                                        z_params[param] = cmd.Parameters[param]
+                                
+                                z_cmd = Path.Command(cmd.Name, z_params)
+                                new_commands.append(z_cmd)
+                                Path.Log.debug(f"  Z move: {cmd.Name} {z_params}")
+                                
+                                first_move_processed = True
+                                tool_change_seen = False  # Reset after decomposing the move
                             else:
-                                # Not the first move or not a move command
+                                # Move doesn't have both XY and Z, just add it as-is
                                 new_commands.append(cmd)
-                        
-                        # Update the item's path if we made changes
-                        if len(new_commands) != len(item.Path.Commands):
-                            item.Path = Path.Path(new_commands)
-                            Path.Log.debug(f"Updated path for {item.Label}")
+                                if has_xy or has_z:
+                                    first_move_processed = True
+                                    tool_change_seen = False  # Reset after processing any move
+                        else:
+                            # Not the first move or not a move command
+                            new_commands.append(cmd)
+                    
+                    # Update the item's path if we made changes
+                    if len(new_commands) != len(item.Path.Commands):
+                        item.Path = Path.Path(new_commands)
+                        Path.Log.debug(f"Updated path for {item.Label}")
 
-        Path.Log.debug(postables)
-
-        Path.Log.debug("starting stage 2.5")
-        # ===== STAGE 2.5: BCNC COMMAND CREATION =====
-        # Create bCNC block commands with annotations if enabled
+    def _expand_bcnc_commands(self, postables):
+        """Inject or remove bCNC block annotation commands.
+        
+        When OUTPUT_BCNC is True, injects bCNC block-name, block-expand,
+        and block-enable commands at the start of each operation's path,
+        and stores postamble commands for later insertion.
+        
+        When OUTPUT_BCNC is False, removes any existing bCNC commands.
+        
+        Subclasses can override to customize bCNC command handling.
+        """
         output_bcnc = self.values.get('OUTPUT_BCNC', False)
         Path.Log.debug(f"OUTPUT_BCNC value: {output_bcnc}")
         # Clear any existing bCNC postamble commands to avoid state leakage
@@ -942,9 +1012,19 @@ class PostProcessor:
                         # Create new Path without bCNC commands
                         if len(filtered_commands) != len(item.Path.Commands):
                             item.Path = Path.Path(filtered_commands)
+
+    def _expand_tool_length_offset(self, postables):
+        """Inject or remove G43 tool length offset commands.
         
-        # ===== STAGE 2.6: TOOL LENGTH OFFSET COMMAND CREATION =====
-        # Create G43 tool length offset commands if enabled
+        When OUTPUT_TOOL_LENGTH_OFFSET is True, adds G43 commands after M6
+        tool change commands in operations, and tracks which tool change
+        items need G43 commands vs which should have M6 suppressed.
+        
+        When OUTPUT_TOOL_LENGTH_OFFSET is False, removes any existing G43
+        commands from operation paths.
+        
+        Subclasses can override to customize tool length offset handling.
+        """
         output_tool_length_offset = self.values.get('OUTPUT_TOOL_LENGTH_OFFSET', True)
         Path.Log.debug(f"OUTPUT_TOOL_LENGTH_OFFSET value: {output_tool_length_offset}")
         
@@ -1017,6 +1097,64 @@ class PostProcessor:
                         # Create new Path without G43 commands
                         if len(filtered_commands) != len(item.Path.Commands):
                             item.Path = Path.Path(filtered_commands)
+
+    def export2(self) -> Union[None, GCodeSections]:
+        """
+        Process jobs through all postprocessing stages to produce final G-code.
+        
+        Assumes Stage 0 (Configuration) is complete.
+        
+        Stages:
+        0. Pre-processing Dialog - Collect user input before processing
+        1. Ordering - Build ordered list of postables
+        2. Command Expansion - Canned cycles, arc splitting
+        3. Command Conversion - Convert Path.Commands to G-code strings
+        4. G-code Optimization - Deduplication, line numbering
+        5. Output Production - Assemble final structure
+        6. Remote Posting - Post-processing network operations
+        """
+        from Path.Post.GcodeProcessingUtils import (
+            deduplicate_repeated_commands,
+            suppress_redundant_axes_words,
+            filter_inefficient_moves,
+            insert_line_numbers,
+        )
+
+        Path.Log.debug("Starting export2()")
+        
+        # ===== STAGE 0: PRE-PROCESSING DIALOG =====
+        # Allow post processors to collect user input before processing begins
+        if not self.pre_processing_dialog():
+            Path.Log.info("Pre-processing dialog cancelled - aborting export")
+            return None
+        
+        # Merge machine configuration into values dict
+        self._merge_machine_config()
+        
+        # ===== STAGE 1: ORDERING =====
+        # Process all jobs (currently only first job supported)
+        all_job_sections = []
+        
+        # Get early_tool_prep setting from machine config
+        early_tool_prep = False
+        if self._machine and hasattr(self._machine, 'processing'):
+            early_tool_prep = getattr(self._machine.processing, 'early_tool_prep', False)
+
+        # Build ordered postables for this job
+        postables = self._buildPostList(early_tool_prep)
+        
+        # ===== STAGE 2: COMMAND EXPANSION =====
+        gcodeheader = self._build_header(postables)
+        self._expand_canned_cycles(postables)
+        self._expand_split_arcs(postables)
+        self._expand_spindle_wait(postables)
+        self._expand_coolant_delay(postables)
+        self._expand_translate_rapids(postables)
+        self._expand_xy_before_z(postables)
+        self._expand_bcnc_commands(postables)
+        self._expand_tool_length_offset(postables)
+
+        Path.Log.debug(postables)
         
         # ===== STAGE 3: COMMAND CONVERSION =====
         job_sections = []

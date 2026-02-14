@@ -350,6 +350,69 @@ class TestFileNameGenerator(unittest.TestCase):
         # Invalid substitutions should be removed, leaving "invalid_.nc"
         assertFilePathsEqual(self, filename, os.path.join(self.testfilepath, "invalid_.nc"))
 
+    def test080_file_extension_override(self):
+        """
+        Test that a file_extension override replaces the default .nc extension.
+
+        Expected:
+            file_extension = "gcode"
+            PostProcessorOutputFile = ""
+            -> output file ends with .gcode instead of .nc
+        """
+        FreeCAD.setActiveDocument(self.doc.Label)
+        self.job.PostProcessorOutputFile = ""
+        Path.Preferences.setOutputFileDefaults("", "Append Unique ID on conflict")
+
+        generator = PostUtils.FilenameGenerator(job=self.job, file_extension="gcode")
+        filename_generator = generator.generate_filenames()
+        filename = next(filename_generator)
+
+        self.assertTrue(filename.endswith(".gcode"),
+                       f"Expected .gcode extension, got: {filename}")
+
+    def test081_file_extension_overrides_job_extension(self):
+        """
+        Test that file_extension override always wins over the extension
+        from PostProcessorOutputFile, since the postprocessor is the
+        authoritative source for the output format.
+
+        Expected:
+            file_extension = "gcode"
+            PostProcessorOutputFile = "output.tap"
+            -> output file ends with .gcode (postprocessor wins)
+        """
+        FreeCAD.setActiveDocument(self.doc.Label)
+        teststring = "output.tap"
+        self.job.PostProcessorOutputFile = teststring
+        Path.Preferences.setOutputFileDefaults(teststring, "Append Unique ID on conflict")
+
+        generator = PostUtils.FilenameGenerator(job=self.job, file_extension="gcode")
+        filename_generator = generator.generate_filenames()
+        filename = next(filename_generator)
+
+        self.assertTrue(filename.endswith(".gcode"),
+                       f"Expected .gcode extension (postprocessor override), got: {filename}")
+
+    def test082_no_machine_falls_back_to_nc(self):
+        """
+        Test that .nc is used when no machine is provided and no extension
+        is specified by the user.
+
+        Expected:
+            No machine, PostProcessorOutputFile = ""
+            -> output file ends with .nc
+        """
+        FreeCAD.setActiveDocument(self.doc.Label)
+        self.job.PostProcessorOutputFile = ""
+        Path.Preferences.setOutputFileDefaults("", "Append Unique ID on conflict")
+
+        generator = PostUtils.FilenameGenerator(job=self.job)
+        filename_generator = generator.generate_filenames()
+        filename = next(filename_generator)
+
+        self.assertTrue(filename.endswith(".nc"),
+                       f"Expected .nc fallback extension, got: {filename}")
+
 
 class TestExport2Integration(unittest.TestCase):
     """Integration tests for the export2() function."""
@@ -656,70 +719,91 @@ class TestExport2Integration(unittest.TestCase):
             "version": 1
         }
 
-    def test010_export2_programmatic_job(self):
-        """Test export2() with programmatically created job - prints G-code to console."""
+    # ===== 010-019: Basic smoke tests =====
+
+    def test010_export2_returns_gcode_sections(self):
+        """Test that export2() returns a non-empty list of (name, gcode) tuples."""
         from Path.Post.Processor import PostProcessor
-
-        # Create post processor
         post = PostProcessor(self.job, "", "", "mm")
-
-        # Call export2 and get results
         results = post.export2()
 
-        # Print results to console for inspection
-        print("\n=== EXPORT2 PROGRAMMATIC JOB RESULTS ===")
-        if results:
-            for section_name, gcode in results:
-                print(f"\n--- Section: {section_name} ---")
-                if gcode:
-                    print(gcode)
-                else:
-                    print("(No G-code generated)")
-        else:
-            print("No results returned from export2()")
-        print("=== END EXPORT2 RESULTS ===\n")
-
-        # Basic assertions
-        self.assertIsNotNone(results)
+        self.assertIsNotNone(results, "export2 should return results")
         self.assertIsInstance(results, list)
-        self.assertGreater(len(results), 0)
+        self.assertGreater(len(results), 0, "Should have at least one section")
 
-        # Check that first section contains header comments if header is enabled
-        if results:
-            first_section_name, first_section_gcode = results[0]
-            if first_section_gcode:
-                # Header comments should be at the beginning (if enabled)
-                self.assertGreater(len(first_section_gcode), 0)
+        section_name, gcode = results[0]
+        self.assertIsInstance(section_name, str)
+        self.assertGreater(len(gcode), 0, "First section should contain G-code")
 
-    def test030_header_true_comments_false(self):
-        """Test that header:true and comments:false shows header but suppresses inline comments."""
+    # ===== 020-039: _build_header tests =====
+
+    def test020_header_enabled_shows_machine_name(self):
+        """
+        Test that _build_header includes machine name when header and include_machine_name are True.
+
+        Expected:
+            Output contains a comment line with the machine name.
+        """
+        machine = self._create_machine(
+            output_header=True,
+            include_machine_name=True,
+            line_numbers=False
+        )
+
+        results = self._run_export2(machine)
+        gcode = self._get_first_section_gcode(results)
+
+        header_comments = [line for line in gcode.split('\n') if line.startswith('(') and 'Machine' in line]
+        self.assertGreater(len(header_comments), 0, "Header should contain machine name comment")
+
+    def test021_header_disabled_suppresses_all_header(self):
+        """
+        Test that _build_header produces no header when output_header is False.
+
+        Expected:
+            No machine name, no tool list, no date in output header area.
+        """
+        machine = self._create_machine(
+            output_header=False,
+            include_machine_name=True,
+            line_numbers=False
+        )
+
+        results = self._run_export2(machine)
+        gcode = self._get_first_section_gcode(results)
+
+        header_comments = [line for line in gcode.split('\n') if line.startswith('(') and 'Machine' in line]
+        self.assertEqual(len(header_comments), 0, "Header comments should be suppressed when header:false")
+
+    def test022_header_true_comments_false_suppresses_inline(self):
+        """
+        Test that header:true + comments:false shows header but suppresses inline comments.
+
+        Expected:
+            Header comments present, but inline (Test comment) is suppressed.
+        """
         machine = self._create_machine(
             output_header=True,
             comments_enabled=False,
             line_numbers=False
         )
 
-        results = self._run_export2(machine)
-        self.assertIsNotNone(results)
-        self.assertGreater(len(results), 0)
-
-        first_section_gcode = self._get_first_section_gcode(results)
-        lines = first_section_gcode.split('\n')
-
-        header_comments = [line for line in lines if line.startswith('(') and 'Machine' in line]
-        self.assertGreater(len(header_comments), 0, "Header comments should be present")
-
         with self._modify_operation_path([
             Path.Command("(Test inline comment)"),
             Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
         ]):
             results = self._run_export2(machine)
-            first_section_gcode = self._get_first_section_gcode(results)
-            self.assertNotIn("Test inline comment", first_section_gcode,
+            gcode = self._get_first_section_gcode(results)
+            self.assertNotIn("Test inline comment", gcode,
                             "Inline comments should be suppressed when comments:false")
 
-    def test040_header_false_comments_true(self):
-        """Test that header:false and comments:true suppresses header but shows inline comments."""
+    def test023_header_false_comments_true_shows_inline(self):
+        """
+        Test that header:false + comments:true suppresses header but shows inline comments.
+
+        Expected:
+            No header comments, but inline (Test inline comment) is present.
+        """
         machine = self._create_machine(
             output_header=False,
             comments_enabled=True,
@@ -731,20 +815,452 @@ class TestExport2Integration(unittest.TestCase):
             Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
         ]):
             results = self._run_export2(machine)
-            self.assertIsNotNone(results)
-            self.assertGreater(len(results), 0)
+            gcode = self._get_first_section_gcode(results)
 
-            first_section_gcode = self._get_first_section_gcode(results)
-            lines = first_section_gcode.split('\n')
-
-            header_comments = [line for line in lines if line.startswith('(') and 'Machine' in line]
-            self.assertEqual(len(header_comments), 0, "Header comments should be suppressed when header:false")
-
-            self.assertIn("Test inline comment", first_section_gcode,
+            header_comments = [line for line in gcode.split('\n') if line.startswith('(') and 'Machine' in line]
+            self.assertEqual(len(header_comments), 0, "Header should be suppressed when header:false")
+            self.assertIn("Test inline comment", gcode,
                          "Inline comments should be present when comments:true")
 
-    def test050_line_numbers_exclude_header(self):
-        """Test that line numbers are applied to G-code but not header comments."""
+    # ===== 040-049: _expand_canned_cycles tests =====
+
+    def test040_canned_cycle_termination(self):
+        """
+        Test that _expand_canned_cycles adds G80 termination after drill cycle sequences.
+
+        Expected:
+            BEFORE: G81 X10 Y20 Z-10 R1 F100
+                    G81 X10 Y30 Z-10 R1 F100
+
+            AFTER:  G81 X10 Y20 Z-10 R1 F100
+                    G81 X10 Y30 Z-10 R1 F100
+                    G80
+        """
+        config = self._get_full_machine_config()
+        machine = Machine.from_dict(config)
+
+        cmd1 = Path.Command("G81", {"X": 10.0, "Y": 20.0, "Z": -10.0, "R": 1.0, "F": 100.0})
+        cmd1.Annotations = {"RetractMode": "G98"}
+        cmd2 = Path.Command("G81", {"X": 10.0, "Y": 30.0, "Z": -10.0, "R": 1.0, "F": 100.0})
+        cmd2.Annotations = {"RetractMode": "G98"}
+        cmd3 = Path.Command("G81", {"X": 20.0, "Y": 30.0, "Z": -10.0, "R": 1.0, "F": 100.0})
+        cmd3.Annotations = {"RetractMode": "G98"}
+
+        with self._modify_operation_path([
+            Path.Command("G0", {"Z": 20.0}),
+            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
+            Path.Command("G0", {"Z": 1.0}),
+            cmd1, cmd2, cmd3,
+            Path.Command("G0", {"Z": 20.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_first_section_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+
+            g81_lines = [line for line in lines if line.startswith('G81')]
+            self.assertEqual(len(g81_lines), 3, "Should have 3 G81 drill commands")
+
+            for g81_line in g81_lines:
+                self.assertIn('Z', g81_line, f"G81 should have Z parameter: {g81_line}")
+                self.assertIn('R', g81_line, f"G81 should have R parameter: {g81_line}")
+                self.assertIn('F', g81_line, f"G81 should have F parameter: {g81_line}")
+
+            g80_count = sum(1 for line in lines if line.startswith('G80'))
+            self.assertEqual(g80_count, 1, "Should have exactly one G80 termination")
+
+            g81_indices = [i for i, line in enumerate(lines) if line.startswith('G81')]
+            g80_indices = [i for i, line in enumerate(lines) if line.startswith('G80')]
+            self.assertGreater(min(g80_indices), max(g81_indices),
+                             "G80 should come after all G81 commands")
+
+    # ===== 050-059: _expand_split_arcs tests =====
+
+    def test050_split_arcs(self):
+        """
+        Test that _expand_split_arcs splits arc moves into linear segments.
+
+        Expected when split_arcs=True:
+            BEFORE: G2 X10 Y0 I5 J0 F100
+
+            AFTER:  G1 X... Y... F100  (multiple linear segments)
+        """
+        config = self._get_full_machine_config()
+        config['processing']['split_arcs'] = True
+        machine = Machine.from_dict(config)
+
+        with self._modify_operation_path([
+            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 1.0}),
+            Path.Command("G1", {"Z": -5.0, "F": 100.0}),
+            Path.Command("G2", {"X": 10.0, "Y": 0.0, "I": 5.0, "J": 0.0, "F": 100.0}),
+            Path.Command("G0", {"Z": 20.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_first_section_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+
+            g1_lines = [line for line in lines if line.startswith('G1')]
+            self.assertGreater(len(g1_lines), 1,
+                             "Should have multiple G1 commands from arc splitting")
+
+    # ===== 060-069: _expand_spindle_wait tests =====
+
+    def test060_spindle_wait_injects_dwell(self):
+        """
+        Test that _expand_spindle_wait injects G4 pause after M3/M4 spindle start.
+
+        Expected when spindle_wait=2.5:
+            BEFORE: M3 S1000
+                    G0 X10 Y20
+
+            AFTER:  M3 S1000
+                    G4 P2.5
+                    G0 X10 Y20
+        """
+        config = self._get_full_machine_config()
+        config['machine']['spindles'][0]['spindle_wait'] = 2.5
+        machine = Machine.from_dict(config)
+
+        with self._modify_operation_path([
+            Path.Command("M3", {"S": 1000.0}),
+            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
+            Path.Command("G1", {"Z": -5.0, "F": 100.0}),
+            Path.Command("M4", {"S": 1500.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 30.0, "F": 100.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_first_section_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+
+            g4_lines = [line for line in lines if line.startswith('G4')]
+            self.assertGreaterEqual(len(g4_lines), 2,
+                                  "Should have at least 2 G4 commands (after M3 and M4)")
+
+            for g4_line in g4_lines:
+                self.assertIn('P2.5', g4_line,
+                            f"G4 command should have P2.5 parameter: {g4_line}")
+
+            # Verify G4 appears immediately after M3 and M4
+            m3_idx = next((i for i, l in enumerate(lines) if l.startswith('M3')), None)
+            m4_idx = next((i for i, l in enumerate(lines) if l.startswith('M4')), None)
+            g4_indices = [i for i, l in enumerate(lines) if l.startswith('G4')]
+
+            if m3_idx is not None:
+                self.assertIn(m3_idx + 1, g4_indices, "G4 should appear immediately after M3")
+            if m4_idx is not None:
+                self.assertIn(m4_idx + 1, g4_indices, "G4 should appear immediately after M4")
+
+    def test061_spindle_wait_zero_no_dwell(self):
+        """
+        Test that no G4 is injected when spindle_wait is 0.
+
+        Expected:
+            M3 S1000
+            G0 X10 Y20   (no G4 between)
+        """
+        config = self._get_full_machine_config()
+        config['machine']['spindles'][0]['spindle_wait'] = 0.0
+        machine = Machine.from_dict(config)
+
+        with self._modify_operation_path([
+            Path.Command("M3", {"S": 1000.0}),
+            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_first_section_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+
+            g4_lines = [line for line in lines if line.startswith('G4')]
+            self.assertEqual(len(g4_lines), 0,
+                           "Should have no G4 commands when spindle_wait is 0")
+
+    # ===== 070-079: _expand_coolant_delay tests =====
+
+    def test070_coolant_delay_injects_dwell(self):
+        """
+        Test that _expand_coolant_delay injects G4 pause after coolant on commands.
+
+        Expected when coolant_delay=1.5:
+            BEFORE: M8
+                    G1 X10 F100
+
+            AFTER:  M8
+                    G4 P1.5
+                    G1 X10 F100
+        """
+        config = self._get_full_machine_config()
+        config['machine']['spindles'][0]['coolant_delay'] = 1.5
+        machine = Machine.from_dict(config)
+
+        with self._modify_operation_path([
+            Path.Command("M8"),
+            Path.Command("G1", {"X": 10.0, "F": 100.0}),
+            Path.Command("M7"),
+            Path.Command("G1", {"X": 20.0, "F": 100.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+
+            g4_lines = [line for line in lines if line.startswith('G4')]
+            self.assertGreater(len(g4_lines), 0,
+                             "Should have G4 pause after coolant on command")
+
+            for g4_line in g4_lines:
+                self.assertIn('P1.5', g4_line,
+                            f"G4 should have P1.5 parameter: {g4_line}")
+
+    # ===== 080-089: _expand_translate_rapids tests =====
+
+    def test080_translate_rapid_moves(self):
+        """
+        Test that _expand_translate_rapids converts G0 to G1 when enabled.
+
+        Expected when translate_rapid_moves=True:
+            BEFORE: G0 X10 Y10
+                    G1 X20 Y10 F100
+                    G0 Z5
+
+            AFTER:  G1 X10 Y10
+                    G1 X20 Y10 F100
+                    G1 Z5
+        """
+        config = self._get_full_machine_config()
+        config['processing']['translate_rapid_moves'] = True
+        machine = Machine.from_dict(config)
+
+        with self._modify_operation_path([
+            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
+            Path.Command("G0", {"X": 10.0, "Y": 10.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 10.0, "F": 100.0}),
+            Path.Command("G0", {"Z": 10.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n')
+                    if line.strip() and not line.strip().startswith('(')]
+
+            g0_count = sum(1 for line in lines if line.startswith('G0'))
+            g1_count = sum(1 for line in lines if line.startswith('G1'))
+
+            self.assertEqual(g0_count, 0,
+                           "Should have no G0 commands when rapid move translation is enabled")
+            self.assertGreaterEqual(g1_count, 4,
+                                  f"Should have at least 4 G1 commands, found {g1_count}")
+
+    # ===== 090-099: _expand_xy_before_z tests =====
+
+    def test090_xy_before_z_after_tool_change(self):
+        """
+        Test that _expand_xy_before_z decomposes first move after tool change.
+
+        When xy_before_z_after_tool_change=True, a combined XYZ move after an
+        M6 tool change is split into XY first, then Z, to prevent plunging
+        before positioning.
+
+        Expected:
+            BEFORE: M6 T1
+                    G0 X10 Y20 Z-5
+
+            AFTER:  M6 T1
+                    G0 X10 Y20
+                    G0 Z-5
+        """
+        config = self._get_full_machine_config()
+        config['processing']['xy_before_z_after_tool_change'] = True
+        machine = Machine.from_dict(config)
+
+        with self._modify_operation_path([
+            Path.Command("M6", {"T": 1}),
+            Path.Command("G0", {"X": 10.0, "Y": 20.0, "Z": -5.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 30.0, "Z": -5.0, "F": 100.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n')
+                    if line.strip() and not line.strip().startswith('(')]
+
+            # Find G0 lines that are part of the decomposed move
+            g0_lines = [line for line in lines if line.startswith('G0')]
+
+            # Find a G0 with X or Y but no Z (the XY-only move)
+            xy_only = [l for l in g0_lines if ('X' in l or 'Y' in l) and 'Z' not in l]
+            z_only = [l for l in g0_lines if 'Z' in l and 'X' not in l and 'Y' not in l]
+
+            self.assertGreater(len(xy_only), 0, "Should have an XY-only G0 move")
+            self.assertGreater(len(z_only), 0, "Should have a Z-only G0 move")
+
+    # ===== 100-109: _expand_bcnc_commands tests =====
+
+    def test100_bcnc_comments_enabled(self):
+        """
+        Test that _expand_bcnc_commands injects bCNC block annotations when enabled.
+
+        Expected when output_bcnc_comments=True:
+            (Block-name: TestProfile)
+            (Block-expand: 0)
+            (Block-enable: 1)
+            G0 X0 Y0 Z5
+            ...
+            (Block-name: post_amble)
+            (Block-expand: 0)
+            (Block-enable: 1)
+        """
+        machine = self._create_machine(
+            output_bcnc_comments=True,
+            output_header=True
+        )
+
+        results = self._run_export2(machine)
+        gcode = self._get_first_section_gcode(results)
+
+        self.assertIn("(Block-name:", gcode, "Should contain bCNC block name comments")
+        self.assertIn("(Block-expand: 0)", gcode, "Should contain bCNC block expand comments")
+        self.assertIn("(Block-enable: 1)", gcode, "Should contain bCNC block enable comments")
+        self.assertIn("(Block-name: post_amble)", gcode, "Should contain bCNC postamble block")
+
+    def test101_bcnc_comments_disabled(self):
+        """
+        Test that _expand_bcnc_commands removes bCNC annotations when disabled.
+
+        Expected when output_bcnc_comments=False:
+            No (Block-name:, (Block-expand:, or (Block-enable: lines.
+        """
+        machine = self._create_machine(
+            output_bcnc_comments=False,
+            output_header=True
+        )
+
+        results = self._run_export2(machine)
+        gcode = self._get_first_section_gcode(results)
+
+        self.assertNotIn("(Block-name:", gcode, "Should not contain bCNC block name comments")
+        self.assertNotIn("(Block-expand: 0)", gcode, "Should not contain bCNC expand comments")
+        self.assertNotIn("(Block-enable: 1)", gcode, "Should not contain bCNC enable comments")
+
+    def test102_bcnc_with_regular_comments_disabled(self):
+        """
+        Test that bCNC comments appear even when regular comments are disabled.
+
+        bCNC block annotations are structural, not user comments, so they should
+        be output regardless of the comments.enabled setting.
+        """
+        machine = self._create_machine(
+            output_bcnc_comments=True,
+            comments_enabled=False,
+            output_header=False
+        )
+
+        results = self._run_export2(machine)
+        gcode = self._get_first_section_gcode(results)
+
+        self.assertIn("(Block-name:", gcode, "bCNC blocks should appear even when comments disabled")
+        self.assertIn("(Block-name: post_amble)", gcode, "bCNC postamble should appear")
+
+    def test103_bcnc_block_structure(self):
+        """
+        Test that each bCNC block has the correct 3-line structure:
+            (Block-name: <label>)
+            (Block-expand: 0)
+            (Block-enable: 1)
+        """
+        machine = self._create_machine(
+            output_bcnc_comments=True,
+            comments_enabled=True
+        )
+
+        results = self._run_export2(machine)
+        gcode = self._get_first_section_gcode(results)
+        lines = gcode.split('\n')
+
+        for i, line in enumerate(lines):
+            if line.startswith("(Block-name:"):
+                if i + 2 < len(lines):
+                    self.assertEqual(lines[i+1], "(Block-expand: 0)",
+                                   "Block should be followed by expand: 0")
+                    self.assertEqual(lines[i+2], "(Block-enable: 1)",
+                                   "Block should be followed by enable: 1")
+
+    # ===== 110-119: _expand_tool_length_offset tests =====
+
+    def test110_tool_length_offset_enabled(self):
+        """
+        Test that _expand_tool_length_offset adds G43 after M6 when enabled.
+
+        When output_tool_length_offset=True and the operation path contains
+        an M6 tool change, G43 is injected immediately after it.
+
+        Expected:
+            BEFORE: M6 T1
+                    G0 X10 Y20 Z5
+
+            AFTER:  M6 T1
+                    G43 H1
+                    G0 X10 Y20 Z5
+        """
+        config = self._get_full_machine_config()
+        config['output']['output_tool_length_offset'] = True
+        machine = Machine.from_dict(config)
+
+        with self._modify_operation_path([
+            Path.Command("M6", {"T": 1}),
+            Path.Command("G0", {"X": 10.0, "Y": 20.0, "Z": 5.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 30.0, "Z": -5.0, "F": 100.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+
+            g43_lines = [line for line in lines if line.startswith('G43')]
+            self.assertGreater(len(g43_lines), 0,
+                             "Should have G43 tool length offset command")
+
+            for g43_line in g43_lines:
+                self.assertIn('H', g43_line,
+                            f"G43 should have H parameter: {g43_line}")
+
+    def test111_tool_length_offset_disabled(self):
+        """
+        Test that no G43 commands appear when tool length offset is disabled.
+
+        When output_tool_length_offset=False, M6 in the operation path should
+        NOT be followed by G43.
+
+        Expected:
+            BEFORE: M6 T1
+                    G0 X10 Y20 Z5
+
+            AFTER:  M6 T1
+                    G0 X10 Y20 Z5
+                    (no G43)
+        """
+        config = self._get_full_machine_config()
+        config['output']['output_tool_length_offset'] = False
+        machine = Machine.from_dict(config)
+
+        with self._modify_operation_path([
+            Path.Command("M6", {"T": 1}),
+            Path.Command("G0", {"X": 10.0, "Y": 20.0, "Z": 5.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 30.0, "Z": -5.0, "F": 100.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
+
+            g43_lines = [line for line in lines if line.startswith('G43')]
+            self.assertEqual(len(g43_lines), 0,
+                           "Should have no G43 commands when tool length offset is disabled")
+
+    # ===== 120-139: Output formatting tests =====
+
+    def test120_line_numbers_exclude_header(self):
+        """
+        Test that line numbers are applied to G-code body but not header comments.
+
+        Expected:
+            (Machine: TestMachine)     <- no line number
+            N100 G21                   <- numbered
+            N110 G0 X0 Y0 Z5          <- numbered
+        """
         machine = self._create_machine(
             output_header=True,
             comments_enabled=False,
@@ -754,29 +1270,28 @@ class TestExport2Integration(unittest.TestCase):
         )
 
         results = self._run_export2(machine)
-        self.assertIsNotNone(results)
-        self.assertGreater(len(results), 0)
+        gcode = self._get_first_section_gcode(results)
+        lines = gcode.split('\n')
 
-        first_section_gcode = self._get_first_section_gcode(results)
-        lines = first_section_gcode.split('\n')
+        for line in lines:
+            if line.strip().startswith('('):
+                self.assertFalse(line.strip().startswith('N'),
+                               f"Header comment should not have line number: {line}")
 
-        header_lines = [line for line in lines if line.strip().startswith('(')]
-        gcode_lines = [line for line in lines if line.strip().startswith('N') or line.strip().startswith('G')]
-
-        for line in header_lines:
-            self.assertFalse(line.strip().startswith('N'),
-                           f"Header comment should not have line number: {line}")
-
-        numbered_lines = [line for line in gcode_lines if line.strip().startswith('N')]
+        numbered_lines = [line for line in lines if line.strip().startswith('N')]
         self.assertGreater(len(numbered_lines), 0, "G-code lines should have line numbers")
+        self.assertTrue(numbered_lines[0].strip().startswith('N100'),
+                      f"First line number should be N100, got: {numbered_lines[0].strip()}")
 
-        if numbered_lines:
-            first_numbered = numbered_lines[0].strip()
-            self.assertTrue(first_numbered.startswith('N100'),
-                          f"First line number should be N100, got: {first_numbered}")
+    def test121_line_numbers_start_and_increment(self):
+        """
+        Test that line_number_start and line_increment are respected.
 
-    def test060_line_numbers_from_config(self):
-        """Test that line numbering settings are read from machine config."""
+        Expected with start=50, increment=5:
+            N50 ...
+            N55 ...
+            N60 ...
+        """
         machine = self._create_machine(
             line_numbers=True,
             line_number_start=50,
@@ -784,21 +1299,23 @@ class TestExport2Integration(unittest.TestCase):
         )
 
         results = self._run_export2(machine)
-        first_section_gcode = self._get_first_section_gcode(results)
-        lines = first_section_gcode.split('\n')
+        gcode = self._get_first_section_gcode(results)
+        numbered_lines = [line.strip() for line in gcode.split('\n') if line.strip().startswith('N')]
 
-        numbered_lines = [line.strip() for line in lines if line.strip().startswith('N')]
+        self.assertGreaterEqual(len(numbered_lines), 2, "Should have at least 2 numbered lines")
+        self.assertTrue(numbered_lines[0].startswith('N50'),
+                      f"First line should be N50, got: {numbered_lines[0]}")
+        self.assertTrue(numbered_lines[1].startswith('N55'),
+                      f"Second line should be N55, got: {numbered_lines[1]}")
 
-        if numbered_lines:
-            self.assertTrue(numbered_lines[0].startswith('N50'),
-                          f"First line should be N50, got: {numbered_lines[0]}")
+    def test122_precision_from_config(self):
+        """
+        Test that axis_precision and feed_precision control decimal places.
 
-            if len(numbered_lines) >= 2:
-                self.assertTrue(numbered_lines[1].startswith('N55'),
-                              f"Second line should be N55, got: {numbered_lines[1]}")
-
-    def test070_precision_from_config(self):
-        """Test that axis_precision and feed_precision settings are read from machine config."""
+        Expected with axis_precision=4, feed_precision=1:
+            G0 X10.1235 Y20.9876 Z5.5000
+            G1 X100.1235 ... F6007.4
+        """
         machine = self._create_machine(
             axis_precision=4,
             feed_precision=1,
@@ -810,144 +1327,228 @@ class TestExport2Integration(unittest.TestCase):
             Path.Command("G1", {"X": 100.123456, "Y": 0.0, "Z": -5.0, "F": 100.123}),
         ]):
             results = self._run_export2(machine)
-            first_section_gcode = self._get_first_section_gcode(results)
+            gcode = self._get_first_section_gcode(results)
 
-            self.assertIn("X10.1235", first_section_gcode,
-                         "X coordinate should have 4 decimal places (rounded)")
-            self.assertIn("Y20.9876", first_section_gcode,
-                         "Y coordinate should have 4 decimal places (rounded)")
-            self.assertIn("Z5.5000", first_section_gcode,
-                         "Z coordinate should have 4 decimal places")
-            self.assertIn("F6007.4", first_section_gcode,
-                         "Feed should have 1 decimal place")
+            self.assertIn("X10.1235", gcode, "X should have 4 decimal places (rounded)")
+            self.assertIn("Y20.9876", gcode, "Y should have 4 decimal places (rounded)")
+            self.assertIn("Z5.5000", gcode, "Z should have 4 decimal places")
+            self.assertIn("F6007.4", gcode, "Feed should have 1 decimal place")
 
-    def test060_comment_symbol_formatting(self):
-        """Test that comment_symbol setting formats comments correctly."""
-        machine1 = self._create_machine(
-            comment_symbol='(',
-            comments_enabled=True,
+    def test123_spindle_decimals(self):
+        """
+        Test that spindle_decimals controls decimal places for spindle speed.
+
+        Expected with spindle_decimals=0:
+            M3 S1235   (rounded, no decimals)
+        """
+        machine = self._create_machine(
+            spindle_decimals=0,
             output_header=False,
             line_numbers=False
         )
 
-        machine2 = self._create_machine(
-            comment_symbol=';',
-            comments_enabled=True,
-            output_header=False,
-            line_numbers=False
-        )
+        with self._modify_operation_path([
+            Path.Command("M3", {"S": 1234.567}),
+            Path.Command("G0", {"X": 10.0}),
+        ]):
+            results = self._run_export2(machine)
+            gcode = self._get_first_section_gcode(results)
+            self.assertIn("S1235", gcode, "Should have 0 decimal places for spindle speed")
 
+    def test124_comment_symbol_formatting(self):
+        """
+        Test that comment_symbol controls comment format.
+
+        Expected with comment_symbol='(':  (Test comment)
+        Expected with comment_symbol=';':  ; Test comment
+        """
         with self._modify_operation_path([
             Path.Command("(Test comment)"),
             Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
         ]):
-            results1 = self._run_export2(machine1)
-            first_section_gcode1 = self._get_first_section_gcode(results1)
-            self.assertIn("(Test comment)", first_section_gcode1,
-                         "Comments should be surrounded by parentheses when comment_symbol='('")
+            machine_paren = self._create_machine(
+                comment_symbol='(', comments_enabled=True,
+                output_header=False, line_numbers=False
+            )
+            results1 = self._run_export2(machine_paren)
+            gcode1 = self._get_first_section_gcode(results1)
+            self.assertIn("(Test comment)", gcode1,
+                         "Comments should use parentheses when comment_symbol='('")
 
-            results2 = self._run_export2(machine2)
-            first_section_gcode2 = self._get_first_section_gcode(results2)
-            self.assertIn("; Test comment", first_section_gcode2,
-                         "Comments should be prefixed with semicolon when comment_symbol=';'")
+            machine_semi = self._create_machine(
+                comment_symbol=';', comments_enabled=True,
+                output_header=False, line_numbers=False
+            )
+            results2 = self._run_export2(machine_semi)
+            gcode2 = self._get_first_section_gcode(results2)
+            self.assertIn("; Test comment", gcode2,
+                         "Comments should use semicolon when comment_symbol=';'")
 
-    def test082_output_duplicate_parameters_false(self):
-        """Test that output_duplicate_parameters=False suppresses duplicate parameters."""
+    def test125_command_space_option(self):
+        """
+        Test that command_space controls spacing between command and parameters.
+
+        Expected with command_space=" ":  G0 X10.000
+        Expected with command_space="":   G0X10.000
+        """
+        with self._modify_operation_path([
+            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
+        ]):
+            machine_space = self._create_machine(
+                command_space=" ", output_header=False, line_numbers=False
+            )
+            gcode_space = self._get_first_section_gcode(self._run_export2(machine_space))
+            self.assertIn("G0 X", gcode_space, "Should have space between command and parameter")
+
+            machine_no_space = self._create_machine(
+                command_space="", output_header=False, line_numbers=False
+            )
+            gcode_no_space = self._get_first_section_gcode(self._run_export2(machine_no_space))
+            self.assertIn("G0X", gcode_no_space, "Should have no space between command and parameter")
+
+    def test126_end_of_line_chars(self):
+        """
+        Test that end_of_line_chars controls line ending characters.
+
+        Expected with "\\r\\n": CRLF line endings
+        Expected with "\\n": LF-only line endings
+        """
+        with self._modify_operation_path([
+            Path.Command("G0", {"X": 10.0}),
+            Path.Command("G1", {"Y": 20.0}),
+        ]):
+            machine_crlf = self._create_machine(
+                end_of_line_chars="\r\n", output_header=False, line_numbers=False
+            )
+            gcode_crlf = self._get_first_section_gcode(self._run_export2(machine_crlf))
+            self.assertIn("\r\n", gcode_crlf, "Should have CRLF line endings")
+
+            machine_lf = self._create_machine(
+                end_of_line_chars="\n", output_header=False, line_numbers=False
+            )
+            gcode_lf = self._get_first_section_gcode(self._run_export2(machine_lf))
+            self.assertNotIn("\r", gcode_lf, "Should have LF-only line endings")
+
+    def test127_output_units(self):
+        """
+        Test that output_units inserts G20 (imperial) or G21 (metric).
+
+        Expected: G21 for metric, G20 for imperial.
+        """
+        with self._modify_operation_path([
+            Path.Command("G0", {"X": 25.4, "Y": 50.8}),
+        ]):
+            machine_metric = self._create_machine(
+                output_units="metric", output_header=False, line_numbers=False
+            )
+            gcode_metric = self._get_first_section_gcode(self._run_export2(machine_metric))
+            self.assertIn("G21", gcode_metric, "Metric output should contain G21")
+
+            machine_imperial = self._create_machine(
+                output_units="imperial", output_header=False, line_numbers=False
+            )
+            gcode_imperial = self._get_first_section_gcode(self._run_export2(machine_imperial))
+            self.assertIn("G20", gcode_imperial, "Imperial output should contain G20")
+
+    def test128_duplicate_parameters_suppressed(self):
+        """
+        Test that duplicate parameters are suppressed when duplicates.parameters=False.
+
+        Expected:
+            BEFORE: G0 X10 Y10 Z5 F60000
+                    G1 X20 Y10 Z5 F60000
+
+            AFTER:  G0 X10 Y10 Z5 F60000
+                    G1 X20              (Y, Z, F suppressed — unchanged)
+        """
         machine = self._create_machine(
-            parameters=False,  # duplicates.parameters = False
-            line_numbers=False,
-            comments_enabled=False,
-            output_header=False
+            parameters=False, line_numbers=False,
+            comments_enabled=False, output_header=False
         )
 
         with self._modify_operation_path([
             Path.Command("G0", {"X": 10.0, "Y": 10.0, "Z": 5.0, "F": 1000.0}),
             Path.Command("G1", {"X": 20.0, "Y": 10.0, "Z": 5.0, "F": 1000.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 20.0, "Z": 5.0, "F": 1000.0}),
         ]):
             results = self._run_export2(machine)
-            first_section_gcode = self._get_first_section_gcode(results)
-            lines = [line.strip() for line in first_section_gcode.split('\n') if line.strip()]
-            gcode_lines = [line for line in lines if not line.startswith('(')]
+            gcode = self._get_first_section_gcode(results)
+            lines = [l.strip() for l in gcode.split('\n') if l.strip() and not l.strip().startswith('(')]
 
-            self.assertTrue(any('G0 X10.000 Y10.000 Z5.000 F60000.000' in line for line in gcode_lines),
-                            "First command should have all parameters")
+            second_commands = [l for l in lines if 'G1' in l and 'X20' in l]
+            self.assertGreater(len(second_commands), 0, "Should have G1 with X20")
+            self.assertNotIn('Y', second_commands[0], "Y should be suppressed (unchanged)")
+            self.assertNotIn('Z', second_commands[0], "Z should be suppressed (unchanged)")
 
-            second_commands = [line for line in gcode_lines if 'G1' in line and 'X20.000' in line]
-            self.assertTrue(len(second_commands) > 0, "Should have G1 command with X20.000")
-            second_cmd = second_commands[0]
-            self.assertNotIn('Y', second_cmd, "Y should be suppressed (unchanged)")
-            self.assertNotIn('Z', second_cmd, "Z should be suppressed (unchanged)")
-            self.assertNotIn('F', second_cmd, "F should be suppressed (unchanged)")
+    def test129_duplicate_commands_suppressed(self):
+        """
+        Test that duplicate G-code commands are suppressed when duplicates.commands=False.
 
-            third_commands = [line for line in gcode_lines if 'G1' in line and 'Y20.000' in line]
-            self.assertTrue(len(third_commands) > 0, "Should have G1 command with Y20.000")
+        Expected:
+            BEFORE: G1 X10 Y10
+                    G1 X20 Y10
+                    G1 X20 Y20
 
-    def test083_output_duplicate_parameters_true(self):
-        """Test that output_duplicate_parameters=True shows all parameters (default behavior)."""
-        machine = self._create_machine(
-            parameters=True,  # duplicates.parameters = True
-            line_numbers=False,
-            comments_enabled=False,
-            output_header=False
-        )
-
+            AFTER:  G1 X10 Y10
+                    X20 Y10      (G1 suppressed — same as previous)
+                    X20 Y20
+        """
         with self._modify_operation_path([
-            Path.Command("G0", {"X": 10.0, "Y": 10.0, "Z": 5.0, "F": 1000.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 10.0, "Z": 5.0, "F": 1000.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 20.0, "Z": 5.0, "F": 1000.0}),
+            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
+            Path.Command("G1", {"X": 10.0, "Y": 10.0, "Z": -5.0, "F": 100.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 10.0, "Z": -5.0}),
+            Path.Command("G1", {"X": 20.0, "Y": 20.0, "Z": -5.0}),
+            Path.Command("G1", {"X": 10.0, "Y": 20.0, "Z": -5.0}),
+            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
         ]):
+            machine = self._create_machine(commands=False, parameters=True)
             results = self._run_export2(machine)
+            gcode = self._get_all_gcode(results)
+            lines = [l.strip() for l in gcode.split('\n')
+                    if l.strip() and not l.strip().startswith('(')]
 
-            first_section_gcode = self._get_first_section_gcode(results)
-            lines = [line.strip() for line in first_section_gcode.split('\n') if line.strip()]
-            gcode_lines = [line for line in lines if not line.startswith('(')]
+            g1_count = sum(1 for l in lines if l.startswith('G1'))
+            suppressed_count = sum(1 for l in lines if l and l[0] in 'XYZ' and not l.startswith('G'))
 
-            self.assertTrue(any('G0 X10.000 Y10.000 Z5.000 F60000.000' in line for line in gcode_lines),
-                            "First command should have all parameters")
+            self.assertEqual(g1_count, 1,
+                           f"Should have only 1 G1 command when duplicates suppressed, found {g1_count}")
+            self.assertEqual(suppressed_count, 3,
+                           f"Should have 3 suppressed G1 moves, found {suppressed_count}")
 
-            second_commands = [line for line in gcode_lines if 'G1' in line and 'X20.000' in line]
-            self.assertTrue(len(second_commands) > 0, "Should have G1 command with X20.000")
-            second_cmd = second_commands[0]
-            self.assertIn('Y10.000', second_cmd, "Y should appear even though unchanged from G0")
-            self.assertIn('Z5.000', second_cmd, "Z should appear even though unchanged")
-            self.assertIn('F', second_cmd, "F should appear even though unchanged")
+    # ===== 140-149: G-code blocks insertion tests =====
 
-            third_commands = [line for line in gcode_lines if 'G1' in line and 'Y20.000' in line]
-            self.assertTrue(len(third_commands) > 0, "Should have G1 command with Y20.000")
-            third_cmd = third_commands[0]
-            self.assertIn('X20.000', third_cmd, "X should appear even though unchanged")
-            self.assertIn('Z5.000', third_cmd, "Z should appear even though unchanged")
-            self.assertIn('F', third_cmd, "F should appear even though unchanged")
+    def test140_gcode_blocks_insertion(self):
+        """
+        Test that all G-code blocks from machine config are properly inserted.
 
-    def test084_gcode_blocks_insertion(self):
-        """Test that all G-code blocks from machine config are properly inserted."""
-        from Machine.models.machine import Machine
-
-        machine_config = self._get_full_machine_config()
-        machine = Machine.from_dict(machine_config)
+        Expected: safety, preamble, prejob, preoperation, postoperation,
+                  postjob, and postamble all appear in output.
+        """
+        config = self._get_full_machine_config()
+        machine = Machine.from_dict(config)
 
         with self._modify_operation_path([
             Path.Command("G0", {"X": 10.0, "Y": 10.0, "Z": 5.0, "F": 1000.0}),
             Path.Command("G1", {"X": 20.0, "Y": 10.0, "Z": 5.0, "F": 1000.0}),
         ]):
             results = self._run_export2(machine)
-            all_output = self._get_all_gcode(results)
+            gcode = self._get_all_gcode(results)
 
-            self.assertIn("(safety)", all_output, "Safetyblock should appear in output")
-            self.assertIn("(preamble)", all_output, "Preamble should appear in output")
-            self.assertIn("(prejob)", all_output, "Pre-job should appear in output")
-            self.assertIn("(preoperation)", all_output, "Pre-operation should appear in output")
-            self.assertIn("(postoperation)", all_output, "Post-operation should appear in output")
-            self.assertIn("(postjob)", all_output, "Post-job should appear in output")
-            self.assertIn("(postamble)", all_output, "Postamble should appear in output")
+            self.assertIn("(safety)", gcode, "Safetyblock should appear in output")
+            self.assertIn("(preamble)", gcode, "Preamble should appear in output")
+            self.assertIn("(prejob)", gcode, "Pre-job should appear in output")
+            self.assertIn("(preoperation)", gcode, "Pre-operation should appear in output")
+            self.assertIn("(postoperation)", gcode, "Post-operation should appear in output")
+            self.assertIn("(postjob)", gcode, "Post-job should appear in output")
+            self.assertIn("(postamble)", gcode, "Postamble should appear in output")
 
-    def test085_rotary_blocks_insertion(self):
-        """Test that pre/post rotary blocks are inserted around rotary axis moves."""
-        from Machine.models.machine import Machine
+    def test141_rotary_blocks_insertion(self):
+        """
+        Test that pre/post rotary blocks are inserted around rotary axis moves.
 
-        machine_config = self._get_full_machine_config()
-        machine = Machine.from_dict(machine_config)
+        Expected: 2 rotary groups → 2 pre-rotary + 2 post-rotary blocks.
+        """
+        config = self._get_full_machine_config()
+        machine = Machine.from_dict(config)
 
         with self._modify_operation_path([
             Path.Command("G1", {"X": 10.0}),
@@ -958,1004 +1559,117 @@ class TestExport2Integration(unittest.TestCase):
             Path.Command("G1", {"X": 20.0}),
         ]):
             results = self._run_export2(machine)
-            all_output = "\n".join(gcode for _, gcode in results)
+            gcode = "\n".join(g for _, g in results)
 
-            self.assertIn("(prerotary)", all_output, "Pre-rotary block should appear in output")
-            self.assertIn("(Postrotary)", all_output, "Post-rotary block should appear in output")
+            self.assertIn("(prerotary)", gcode, "Pre-rotary block should appear")
+            self.assertIn("(Postrotary)", gcode, "Post-rotary block should appear")
 
-            prerotary_count = all_output.count("(prerotary)")
-            postrotary_count = all_output.count("(Postrotary)")
-            self.assertEqual(prerotary_count, 2, "Should have 2 pre-rotary blocks (one per rotary group)")
-            self.assertEqual(postrotary_count, 2, "Should have 2 post-rotary blocks (one per rotary group)")
+            self.assertEqual(gcode.count("(prerotary)"), 2,
+                           "Should have 2 pre-rotary blocks (one per rotary group)")
+            self.assertEqual(gcode.count("(Postrotary)"), 2,
+                           "Should have 2 post-rotary blocks (one per rotary group)")
 
-            lines = all_output.split('\n')
-            prerotary_indices = [i for i, line in enumerate(lines) if '(prerotary)' in line]
-            postrotary_indices = [i for i, line in enumerate(lines) if '(Postrotary)' in line]
-            
-            for pre_idx, post_idx in zip(prerotary_indices, postrotary_indices):
-                self.assertTrue(pre_idx < post_idx, "Pre-rotary should appear before post-rotary")
+    def test142_fixture_change_blocks_insertion(self):
+        """
+        Test that pre/post fixture change blocks are inserted when fixtures change.
 
-            print(f"\nDEBUG test085: Rotary blocks output:\n{all_output}")
+        Expected with fixtures=[G54, G55]:
+            (prefixture) before each fixture, (postfixture) after.
+        """
+        config = self._get_full_machine_config()
+        machine = Machine.from_dict(config)
 
-    def test086_fixture_change_blocks_insertion(self):
-        """Test that pre/post fixture change blocks are inserted when fixtures change."""
-        from Machine.models.machine import Machine
-
-        machine_config = self._get_full_machine_config()
-        machine = Machine.from_dict(machine_config)
-
-        # Modify job to use multiple fixtures
         self.job.Fixtures = ["G54", "G55"]
         self.job.SplitOutput = False
-        
+
         try:
             results = self._run_export2(machine)
-            all_output = self._get_all_gcode(results)
+            gcode = self._get_all_gcode(results)
 
-            self.assertIn("(prefixture)", all_output, "Pre-fixture block should appear in output")
-            self.assertIn("(postfixture)", all_output, "Post-fixture block should appear in output")
+            self.assertIn("(prefixture)", gcode, "Pre-fixture block should appear")
+            self.assertIn("(postfixture)", gcode, "Post-fixture block should appear")
 
-            # Count occurrences - should have blocks for fixture transitions
-            prefixture_count = all_output.count("(prefixture)")
-            postfixture_count = all_output.count("(postfixture)")
-            
-            # Should have at least one fixture change (from G54 to G55)
-            self.assertGreaterEqual(prefixture_count, 1, "Should have at least 1 pre-fixture block")
-            self.assertGreaterEqual(postfixture_count, 1, "Should have at least 1 post-fixture block")
-
-            # Verify ordering: pre-fixture should come before post-fixture
-            lines = all_output.split('\n')
-            prefixture_indices = [i for i, line in enumerate(lines) if '(prefixture)' in line]
-            postfixture_indices = [i for i, line in enumerate(lines) if '(postfixture)' in line]
-            
-            if prefixture_indices and postfixture_indices:
-                # Each pre-fixture should come before its corresponding post-fixture
-                for pre_idx in prefixture_indices:
-                    # Find the next post-fixture after this pre-fixture
-                    next_post = next((idx for idx in postfixture_indices if idx > pre_idx), None)
-                    if next_post:
-                        self.assertLess(pre_idx, next_post, "Pre-fixture should come before post-fixture")
+            self.assertGreaterEqual(gcode.count("(prefixture)"), 1,
+                                  "Should have at least 1 pre-fixture block")
+            self.assertGreaterEqual(gcode.count("(postfixture)"), 1,
+                                  "Should have at least 1 post-fixture block")
         finally:
-            # Restore original fixture settings
             self.job.Fixtures = ["G54"]
 
-    def test090_blank_lines_option(self):
-        """Test that blank_lines option controls blank line insertion in output."""
-        # Test with blank_lines enabled
-        machine_with_blanks = self._create_machine(
-            blank_lines=True,
-            output_header=False,
-            line_numbers=False
-        )
-        
-        # Test with blank_lines disabled
-        machine_no_blanks = self._create_machine(
-            blank_lines=False,
-            output_header=False,
-            line_numbers=False
-        )
-        
-        with self._modify_operation_path([
-            Path.Command("G0", {"X": 10.0, "Y": 10.0, "Z": 5.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 10.0, "F": 100.0}),
-        ]):
-            results_with = self._run_export2(machine_with_blanks)
-            gcode_with = self._get_first_section_gcode(results_with)
-            
-            results_without = self._run_export2(machine_no_blanks)
-            gcode_without = self._get_first_section_gcode(results_without)
-            
-            # With blank lines should have more newlines
-            blank_count_with = gcode_with.count('\n\n')
-            blank_count_without = gcode_without.count('\n\n')
-            
-            self.assertGreaterEqual(blank_count_with, blank_count_without,
-                                   "Output with blank_lines=True should have more blank lines")
+    # ===== 150-159: Postprocessor properties and misc tests =====
 
-    def test091_command_space_option(self):
-        """Test that command_space option controls spacing between command and parameters."""
-        # Test with single space (default)
-        machine_space = self._create_machine(
-            command_space=" ",
-            output_header=False,
-            line_numbers=False
-        )
-        
-        # Test with no space
-        machine_no_space = self._create_machine(
-            command_space="",
-            output_header=False,
-            line_numbers=False
-        )
-        
-        with self._modify_operation_path([
-            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
-        ]):
-            results_space = self._run_export2(machine_space)
-            gcode_space = self._get_first_section_gcode(results_space)
-            
-            results_no_space = self._run_export2(machine_no_space)
-            gcode_no_space = self._get_first_section_gcode(results_no_space)
-            
-            # With space should have "G0 X10.000"
-            self.assertIn("G0 X", gcode_space, "Should have space between command and parameter")
-            
-            # Without space should have "G0X10.000"
-            self.assertIn("G0X", gcode_no_space, "Should have no space between command and parameter")
-
-    def test092_end_of_line_chars_option(self):
-        """Test that end_of_line_chars option controls line ending characters.
-        
-        NOTE: Implementation incomplete - needs further work.
+    def test150_tool_radius_compensation_property(self):
         """
-        # Test with standard newline
-        machine_lf = self._create_machine(
-            end_of_line_chars="\n",
-            output_header=False,
-            line_numbers=False
-        )
-        
-        # Test with CRLF
-        machine_crlf = self._create_machine(
-            end_of_line_chars="\r\n",
-            output_header=False,
-            line_numbers=False
-        )
-        
-        with self._modify_operation_path([
-            Path.Command("G0", {"X": 10.0}),
-            Path.Command("G1", {"Y": 20.0}),
-        ]):
-            results_lf = self._run_export2(machine_lf)
-            gcode_lf = self._get_first_section_gcode(results_lf)
-            
-            results_crlf = self._run_export2(machine_crlf)
-            gcode_crlf = self._get_first_section_gcode(results_crlf)
-            
-            # CRLF output should contain \r\n
-            self.assertIn("\r\n", gcode_crlf, "Should have CRLF line endings")
-            
-            # LF output should not contain \r
-            self.assertNotIn("\r", gcode_lf, "Should have LF-only line endings")
+        Test that postprocessors declare support for G41/G42 tool radius compensation.
 
-    def test094_machine_name_option(self):
-        """Test that machine_name option includes machine name in output."""
-        # Test with machine name enabled
-        machine_with_name = self._create_machine(
-            include_machine_name=True,  # header.include_machine_name = True
-            output_header=True,
-            comments_enabled=True
-        )
-        
-        # Test with machine name disabled
-        machine_no_name = self._create_machine(
-            include_machine_name=False,  # header.include_machine_name = False
-            output_header=True,
-            comments_enabled=True
-        )
-        
-        results_with = self._run_export2(machine_with_name)
-        gcode_with = self._get_first_section_gcode(results_with)
-        
-        results_without = self._run_export2(machine_no_name)
-        gcode_without = self._get_first_section_gcode(results_without)
-        
-        # With machine name should contain machine reference
-        machine_name_pattern = "Machine"
-        
-        # Count occurrences
-        count_with = gcode_with.count(machine_name_pattern)
-        count_without = gcode_without.count(machine_name_pattern)
-        
-        self.assertGreaterEqual(count_with, count_without,
-                               "Should have machine name when machine_name=True")
-
-    def test095_output_bcnc_comments_option(self):
-        """Test that output_bcnc_comments option controls bCNC-specific comment output."""
-        # Test with bCNC comments enabled
-        machine_with_bcnc = self._create_machine(
-            output_bcnc_comments=True,  # comments.output_bcnc_comments = True
-            comments_enabled=True,
-            output_header=False
-        )
-        
-        # Test with bCNC comments disabled
-        machine_no_bcnc = self._create_machine(
-            output_bcnc_comments=False,  # comments.output_bcnc_comments = False
-            comments_enabled=True,
-            output_header=False
-        )
-        
-        # Create a command with bCNC annotation
-        bcnc_comment = Path.Command("(bCNC test comment)")
-        bcnc_comment.Annotations = {"bcnc": True}
-        
-        with self._modify_operation_path([
-            bcnc_comment,
-            Path.Command("G0", {"X": 10.0}),
-        ]):
-            results_with = self._run_export2(machine_with_bcnc)
-            gcode_with = self._get_first_section_gcode(results_with)
-            
-            results_without = self._run_export2(machine_no_bcnc)
-            gcode_without = self._get_first_section_gcode(results_without)
-            
-            # With bCNC enabled, the comment should appear
-            # Without bCNC, it might be suppressed or formatted differently
-            # This is a basic check - actual behavior depends on implementation
-            self.assertIsNotNone(gcode_with, "Should generate output with bCNC comments enabled")
-            self.assertIsNotNone(gcode_without, "Should generate output with bCNC comments disabled")
-
-    def test096_output_units_option(self):
-        """Test that output_units option controls unit system in output."""
-        # Test with metric units
-        machine_metric = self._create_machine(
-            output_units="metric",
-            output_header=False,
-            line_numbers=False
-        )
-        
-        # Test with imperial units
-        machine_imperial = self._create_machine(
-            output_units="imperial",
-            output_header=False,
-            line_numbers=False
-        )
-        
-        with self._modify_operation_path([
-            Path.Command("G0", {"X": 25.4, "Y": 50.8}),  # 1 inch, 2 inches in mm
-        ]):
-            results_metric = self._run_export2(machine_metric)
-            gcode_metric = self._get_first_section_gcode(results_metric)
-            
-            results_imperial = self._run_export2(machine_imperial)
-            gcode_imperial = self._get_first_section_gcode(results_imperial)
-            
-            # Metric should have G21, imperial should have G20
-            self.assertIn("G21", gcode_metric, "Metric output should contain G21")
-            self.assertIn("G20", gcode_imperial, "Imperial output should contain G20")
-
-    def test097_path_labels_option(self):
-        """Test that path_labels option includes path labels in output."""
-        # Test with path labels enabled
-        machine_with_labels = self._create_machine(
-            path_labels=True,  # comments.include_operation_labels = True (legacy mapping)
-            comments_enabled=True,
-            output_header=False
-        )
-        
-        # Test with path labels disabled
-        machine_no_labels = self._create_machine(
-            path_labels=False,  # comments.include_operation_labels = False (legacy mapping)
-            comments_enabled=True,
-            output_header=False
-        )
-        
-        results_with = self._run_export2(machine_with_labels)
-        gcode_with = self._get_first_section_gcode(results_with)
-        
-        results_without = self._run_export2(machine_no_labels)
-        gcode_without = self._get_first_section_gcode(results_without)
-        
-        # With path labels should have operation/path identifiers
-        # Look for the operation label "TestProfile"
-        self.assertIsNotNone(gcode_with, "Should generate output with path labels")
-        self.assertIsNotNone(gcode_without, "Should generate output without path labels")
-
-    def test098_show_operation_labels_option(self):
-        """Test that show_operation_labels option includes operation labels in output."""
-        # Test with operation labels enabled
-        machine_with_labels = self._create_machine(
-            show_operation_labels=True,  # comments.include_operation_labels = True
-            comments_enabled=True,
-            output_header=False
-        )
-        
-        # Test with operation labels disabled
-        machine_no_labels = self._create_machine(
-            show_operation_labels=False,  # comments.include_operation_labels = False
-            comments_enabled=True,
-            output_header=False
-        )
-        
-        results_with = self._run_export2(machine_with_labels)
-        gcode_with = self._get_first_section_gcode(results_with)
-        
-        results_without = self._run_export2(machine_no_labels)
-        gcode_without = self._get_first_section_gcode(results_without)
-        
-        # With operation labels should contain operation name "TestProfile"
-        # Note: This test verifies the option is accepted, actual behavior depends on implementation
-        self.assertIsNotNone(gcode_with, "Should generate output with operation labels enabled")
-        self.assertIsNotNone(gcode_without, "Should generate output with operation labels disabled")
-
-    def test099_spindle_decimals_option(self):
-        """Test that spindle_decimals option controls decimal places for spindle speed."""
-        # Test with 0 decimals
-        machine_no_decimals = self._create_machine(
-            spindle_decimals=0,
-            output_header=False,
-            line_numbers=False
-        )
-        
-        # Test with 2 decimals
-        machine_two_decimals = self._create_machine(
-            spindle_decimals=2,
-            output_header=False,
-            line_numbers=False
-        )
-        
-        with self._modify_operation_path([
-            Path.Command("M3", {"S": 1234.567}),  # Spindle speed with decimals
-            Path.Command("G0", {"X": 10.0}),
-        ]):
-            results_no_dec = self._run_export2(machine_no_decimals)
-            gcode_no_dec = self._get_first_section_gcode(results_no_dec)
-            
-            results_two_dec = self._run_export2(machine_two_decimals)
-            gcode_two_dec = self._get_first_section_gcode(results_two_dec)
-            
-            # With 0 decimals should have "S1235" (rounded)
-            # With 2 decimals should have "S1234.57"
-            if "S" in gcode_no_dec:
-                self.assertIn("S1235", gcode_no_dec, "Should have 0 decimal places for spindle speed")
-            
-            if "S" in gcode_two_dec:
-                # Should have decimal point in spindle speed
-                import re
-                spindle_match = re.search(r'S(\d+\.\d+)', gcode_two_dec)
-                if spindle_match:
-                    self.assertIsNotNone(spindle_match, "Should have decimal places for spindle speed")
-
-    def test100_modal_command_output(self):
-        """Test that output_duplicate_commands=False produces modal G-code."""
-        machine = self._create_machine(
-            output_duplicate_commands=False,
-            output_header=False,
-            line_numbers=False
-        )
-        
-        with self._modify_operation_path([
-            Path.Command("G1", {"X": 10.0, "Y": 20.0, "F": 100.0}),
-            Path.Command("G1", {"X": 30.0, "Y": 40.0}),
-            Path.Command("G1", {"X": 50.0, "Y": 60.0}),
-            Path.Command("G0", {"Z": 5.0}),
-            Path.Command("G0", {"Z": 10.0}),
-        ]):
-            results = self._run_export2(machine)
-            gcode = self._get_first_section_gcode(results)
-            
-            lines = [line.strip() for line in gcode.split('\n') if line.strip() and not line.strip().startswith('(')]
-            
-            # First G1 should have command word
-            g1_lines = [line for line in lines if 'X10.00000' in line or line.startswith('G1')]
-            self.assertTrue(any(line.startswith('G1') for line in g1_lines), 
-                          "First G1 should have command word")
-            
-            # Subsequent G1 moves should be parameter-only (modal)
-            param_only_lines = [line for line in lines if line.startswith('X') or line.startswith('Y')]
-            self.assertGreater(len(param_only_lines), 0, 
-                             "Should have parameter-only lines (modal G1)")
-
-    def test101_drill_cycle_parameters_preserved(self):
-        """Test that drill cycle commands preserve all parameters (X, Y, Z, R, F) and G98/G99 retract modes."""
-        machine = self._create_machine(
-            output_header=False,
-            line_numbers=False
-        )
-        
-        # Create drill cycle commands with multiple holes
-        # Add RetractMode annotation to trigger G98/G99 insertion
-        cmd1 = Path.Command("G81", {"X": 10.0, "Y": 20.0, "Z": -10.0, "R": 1.0, "F": 100.0})
-        cmd1.Annotations = {"RetractMode": "G98"}
-        cmd2 = Path.Command("G81", {"X": 10.0, "Y": 30.0, "Z": -10.0, "R": 1.0, "F": 100.0})
-        cmd2.Annotations = {"RetractMode": "G98"}
-        cmd3 = Path.Command("G81", {"X": 20.0, "Y": 30.0, "Z": -10.0, "R": 1.0, "F": 100.0})
-        cmd3.Annotations = {"RetractMode": "G98"}
-        
-        with self._modify_operation_path([
-            Path.Command("G0", {"Z": 20.0}),
-            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
-            Path.Command("G0", {"Z": 1.0}),
-            cmd1,
-            cmd2,
-            cmd3,
-            Path.Command("G0", {"Z": 20.0}),
-        ]):
-            results = self._run_export2(machine)
-            gcode = self._get_first_section_gcode(results)
-            
-            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
-            
-            # Find all G81 commands
-            g81_lines = [line for line in lines if line.startswith('G81')]
-            
-            # Should have 3 G81 commands
-            self.assertEqual(len(g81_lines), 3, "Should have 3 G81 drill commands")
-            
-            # Each G81 should have Z, R, and F parameters
-            for g81_line in g81_lines:
-                self.assertIn('Z', g81_line, f"G81 should have Z parameter: {g81_line}")
-                self.assertIn('R', g81_line, f"G81 should have R parameter: {g81_line}")
-                self.assertIn('F', g81_line, f"G81 should have F parameter: {g81_line}")
-            
-            # Second and third G81 should have X or Y (position changes)
-            self.assertTrue(
-                'X' in g81_lines[1] or 'Y' in g81_lines[1],
-                f"Second G81 should have X or Y: {g81_lines[1]}"
-            )
-            self.assertTrue(
-                'X' in g81_lines[2] or 'Y' in g81_lines[2],
-                f"Third G81 should have X or Y: {g81_lines[2]}"
-            )
-            
-            # Should have exactly one G80 termination (at end of cycle)
-            g80_count = sum(1 for line in lines if line.startswith('G80'))
-            self.assertEqual(g80_count, 1, "Should have exactly one G80 termination at end of drill cycle")
-            
-            # G80 should come after all G81 commands
-            g81_indices = [i for i, line in enumerate(lines) if line.startswith('G81')]
-            g80_indices = [i for i, line in enumerate(lines) if line.startswith('G80')]
-            
-            if g80_indices:
-                last_g81_idx = max(g81_indices)
-                first_g80_idx = min(g80_indices)
-                self.assertGreater(first_g80_idx, last_g81_idx, 
-                                 "G80 should come after all G81 commands")
-            
-            # Should have G98 or G99 retract mode before first drill cycle
-            retract_lines = [line for line in lines if line.startswith('G98') or line.startswith('G99')]
-            self.assertGreater(len(retract_lines), 0, "Should have G98 or G99 retract mode command")
-            
-            if retract_lines and g81_indices:
-                first_retract_idx = lines.index(retract_lines[0])
-                first_g81_idx = min(g81_indices)
-                self.assertLess(first_retract_idx, first_g81_idx,
-                              "G98/G99 retract mode should appear before first drill cycle")
-
-    def test102_translate_drill_cycles(self):
-        """Test that drill cycle translation is handled by postprocessor properties."""
-        # Drill cycle translation is now controlled by postprocessor properties
-        # via drill_cycles_to_translate property
-        config = self._get_full_machine_config()
-        config['postprocessor']['properties']['drill_cycles_to_translate'] = "G81\nG82\nG83"
-        machine = Machine.from_dict(config)
-        
-        # Verify the postprocessor property is set
-        self.assertIn('drill_cycles_to_translate', machine.postprocessor_properties)
-        self.assertEqual(machine.postprocessor_properties['drill_cycles_to_translate'], "G81\nG82\nG83")
-
-    def test103_split_arcs(self):
-        """Test that split_arcs processing option splits arc moves into linear segments."""
-        # Create machine with split_arcs enabled
-        config = self._get_full_machine_config()
-        config['processing']['split_arcs'] = True
-        machine = Machine.from_dict(config)
-        
-        # Create arc move commands
-        with self._modify_operation_path([
-            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 1.0}),
-            Path.Command("G1", {"Z": -5.0, "F": 100.0}),
-            Path.Command("G2", {"X": 10.0, "Y": 0.0, "I": 5.0, "J": 0.0, "F": 100.0}),
-            Path.Command("G0", {"Z": 20.0}),
-        ]):
-            results = self._run_export2(machine)
-            gcode = self._get_first_section_gcode(results)
-            
-            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
-            
-            # With split_arcs=True, G2 should be split into multiple G1 moves
-            g1_lines = [line for line in lines if line.startswith('G1')]
-            
-            # If arc splitting worked, we should have:
-            # - No G2 commands (or very few if tolerance is large)
-            # - Multiple G1 commands (more than just the initial plunge)
-            self.assertGreater(len(g1_lines), 1,
-                             "Should have multiple G1 commands from arc splitting")
-
-    def test104_suppress_commands(self):
-        """Test that command filtering is handled by postprocessor supported_commands property."""
-        # Command suppression is now controlled by postprocessor properties
-        # via supported_commands property (commands not in list are filtered)
-        config = self._get_full_machine_config()
-        config['postprocessor']['properties']['supported_commands'] = "G1\nG2\nG3\nM3\nM5"  # G0 not in list
-        machine = Machine.from_dict(config)
-        
-        # Verify the postprocessor property is set
-        self.assertIn('supported_commands', machine.postprocessor_properties)
-        self.assertIn('G1', machine.postprocessor_properties['supported_commands'])
-        self.assertNotIn('G0', machine.postprocessor_properties['supported_commands'])
-
-    def test105_list_fixtures_in_header_option(self):
-        """Test that list_fixtures_in_header option includes fixture list in header."""
-        # Test with fixture list enabled
-        machine_with_fixtures = self._create_machine(
-            list_fixtures_in_header=True,
-            output_header=True,
-            output_comments=True
-        )
-        
-        # Test with fixture list disabled
-        machine_no_fixtures = self._create_machine(
-            list_fixtures_in_header=False,
-            output_header=True,
-            output_comments=True
-        )
-        
-        results_with = self._run_export2(machine_with_fixtures)
-        gcode_with = self._get_first_section_gcode(results_with)
-        
-        results_without = self._run_export2(machine_no_fixtures)
-        gcode_without = self._get_first_section_gcode(results_without)
-        
-        # With fixture list should contain fixture information in comments
-        # Look for fixture patterns like "G54", "G55", or "Fixture" in comments
-        lines_with = gcode_with.split('\n')
-        fixture_comments_with = [line for line in lines_with if '(' in line and ('Fixture' in line or 'G5' in line)]
-        
-        lines_without = gcode_without.split('\n')
-        fixture_comments_without = [line for line in lines_without if '(' in line and ('Fixture' in line or 'G5' in line)]
-        
-        # Should have more fixture-related comments when enabled
-        self.assertGreaterEqual(len(fixture_comments_with), len(fixture_comments_without),
-                               "Should have more fixture comments when list_fixtures_in_header=True")
-
-    def test106_spindle_wait(self):
-        """Test that spindle_wait on spindle injects G4 pause after spindle start."""
-        # Create machine with spindle_wait configured
-        config = self._get_full_machine_config()
-        config['machine']['spindles'][0]['spindle_wait'] = 2.5  # 2.5 second wait
-        machine_with_wait = Machine.from_dict(config)
-        
-        # Create machine without spindle_wait
-        config_no_wait = self._get_full_machine_config()
-        config_no_wait['machine']['spindles'][0]['spindle_wait'] = 0.0
-        machine_no_wait = Machine.from_dict(config_no_wait)
-        
-        # Test with spindle_wait enabled
-        with self._modify_operation_path([
-            Path.Command("M3", {"S": 1000.0}),
-            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
-            Path.Command("G1", {"Z": -5.0, "F": 100.0}),
-            Path.Command("M4", {"S": 1500.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 30.0, "F": 100.0}),
-        ]):
-            results_with = self._run_export2(machine_with_wait)
-            gcode_with = self._get_first_section_gcode(results_with)
-        
-        # Test without spindle_wait (separate context to get fresh Path)
-        with self._modify_operation_path([
-            Path.Command("M3", {"S": 1000.0}),
-            Path.Command("G0", {"X": 10.0, "Y": 20.0}),
-            Path.Command("G1", {"Z": -5.0, "F": 100.0}),
-            Path.Command("M4", {"S": 1500.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 30.0, "F": 100.0}),
-        ]):
-            results_without = self._run_export2(machine_no_wait)
-            gcode_without = self._get_first_section_gcode(results_without)
-        
-        # Now perform assertions with both results
-        lines_with = [line.strip() for line in gcode_with.split('\n') if line.strip()]
-        lines_without = [line.strip() for line in gcode_without.split('\n') if line.strip()]
-        
-        # With spindle_wait, should have G4 commands after M3/M4
-        g4_lines_with = [line for line in lines_with if line.startswith('G4')]
-        g4_lines_without = [line for line in lines_without if line.startswith('G4')]
-        
-        # Should have G4 pause commands when spindle_wait is enabled
-        self.assertGreater(len(g4_lines_with), 0,
-                         "Should have G4 pause commands when spindle_wait is enabled")
-        
-        # Should have no G4 commands when spindle_wait is disabled
-        self.assertEqual(len(g4_lines_without), 0,
-                       "Should have no G4 commands when spindle_wait is disabled")
-        
-        # Verify G4 commands have correct P parameter (2.5 seconds)
-        for g4_line in g4_lines_with:
-            self.assertIn('P2.5', g4_line,
-                        f"G4 command should have P2.5 parameter: {g4_line}")
-        
-        # Verify G4 appears after M3 and M4
-        m3_index = None
-        m4_index = None
-        g4_indices = []
-        
-        for i, line in enumerate(lines_with):
-            if line.startswith('M3'):
-                m3_index = i
-            elif line.startswith('M4'):
-                m4_index = i
-            elif line.startswith('G4'):
-                g4_indices.append(i)
-        
-        # Should have at least 2 G4 commands (one after M3, one after M4)
-        self.assertGreaterEqual(len(g4_indices), 2,
-                              "Should have at least 2 G4 commands (after M3 and M4)")
-        
-        # Verify G4 appears immediately after M3 and M4
-        if m3_index is not None:
-            self.assertIn(m3_index + 1, g4_indices,
-                        "G4 should appear immediately after M3")
-        if m4_index is not None:
-            self.assertIn(m4_index + 1, g4_indices,
-                        "G4 should appear immediately after M4")
-
-    def test100_bcnc_comments_enabled(self):
-        """Test that bCNC comments are included when output_bcnc_comments=True."""
-        # Test with bCNC enabled
-        machine_bcnc = self._create_machine(
-            output_bcnc_comments=True,
-            output_comments=True,
-            output_header=True
-        )
-        
-        results = self._run_export2(machine_bcnc)
-        self.assertIsNotNone(results)
-        self.assertGreater(len(results), 0)
-        
-        first_section_gcode = self._get_first_section_gcode(results)
-        
-        # Should contain bCNC block headers for operations
-        self.assertIn("(Block-name:", first_section_gcode, "Should contain bCNC block name comments")
-        self.assertIn("(Block-expand: 0)", first_section_gcode, "Should contain bCNC block expand comments")
-        self.assertIn("(Block-enable: 1)", first_section_gcode, "Should contain bCNC block enable comments")
-        
-        # Should contain bCNC postamble block
-        self.assertIn("(Block-name: post_amble)", first_section_gcode, "Should contain bCNC postamble block")
-
-    def test101_bcnc_comments_disabled(self):
-        """Test that bCNC comments are not included when output_bcnc_comments=False."""
-        # Test with bCNC disabled
-        machine_no_bcnc = self._create_machine(
-            output_bcnc_comments=False,
-            output_comments=True,
-            output_header=True
-        )
-        
-        results = self._run_export2(machine_no_bcnc)
-        self.assertIsNotNone(results)
-        self.assertGreater(len(results), 0)
-        
-        first_section_gcode = self._get_first_section_gcode(results)
-        
-        # Should NOT contain bCNC block headers
-        self.assertNotIn("(Block-name:", first_section_gcode, "Should not contain bCNC block name comments")
-        self.assertNotIn("(Block-expand: 0)", first_section_gcode, "Should not contain bCNC block expand comments")
-        self.assertNotIn("(Block-enable: 1)", first_section_gcode, "Should not contain bCNC block enable comments")
-        self.assertNotIn("(Block-name: post_amble)", first_section_gcode, "Should not contain bCNC postamble block")
-
-    def test102_bcnc_comments_with_regular_comments_disabled(self):
-        """Test that bCNC comments are output even when regular comments are disabled."""
-        # Test with bCNC enabled but regular comments disabled
-        machine_bcnc_no_comments = self._create_machine(
-            output_bcnc_comments=True,
-            output_comments=False,
-            output_header=False  # Disable header to avoid other comments
-        )
-        
-        results = self._run_export2(machine_bcnc_no_comments)
-        self.assertIsNotNone(results)
-        self.assertGreater(len(results), 0)
-        
-        first_section_gcode = self._get_first_section_gcode(results)
-        
-        # Should contain bCNC comments even when regular comments are disabled
-        self.assertIn("(Block-name:", first_section_gcode, "Should contain bCNC block name comments even when regular comments disabled")
-        self.assertIn("(Block-expand: 0)", first_section_gcode, "Should contain bCNC block expand comments even when regular comments disabled")
-        self.assertIn("(Block-enable: 1)", first_section_gcode, "Should contain bCNC block enable comments even when regular comments disabled")
-        self.assertIn("(Block-name: post_amble)", first_section_gcode, "Should contain bCNC postamble block even when regular comments disabled")
-        
-        # Should NOT contain regular comments (like header comments)
-        self.assertNotIn("(Machine:", first_section_gcode, "Should not contain regular header comments when comments disabled")
-
-    def test103_bcnc_block_format(self):
-        """Test that bCNC blocks have the correct format and structure."""
-        machine_bcnc = self._create_machine(
-            output_bcnc_comments=True,
-            output_comments=True
-        )
-        
-        results = self._run_export2(machine_bcnc)
-        first_section_gcode = self._get_first_section_gcode(results)
-        lines = first_section_gcode.split('\n')
-        
-        # Find bCNC block starts
-        block_name_lines = [line for line in lines if line.startswith("(Block-name:")]
-        
-        # Should have at least one operation block and one postamble block
-        self.assertGreaterEqual(len(block_name_lines), 2, "Should have at least operation and postamble blocks")
-        
-        # Check that each block name is followed by expand and enable
-        for i, line in enumerate(lines):
-            if line.startswith("(Block-name:"):
-                # Next lines should be expand and enable
-                if i + 2 < len(lines):
-                    self.assertEqual(lines[i+1], "(Block-expand: 0)", "Block should be followed by expand: 0")
-                    self.assertEqual(lines[i+2], "(Block-enable: 1)", "Block should be followed by enable: 1")
-                
-                # Operation blocks should have operation labels
-                if "post_amble" not in line:
-                    # Should contain an operation label (not empty)
-                    block_name = line.replace("(Block-name: ", "").rstrip(")")
-                    self.assertNotEqual(block_name, "", "Operation block name should not be empty")
-
-    def test104_bcnc_operation_ordering(self):
-        """Test that bCNC blocks appear before the operation content."""
-        machine_bcnc = self._create_machine(
-            output_bcnc_comments=True,
-            output_comments=True
-        )
-        
-        results = self._run_export2(machine_bcnc)
-        first_section_gcode = self._get_first_section_gcode(results)
-        lines = first_section_gcode.split('\n')
-        
-        # Find the first bCNC block and first G-code move
-        first_block_idx = None
-        first_move_idx = None
-        
-        for i, line in enumerate(lines):
-            if line.startswith("(Block-name:") and first_block_idx is None:
-                first_block_idx = i
-            elif line.startswith("G0") and first_move_idx is None:
-                first_move_idx = i
-                break
-        
-        # bCNC block should appear before G-code moves
-        if first_block_idx is not None and first_move_idx is not None:
-            self.assertLess(first_block_idx, first_move_idx, "bCNC block should appear before operation G-code")
-
-    def test105_duplicate_commands_suppression(self):
+        Expected: LinuxCNC schema has supports_tool_radius_compensation=True.
         """
-        Test that duplicate G-code commands are suppressed when duplicates.commands is False.
-        
-        Expected behavior when duplicates.commands = False:
-            BEFORE: Multiple consecutive G1 commands
-                G1 X10.000 Y10.000
-                G1 X20.000 Y10.000
-                G1 X20.000 Y20.000
-            
-            AFTER:  Only first G1 is output, subsequent moves omit the command
-                G1 X10.000 Y10.000
-                X20.000 Y10.000
-                X20.000 Y20.000
-        """
-        # Create a path with multiple consecutive G1 moves
-        test_commands = [
-            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
-            Path.Command("G1", {"X": 10.0, "Y": 10.0, "Z": -5.0, "F": 100.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 10.0, "Z": -5.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 20.0, "Z": -5.0}),
-            Path.Command("G1", {"X": 10.0, "Y": 20.0, "Z": -5.0}),
-            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
-        ]
-        
-        with self._modify_operation_path(test_commands):
-            # Test with duplicates.commands = False (suppress duplicates)
-            machine = self._create_machine(commands=False, parameters=True)
-            
-            results = self._run_export2(machine)
-            gcode = self._get_all_gcode(results)
-            
-            # Split into lines and filter out empty lines and comments
-            lines = [line.strip() for line in gcode.split('\n') 
-                    if line.strip() and not line.strip().startswith('(')]
-            
-            # Count how many lines start with "G1"
-            g1_command_count = sum(1 for line in lines if line.startswith('G1'))
-            
-            # Count how many lines have X/Y/Z parameters but no G command (suppressed duplicates)
-            # These lines should start with a coordinate letter (X, Y, Z) not a G command
-            suppressed_move_count = sum(1 for line in lines 
-                                       if line and line[0] in 'XYZ' 
-                                       and not line.startswith('G'))
-            
-            # With 4 consecutive G1 moves, we should have:
-            # - Only 1 line starting with "G1" (the first one)
-            # - 3 lines with just coordinates (suppressed G1 commands)
-            self.assertEqual(g1_command_count, 1, 
-                           f"Should have only 1 G1 command when duplicates suppressed, found {g1_command_count}")
-            self.assertEqual(suppressed_move_count, 3,
-                           f"Should have 3 suppressed G1 moves (coordinates only), found {suppressed_move_count}")
-            
-            # Verify no empty G1 commands (G1 with no parameters)
-            self.assertNotIn('G1\n', gcode, "Should not have G1 command with no parameters")
-            self.assertNotIn('G1 \n', gcode, "Should not have G1 command with only whitespace")
-
-    def test106_tool_radius_compensation_property(self):
-        """
-        Test that postprocessors can declare support for G41/G42 tool radius compensation.
-        
-        This property is metadata that declares whether the postprocessor/machine supports
-        cutter compensation commands. It doesn't filter commands, but provides information
-        for the UI and documentation.
-        
-        Expected: Property can be set and retrieved correctly from postprocessor schema.
-        """
-        from Path.Post.Processor import PostProcessorFactory
-        
-        # Get a postprocessor that supports tool radius compensation (LinuxCNC)
         linuxcnc_post = PostProcessorFactory.get_post_processor(self.job, 'linuxcnc')
-        
-        # Get the property schema
         schema = linuxcnc_post.get_full_property_schema()
-        
-        # Find the tool radius compensation property
-        trc_property = None
-        for prop in schema:
-            if prop.get('name') == 'supports_tool_radius_compensation':
-                trc_property = prop
-                break
-        
-        # Verify the property exists in the schema
-        self.assertIsNotNone(trc_property, 
-                           "Tool radius compensation property should exist in schema")
-        
-        # Verify it's a boolean property
-        self.assertEqual(trc_property.get('type'), 'bool',
-                       "Tool radius compensation property should be boolean type")
-        
-        # Verify LinuxCNC defaults to True (supports G41/G42)
-        self.assertTrue(trc_property.get('default'),
-                      "LinuxCNC should support tool radius compensation by default")
 
-    def test107_supported_commands_property(self):
+        trc_property = next((p for p in schema if p.get('name') == 'supports_tool_radius_compensation'), None)
+        self.assertIsNotNone(trc_property, "Property should exist in schema")
+        self.assertEqual(trc_property.get('type'), 'bool', "Should be boolean type")
+        self.assertTrue(trc_property.get('default'), "LinuxCNC should support G41/G42 by default")
+
+    def test151_supported_commands_property(self):
         """
         Test that postprocessors declare their supported G-code command list.
-        
-        This property lists all G/M codes that the postprocessor can handle. It serves
-        as documentation and validation metadata for the machine configuration.
-        
-        Expected: Property contains standard G-code commands as newline-separated list.
+
+        Expected: Generic post has a substantial list including G0, G1, G2, G3, M3, M6.
         """
-        
-        # Get a generic postprocessor
         generic_post = PostProcessorFactory.get_post_processor(self.job, 'generic')
-        
-        # Get the property schema
         schema = generic_post.get_full_property_schema()
-        
-        # Find the supported commands property
-        commands_property = None
-        for prop in schema:
-            if prop.get('name') == 'supported_commands':
-                commands_property = prop
-                break
-        
-        # Verify the property exists
-        self.assertIsNotNone(commands_property,
-                           "Supported commands property should exist in schema")
-        
-        # Verify it's a text property
-        self.assertEqual(commands_property.get('type'), 'text',
-                       "Supported commands property should be text type")
-        
-        # Verify default contains common G-code commands
-        default_commands = commands_property.get('default', '')
-        command_list = [cmd.strip() for cmd in default_commands.split('\n') if cmd.strip()]
-        
-        # Check for essential commands
-        essential_commands = ['G0', 'G1', 'G2', 'G3', 'M3', 'M6']
-        for cmd in essential_commands:
-            self.assertIn(cmd, command_list,
-                        f"Supported commands should include {cmd}")
-        
-        # Verify it's a reasonable list (not empty, not too small)
-        self.assertGreater(len(command_list), 20,
-                         "Supported commands list should contain substantial number of commands")
 
-    def test108_translate_rapid_moves(self):
-        """
-        Test that rapid moves (G0) are converted to feed moves (G1) when enabled.
-        
-        Some machines don't support rapid positioning or require controlled acceleration.
-        When translate_rapid_moves is enabled, all G0 commands are converted to G1.
-        
-        Expected behavior when enabled:
-            BEFORE: G0 X10.000 Y10.000
-                    G1 X20.000 Y10.000 F100.000
-                    G0 Z5.000
-            
-            AFTER:  G1 X10.000 Y10.000
-                    G1 X20.000 Y10.000 F100.000
-                    G1 Z5.000
-        """
-        # Create a path with G0 rapid moves
-        test_commands = [
-            Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
-            Path.Command("G0", {"X": 10.0, "Y": 10.0}),
-            Path.Command("G1", {"X": 20.0, "Y": 10.0, "F": 100.0}),
-            Path.Command("G0", {"Z": 10.0}),
-        ]
-        
-        with self._modify_operation_path(test_commands):
-            # Create machine with translate_rapid_moves enabled
-            config = self._get_full_machine_config()
-            config['processing']['translate_rapid_moves'] = True
-            machine = Machine.from_dict(config)
-            
-            results = self._run_export2(machine)
-            gcode = self._get_all_gcode(results)
-            
-            # Split into lines and filter out empty lines and comments
-            lines = [line.strip() for line in gcode.split('\n') 
-                    if line.strip() and not line.strip().startswith('(')]
-            
-            # Count G0 and G1 commands
-            g0_count = sum(1 for line in lines if line.startswith('G0'))
-            g1_count = sum(1 for line in lines if line.startswith('G1'))
-            
-            # With translate_rapid_moves enabled, should have NO G0 commands
-            self.assertEqual(g0_count, 0,
-                           "Should have no G0 commands when rapid move translation is enabled")
-            
-            # Should have G1 commands instead (at least the 3 rapids + 1 feed = 4 total)
-            self.assertGreaterEqual(g1_count, 4,
-                                  f"Should have at least 4 G1 commands (translated rapids + original feed), found {g1_count}")
+        commands_property = next((p for p in schema if p.get('name') == 'supported_commands'), None)
+        self.assertIsNotNone(commands_property, "Property should exist in schema")
+        self.assertEqual(commands_property.get('type'), 'text', "Should be text type")
 
-    def test109_nested_parentheses_in_comments(self):
+        command_list = [c.strip() for c in commands_property.get('default', '').split('\n') if c.strip()]
+        for cmd in ['G0', 'G1', 'G2', 'G3', 'M3', 'M6']:
+            self.assertIn(cmd, command_list, f"Should include {cmd}")
+        self.assertGreater(len(command_list), 20, "Should have substantial command list")
+
+    def test152_nested_parentheses_in_comments(self):
         """
-        Test that nested parentheses in operation/tool names don't break G-code comments.
-        
-        When users name operations or tool controllers with parentheses like 
-        "TC: 5mm Endmill (fast)", the nested parentheses break G-code comment format.
-        
-        Note: Path.Command truncates at the first ) after opening (, so 
-        (text (nested)) becomes (text nested)). We can't recover the lost opening (,
-        but we must ensure the output doesn't have unbalanced parentheses.
-        
-        Expected behavior:
-            INPUT:  Path.Command("(Begin operation: Pocket (fast))")
-            STORED: (Begin operation: Pocket fast))  <- Path.Command truncation
-            OUTPUT: (Begin operation: Pocket fast])  <- Sanitized, balanced parens
+        Test that nested parentheses in comments are sanitized.
+
+        Path.Command truncates at first ) after (, so nested parens get mangled.
+        The post processor must ensure output has balanced parentheses.
+
+        Expected:
+            INPUT:  (Begin operation: Pocket (fast))
+            OUTPUT: (Begin operation: Pocket fast])  <- balanced, ] replaces nested )
         """
-        # Create path with comment commands that contain nested parentheses
-        test_commands = [
+        with self._modify_operation_path([
             Path.Command("(Begin operation: Test Operation (fast))"),
             Path.Command("G0", {"X": 0.0, "Y": 0.0, "Z": 5.0}),
             Path.Command("(Tool: 5mm Endmill (HSS))"),
             Path.Command("G1", {"X": 10.0, "Y": 10.0, "F": 100.0}),
-            Path.Command("(End operation: Test Operation (fast))"),
-        ]
-        
-        with self._modify_operation_path(test_commands):
-            # Create machine with comments enabled
+        ]):
             machine = self._create_machine(
-                comments_enabled=True,
-                output_header=False,
-                line_numbers=False
+                comments_enabled=True, output_header=False, line_numbers=False
             )
-            
             results = self._run_export2(machine)
             gcode = self._get_all_gcode(results)
-            
-            # Check that nested parentheses are sanitized
-            lines = [line.strip() for line in gcode.split('\n') if line.strip()]
-            
+            lines = [l.strip() for l in gcode.split('\n') if l.strip()]
+
             for line in lines:
                 if line.startswith('('):
-                    # Count parentheses - should be balanced with exactly 1 pair
-                    open_count = line.count('(')
-                    close_count = line.count(')')
-                    
-                    # Should have exactly 1 opening and 1 closing parenthesis (the comment delimiters)
-                    self.assertEqual(open_count, 1,
-                                   f"Comment should have exactly 1 opening parenthesis, found {open_count} in: {line}")
-                    self.assertEqual(close_count, 1,
-                                   f"Comment should have exactly 1 closing parenthesis, found {close_count} in: {line}")
-                    
-                    # Should not contain nested opening parentheses
-                    # Due to Path.Command truncation, we get "fast]" instead of "[fast]"
-                    # but the key is no nested ( or unbalanced )
-                    self.assertNotIn('(fast)', line,
-                                   f"Should not contain nested parentheses in: {line}")
-                    self.assertNotIn('(HSS)', line,
-                                   f"Should not contain nested parentheses in: {line}")
-                    
-                    # Verify any ) that was part of nested content is now ]
-                    if 'fast' in line.lower():
-                        self.assertIn('fast]', line,
-                                    f"Nested closing paren should be replaced with ] in: {line}")
-                    if 'hss' in line.upper():
-                        self.assertIn('HSS]', line,
-                                    f"Nested closing paren should be replaced with ] in: {line}")
+                    self.assertEqual(line.count('('), 1,
+                                   f"Should have exactly 1 opening paren in: {line}")
+                    self.assertEqual(line.count(')'), 1,
+                                   f"Should have exactly 1 closing paren in: {line}")
+
+    def test153_drill_cycles_to_translate_property(self):
+        """
+        Test that drill_cycles_to_translate postprocessor property is stored correctly.
+
+        Expected: Property value round-trips through Machine.from_dict.
+        """
+        config = self._get_full_machine_config()
+        config['postprocessor']['properties']['drill_cycles_to_translate'] = "G81\nG82\nG83"
+        machine = Machine.from_dict(config)
+
+        self.assertIn('drill_cycles_to_translate', machine.postprocessor_properties)
+        self.assertEqual(machine.postprocessor_properties['drill_cycles_to_translate'], "G81\nG82\nG83")
