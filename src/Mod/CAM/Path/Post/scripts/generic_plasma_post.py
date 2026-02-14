@@ -34,7 +34,7 @@ import FreeCAD
 
 translate = FreeCAD.Qt.translate
 
-DEBUG = True
+DEBUG = False
 if DEBUG:
     Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
     Path.Log.trackModule(Path.Log.thisModule())
@@ -106,15 +106,6 @@ class GenericPlasma(PostProcessor):
                     "When disabled, M3/M5 commands are output as-is.")
             },
             {
-                "name": "mark_entry_only",
-                "type": "bool",
-                "label": translate("CAM", "Mark Entry Only"),
-                "default": False,
-                "help": translate("CAM", 
-                    "Only mark first entry points (first Z- movement to start depth). "
-                    "Subsequent movements will not trigger torch ignition.")
-            },
-            {
                 "name": "force_rapid_feeds",
                 "type": "bool",
                 "label": translate("CAM", "Force Rapid Feeds"),
@@ -143,7 +134,15 @@ class GenericPlasma(PostProcessor):
         # State tracking for plasma-specific features
         self._first_entry_done = False
         self._torch_active = False
+        self._last_z = None  # Track last Z position for direction detection
         self._last_z_direction = None  # Track Z movement direction
+
+    def _reset_plasma_state(self):
+        """Reset plasma-specific state tracking for each operation."""
+        self._first_entry_done = False
+        self._torch_active = False
+        self._last_z = None
+        self._last_z_direction = None
 
     def _get_property_value(self, name, default):
         """Get a property value from machine configuration with fallback to default."""
@@ -251,13 +250,20 @@ class GenericPlasma(PostProcessor):
         for section_name, sublist in postables:
             for item in sublist:
                 if hasattr(item, 'Path') and item.Path:
+                    # Reset state for each operation
+                    self._reset_plasma_state()
+                    
+                    # Get operation heights from the path object
+                    pierce_height = self._get_operation_height(item, 'StartDepth', 0)
+                    cut_height = self._get_operation_height(item, 'FinalDepth', 0)
+                    
                     new_commands = []
                     for cmd in item.Path.Commands:
                         # Track Z movement direction
                         z_direction = None
                         if 'Z' in cmd.Parameters:
                             # This is a Z move - determine direction
-                            if hasattr(self, '_last_z') and 'Z' in cmd.Parameters:
+                            if self._last_z is not None and 'Z' in cmd.Parameters:
                                 if cmd.Parameters['Z'] < self._last_z:
                                     z_direction = 'down'
                                 elif cmd.Parameters['Z'] > self._last_z:
@@ -267,6 +273,11 @@ class GenericPlasma(PostProcessor):
                         # Handle torch control based on Z movement
                         if z_direction == 'down' and not self._torch_active:
                             if not self._get_property_value("mark_entry_only", False) or not self._first_entry_done:
+                                # Move to pierce height first if not already there
+                                if hasattr(self, '_last_z') and self._last_z > pierce_height:
+                                    move_cmd = Path.Command('G0', {'Z': pierce_height})
+                                    new_commands.append(move_cmd)
+                                
                                 # Insert M3 before Z- move (torch ignition)
                                 new_commands.append(Path.Command('M3'))
                                 self._torch_active = True
@@ -279,6 +290,109 @@ class GenericPlasma(PostProcessor):
                         new_commands.append(cmd)
                     # Replace Path with modified command list
                     item.Path = Path.Path(new_commands)
+    
+    def _get_operation_height(self, item, height_type, default):
+        """Get operation height (StartDepth/FinalDepth) from path object."""
+        try:
+            # Try to get the height from the path object's properties
+            if hasattr(item, height_type):
+                value = getattr(item, height_type)
+                if value is not None:
+                    return float(value)
+            elif hasattr(item, 'Base') and hasattr(item.Base, height_type):
+                value = getattr(item.Base, height_type)
+                if value is not None:
+                    return float(value)
+            else:
+                # Try to get from proxy object
+                proxy = getattr(item, 'Proxy', None)
+                if proxy and hasattr(proxy, height_type):
+                    value = getattr(proxy, height_type)
+                    if value is not None:
+                        return float(value)
+        except (AttributeError, TypeError, ValueError) as e:
+            Path.Log.debug(f"GenericPlasma: Could not get {height_type}: {e}")
+        return default
+
+    def _inject_mark_entry_only(self, postables):
+        """Mark first entry points only (Z- to cut height, torch on, short delay, torch off, Z+ to clearance)."""
+        if not self._get_property_value("mark_entry_only", False):
+            return
+            
+        for section_name, sublist in postables:
+            for item in sublist:
+                if hasattr(item, 'Path') and item.Path:
+                    # Reset state for each operation
+                    self._reset_plasma_state()
+                    
+                    # Get operation heights from the path object
+                    pierce_height = self._get_operation_height(item, 'StartDepth', 0)
+                    cut_height = self._get_operation_height(item, 'FinalDepth', 0)
+                    clearance_height = self._get_clearance_height(item, pierce_height + 10)
+                    
+                    new_commands = []
+                    first_entry_done = False
+                    
+                    for cmd in item.Path.Commands:
+                        # Check if this is a Z move to cut height (first entry)
+                        if (not first_entry_done and 'Z' in cmd.Parameters and 
+                            self._last_z is not None and cmd.Parameters['Z'] < self._last_z and
+                            cmd.Parameters['Z'] <= cut_height):
+                            
+                            # Mark the entry point
+                            # 1. Move to pierce height if not already there
+                            if self._last_z > pierce_height:
+                                new_commands.append(Path.Command('G0', {'Z': pierce_height}))
+                            
+                            # 2. Move to cut height (torch on)
+                            new_commands.append(Path.Command('G1', {'Z': cut_height, 'F': 200}))
+                            
+                            # 3. Very short delay (torch mark)
+                            new_commands.append(Path.Command('G4', {'P': 0.1}))
+                            
+                            # 4. Torch off and retract to clearance
+                            new_commands.append(Path.Command('M5'))
+                            new_commands.append(Path.Command('G0', {'Z': clearance_height}))
+                            
+                            first_entry_done = True
+                            # Skip the original Z move since we handled it
+                            continue
+                        
+                        # Skip all movement commands for mark entry only mode
+                        if cmd.Name in ['G0', 'G1', 'G2', 'G3'] and 'Z' in cmd.Parameters:
+                            # Only allow Z+ movements (retractions)
+                            if self._last_z is not None and cmd.Parameters['Z'] > self._last_z:
+                                new_commands.append(cmd)
+                                self._last_z = cmd.Parameters['Z']
+                        elif cmd.Name in ['M3', 'M4', 'M5']:
+                            # Skip torch commands in mark entry mode
+                            continue
+                        else:
+                            # Keep non-movement commands
+                            new_commands.append(cmd)
+                        
+                        # Update last Z position
+                        if 'Z' in cmd.Parameters:
+                            self._last_z = cmd.Parameters['Z']
+                    
+                    # Replace Path with modified command list
+                    item.Path = Path.Path(new_commands)
+    
+    def _get_clearance_height(self, item, default):
+        """Get clearance height from operation or use default."""
+        try:
+            # Try to get clearance height from operation
+            if hasattr(item, 'ClearanceHeight'):
+                value = getattr(item, 'ClearanceHeight')
+                if value is not None:
+                    return float(value)
+            elif hasattr(item, 'Base') and hasattr(item.Base, 'ClearanceHeight'):
+                value = getattr(item.Base, 'ClearanceHeight')
+                if value is not None:
+                    return float(value)
+        except (AttributeError, TypeError, ValueError) as e:
+            Path.Log.debug(f"GenericPlasma: Could not get ClearanceHeight: {e}")
+        return default
 
     def _force_rapid_feeds(self, postables):
         """Replace all feed rates with rapid speeds for dry runs."""
@@ -301,21 +415,116 @@ class GenericPlasma(PostProcessor):
                     # Replace Path with modified command list
                     item.Path = Path.Path(new_commands)
 
+    def pre_processing_dialog(self):
+        """
+        Show plasma cutting mode dialog to ask user about mark-only operation.
+
+        Returns:
+            bool: True to continue with post-processing, False to cancel
+        """
+        try:
+            from PySide import QtCore, QtGui, QtWidgets
+
+            app = QtWidgets.QApplication.instance()
+            if app is None:
+                return True
+
+            # Get current mark_entry_only setting from machine config
+            mark_only = False
+            if self._machine and hasattr(self._machine, 'postprocessor_properties'):
+                props = self._machine.postprocessor_properties
+                mark_only = props.get('mark_entry_only', False)
+
+            # Create dialog
+            dialog = QtWidgets.QDialog()
+            dialog.setWindowTitle("Plasma Cutting Mode")
+            dialog.resize(400, 200)
+            layout = QtWidgets.QVBoxLayout(dialog)
+
+            # Add description label
+            label = QtWidgets.QLabel(
+                "Select plasma cutting mode:\n\n"
+                "• Normal: Full cutting with torch control\n"
+                "• Mark Only: Only mark first entry points (for drilling prep)"
+            )
+            label.setWordWrap(True)
+            layout.addWidget(label)
+
+            # Add radio buttons for mode selection
+            button_group = QtWidgets.QButtonGroup(dialog)
+            
+            normal_radio = QtWidgets.QRadioButton("Normal Cutting")
+            normal_radio.setChecked(not mark_only)
+            button_group.addButton(normal_radio, 0)
+            layout.addWidget(normal_radio)
+            
+            mark_radio = QtWidgets.QRadioButton("Mark Entry Points Only")
+            mark_radio.setChecked(mark_only)
+            button_group.addButton(mark_radio, 1)
+            layout.addWidget(mark_radio)
+
+            # Add info text about mark mode
+            info_label = QtWidgets.QLabel(
+                "Mark mode will:\n"
+                "• Mark first entry point with torch\n"
+                "• Skip all cutting movements\n"
+                "• Useful for preparing holes for drilling"
+            )
+            info_label.setWordWrap(True)
+            info_label.setStyleSheet("color: #666; font-size: 11px;")
+            layout.addWidget(info_label)
+
+            # Add OK/Cancel buttons
+            button_box = QtWidgets.QDialogButtonBox(
+                QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+            )
+            button_box.accepted.connect(dialog.accept)
+            button_box.rejected.connect(dialog.reject)
+            layout.addWidget(button_box)
+
+            # Show dialog and get result
+            result = dialog.exec_()
+
+            if result == QtWidgets.QDialog.Accepted:
+                # Update machine config with user's choice
+                mark_only_selected = mark_radio.isChecked()
+                if self._machine and hasattr(self._machine, 'postprocessor_properties'):
+                    props = self._machine.postprocessor_properties
+                    props['mark_entry_only'] = mark_only_selected
+                    mode_text = "Mark Only" if mark_only_selected else "Normal Cutting"
+                    Path.Log.info(f"Plasma cutting mode set to: {mode_text}")
+                return True
+            else:
+                Path.Log.info("Plasma cutting mode dialog cancelled")
+                return False
+
+        except ImportError:
+            Path.Log.debug("GUI not available - using machine config for mark_entry_only")
+            return True
+        except Exception as e:
+            Path.Log.error(f"Error showing plasma cutting dialog: {str(e)}")
+            return True
+
     def export2(self):
         """Override export2 to inject plasma-specific commands before parent processing.
         
         This handles torch control, pierce delays, cooling delays, and rapid feeds
         before the parent's export2() processes the commands.
         """
+        Path.Log.debug("GenericPlasma.export2() starting plasma post-processing")
+        
         # Get the postables list from parent (before processing)
         postables = self._buildPostList()
+        Path.Log.debug(f"GenericPlasma: Processing {len(postables)} sections")
         
         # Apply plasma-specific transformations
+        self._inject_mark_entry_only(postables)
         self._inject_torch_control(postables)
         self._inject_pierce_delay(postables)
         self._inject_cooling_delay(postables)
         self._force_rapid_feeds(postables)
         
+        Path.Log.debug("GenericPlasma: Plasma transformations applied, calling parent export2()")
         # Call parent export2 with modified postables
         return super().export2()
 
@@ -326,6 +535,16 @@ class GenericPlasma(PostProcessor):
         This is a postprocessor file for the CAM workbench.
         It is used to take a pseudo-gcode fragment from a CAM object
         and output 'real' GCode suitable for a plasma cutter. 
+        
+        Features:
+        - Torch Z-axis control (M3/M5 based on Z movement)
+        - Pierce delay after torch ignition
+        - Cooling delay after torch extinguishment
+        - Mark entry points only mode (via dialog)
+        - Force rapid feeds for dry runs
+        
+        The postprocessor will show a dialog to select between
+        normal cutting and mark-only modes.
         """
         return tooltip
 
