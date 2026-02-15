@@ -383,7 +383,6 @@ class TestToolProcessing(unittest.TestCase):
             
             # Test without early_tool_prep
             results_without = self._run_export2(machine_no_prep)
-            gcode_without = self._get_all_gcode(results_without)
             
             lines_with = [line.strip() for line in gcode_with.split('\n') if line.strip()]
             

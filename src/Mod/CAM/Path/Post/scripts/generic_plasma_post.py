@@ -255,7 +255,6 @@ class GenericPlasma(PostProcessor):
                     
                     # Get operation heights from the path object
                     pierce_height = self._get_operation_height(item, 'StartDepth', 0)
-                    cut_height = self._get_operation_height(item, 'FinalDepth', 0)
                     
                     new_commands = []
                     for cmd in item.Path.Commands:
