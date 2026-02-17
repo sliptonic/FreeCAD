@@ -397,9 +397,6 @@ class ObjectMillFacing(PathOp.ObjectOp):
             Path.Log.error(f"Error generating toolpath: {e}")
             raise
 
-        # clear commandlist
-        self.commandlist = []
-
         # Be safe. Add first G0 to clearance height
         targetZ = obj.ClearanceHeight.Value
         self.commandlist.append(Path.Command("G0", {"Z": targetZ}))
