@@ -45,7 +45,7 @@ __doc__ = "Base class an implementation for operations on circular holes."
 translate = FreeCAD.Qt.translate
 
 
-if False:
+if True:
     Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
     Path.Log.trackModule(Path.Log.thisModule())
 else:
@@ -89,23 +89,36 @@ class ObjectOp(PathOp.ObjectOp):
         pass
 
     def holeDiameter(self, obj, base, sub):
-        """holeDiameter(obj, base, sub) ... returns the diameter of the specified hole."""
+        """holeDiameter(obj, base, sub) ... returns the diameter of the hole defined by the given features."""
+
         try:
             shape = base.Shape.getElement(sub)
-            if shape.ShapeType == "Vertex":
-                return 0
+            Path.Log.debug(f"  Processing diameter for {base.Label}.{sub}: shape type = {shape.ShapeType}")
 
-            if shape.ShapeType == "Edge" and type(shape.Curve) == Part.Circle:
+            if shape.ShapeType == "Edge" and hasattr(shape.Curve, "Radius"):
+                Path.Log.debug(f"  Edge with Radius: {shape.Curve.Radius * 2}")
                 return shape.Curve.Radius * 2
 
             if shape.ShapeType == "Face":
+                Path.Log.debug(f"  Face: BoundBox.XLength = {shape.BoundBox.XLength}, checking {len(shape.Edges)} edges")
                 for i in range(len(shape.Edges)):
-                    if (
-                        type(shape.Edges[i].Curve) == Part.Circle
-                        and shape.Edges[i].Curve.Radius * 2 < shape.BoundBox.XLength * 1.1
-                        and shape.Edges[i].Curve.Radius * 2 > shape.BoundBox.XLength * 0.9
-                    ):
-                        return shape.Edges[i].Curve.Radius * 2
+                    edge = shape.Edges[i]
+                    is_circle = type(edge.Curve) == Part.Circle
+                    Path.Log.debug(f"    Edge {i}: type = {type(edge.Curve)}, is_circle = {is_circle}")
+                    
+                    if is_circle:
+                        radius_check = edge.Curve.Radius * 2 < shape.BoundBox.XLength * 1.1
+                        radius_check2 = edge.Curve.Radius * 2 > shape.BoundBox.XLength * 0.9
+                        Path.Log.debug(f"      radius={edge.Curve.Radius}, radius*2={edge.Curve.Radius * 2}")
+                        Path.Log.debug(f"      radius_check: {edge.Curve.Radius * 2} < {shape.BoundBox.XLength * 1.1} = {radius_check}")
+                        Path.Log.debug(f"      radius_check2: {edge.Curve.Radius * 2} > {shape.BoundBox.XLength * 0.9} = {radius_check2}")
+                        
+                        if (
+                            radius_check
+                            and radius_check2
+                        ):
+                            Path.Log.debug(f"  Found circular edge with diameter: {edge.Curve.Radius * 2}")
+                            return edge.Curve.Radius * 2
 
             # for all other shapes the diameter is just the dimension in X.
             # This may be inaccurate as the BoundBox is calculated on the tessellated geometry
@@ -115,9 +128,10 @@ class ObjectOp(PathOp.ObjectOp):
                     "Hole diameter may be inaccurate due to tessellation on face. Consider selecting hole edge.",
                 )
             )
+            Path.Log.debug(f"  Using BoundBox.XLength as diameter: {shape.BoundBox.XLength}")
             return shape.BoundBox.XLength
         except Part.OCCError as e:
-            Path.Log.error(e)
+            Path.Log.error(f"  OCCError in holeDiameter for {base.Label}.{sub}: {e}")
 
         return 0
 
@@ -127,19 +141,37 @@ class ObjectOp(PathOp.ObjectOp):
 
         try:
             shape = base.Shape.getElement(sub)
+            Path.Log.debug(f"  Processing {base.Label}.{sub}: shape type = {shape.ShapeType}")
+            
             if shape.ShapeType == "Vertex":
+                Path.Log.debug(f"  Vertex: ({shape.X}, {shape.Y}, {shape.Z})")
                 return FreeCAD.Vector(shape.X, shape.Y, 0)
 
             if shape.ShapeType == "Edge" and hasattr(shape.Curve, "Center"):
+                Path.Log.debug(f"  Edge with Center: {shape.Curve.Center}")
                 return FreeCAD.Vector(shape.Curve.Center.x, shape.Curve.Center.y, 0)
 
             if shape.ShapeType == "Face":
+                Path.Log.debug(f"  Face: has Surface.Center = {hasattr(shape.Surface, 'Center')}")
                 if hasattr(shape.Surface, "Center"):
+                    Path.Log.debug(f"  Face Surface.Center: {shape.Surface.Center}")
                     return FreeCAD.Vector(shape.Surface.Center.x, shape.Surface.Center.y, 0)
                 if len(shape.Edges) == 1 and type(shape.Edges[0].Curve) == Part.Circle:
+                    Path.Log.debug(f"  Face with single circular edge: {shape.Edges[0].Curve.Center}")
                     return shape.Edges[0].Curve.Center
+                elif len(shape.Edges) > 0:
+                    # Handle faces with multiple edges - find the first circular edge
+                    for i, edge in enumerate(shape.Edges):
+                        if type(edge.Curve) == Part.Circle and hasattr(edge.Curve, "Center"):
+                            Path.Log.debug(f"  Face with multiple edges, using circular edge {i}: {edge.Curve.Center}")
+                            return edge.Curve.Center
+                else:
+                    Path.Log.debug(f"  Face has {len(shape.Edges)} edges")
+                    for i, edge in enumerate(shape.Edges):
+                        Path.Log.debug(f"    Edge {i}: type = {type(edge.Curve)}, has Center = {hasattr(edge.Curve, 'Center')}")
+                        
         except Part.OCCError as e:
-            Path.Log.error(e)
+            Path.Log.error(f"  OCCError processing {base.Label}.{sub}: {e}")
 
         Path.Log.error(
             translate(
@@ -170,19 +202,20 @@ class ObjectOp(PathOp.ObjectOp):
             return False
 
         holes = []
-        for base, subs in obj.Base:
-            for sub in subs:
-                Path.Log.debug("processing {} in {}".format(sub, base.Name))
-                if self.isHoleEnabled(obj, base, sub):
-                    pos = self.holePosition(obj, base, sub)
-                    if pos:
-                        holes.append(
-                            {
-                                "x": pos.x,
-                                "y": pos.y,
-                                "r": self.holeDiameter(obj, base, sub),
-                            }
-                        )
+        if obj.Base:  # Check if base geometry exists
+            for base, subs in self.baseShapes(obj):
+                for sub in subs:
+                    Path.Log.debug("processing {} in {}".format(sub, base.Name))
+                    if self.isHoleEnabled(obj, base, sub):
+                        pos = self.holePosition(obj, base, sub)
+                        if pos:
+                            holes.append(
+                                {
+                                    "x": pos.x,
+                                    "y": pos.y,
+                                    "r": self.holeDiameter(obj, base, sub),
+                                }
+                            )
 
         if haveLocations(self, obj):
             for location in obj.Locations:

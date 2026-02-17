@@ -34,7 +34,7 @@ __author__ = "sliptonic (Brad Collette)"
 __url__ = "https://www.freecad.org"
 __doc__ = "Implementation of circular hole specific base geometry page controller."
 
-LOGLEVEL = False
+LOGLEVEL = True
 
 if LOGLEVEL:
     Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
