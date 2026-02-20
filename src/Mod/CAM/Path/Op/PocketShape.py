@@ -201,7 +201,7 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             Path.Log.debug("base items exist.  Processing...")
             self.horiz = []
             self.vert = []
-            for base, subList in obj.Base:
+            for base, subList in self.baseShapes(obj):
                 for sub in subList:
                     if "Face" in sub:
                         if sub not in avoidFeatures and not self.classifySub(base, sub):
