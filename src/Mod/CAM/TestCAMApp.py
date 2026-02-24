@@ -108,6 +108,15 @@ from CAMTests.TestPathToolLibrarySerializer import (
     TestCamoticsLibrarySerializer,
     TestLinuxCNCLibrarySerializer,
 )
+
+from CAMTests.TestSurfaceCommonGenerator import TestSurfaceCommonGenerator
+from CAMTests.TestSurfaceDropCutterGenerator import TestSurfaceDropCutterGenerator
+from CAMTests.TestSurfaceScanGenerator import TestSurfaceScanGenerator
+from CAMTests.TestSurfaceWaterlineGenerator import TestSurfaceWaterlineGenerator
+from CAMTests.TestSurface3DOp import TestSurface3DOp
+from CAMTests.TestSurfaceStl import TestSurfaceStl
+from CAMTests.TestSurface3DBoundary import TestSurface3DBoundary
+
 from CAMTests.TestPathToolChangeGenerator import TestPathToolChangeGenerator
 from CAMTests.TestPathToolController import TestPathToolController
 from CAMTests.TestPathUtil import TestPathUtil

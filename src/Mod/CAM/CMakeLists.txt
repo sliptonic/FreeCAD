@@ -367,6 +367,7 @@ SET(PathPythonOp_SRCS
     Path/Op/Profile.py
     Path/Op/Slot.py
     Path/Op/Surface.py
+    Path/Op/Surface3D.py
     Path/Op/SurfaceSupport.py
     Path/Op/Tapping.py
     Path/Op/ThreadMilling.py
@@ -402,6 +403,7 @@ SET(PathPythonOpGui_SRCS
     Path/Op/Gui/Slot.py
     Path/Op/Gui/Stop.py
     Path/Op/Gui/Surface.py
+    Path/Op/Gui/Surface3D.py
     Path/Op/Gui/Tapping.py
     Path/Op/Gui/ThreadMilling.py
     Path/Op/Gui/Vcarve.py
@@ -430,7 +432,14 @@ SET(PathPythonBaseGenerator_SRCS
     Path/Base/Generator/tapping.py
     Path/Base/Generator/threadmilling.py
     Path/Base/Generator/toolchange.py
+    Path/Base/Generator/surface_common.py
+    Path/Base/Generator/surface_scan.py
+    Path/Base/Generator/surface_dropcutter.py
+    Path/Base/Generator/surface_waterline.py
+    Path/Base/Generator/surface_stl.py
 )
+
+# C++ extensions are built in App/CMakeLists.txt
 
 SET(PathPythonGui_SRCS
     PathPythonGui/__init__.py
@@ -549,6 +558,13 @@ SET(Tests_SRCS
     CAMTests/TestPathToolChangeGenerator.py
     CAMTests/TestPathThreadMilling.py
     CAMTests/TestPathThreadMillingGenerator.py
+    CAMTests/TestSurfaceScanGenerator.py
+    CAMTests/TestSurfaceCommonGenerator.py
+    CAMTests/TestSurfaceDropCutterGenerator.py
+    CAMTests/TestSurfaceWaterlineGenerator.py
+    CAMTests/TestSurface3DOp.py
+    CAMTests/TestSurfaceStl.py
+    CAMTests/TestSurface3DBoundary.py
     CAMTests/TestPathToolAsset.py
     CAMTests/TestPathToolAssetCache.py
     CAMTests/TestPathToolAssetUri.py

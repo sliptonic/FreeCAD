@@ -349,24 +349,21 @@ class ViewProvider(object):
                         if selected_obj and hasattr(selected_obj, "Shape"):
                             # Get the face
                             face = selected_obj.Shape.getElement(sub)
-                            
+
                             # Extract the normal vector at the center of the face
                             u_mid = (face.ParameterRange[0] + face.ParameterRange[1]) / 2.0
                             v_mid = (face.ParameterRange[2] + face.ParameterRange[3]) / 2.0
                             normal = face.normalAt(u_mid, v_mid)
-                            
+
                             # Normalize the vector
                             normal.normalize()
 
-                            # Use attachment engine to set operation placement
-                            # AttachmentSupport: tuple of (object, subname)
-                            # MapMode: "FlatFace" aligns Z-axis with face normal
-                            self.operation.AttachmentSupport = (obj, (subname,))
-                            self.operation.MapMode = "FlatFace"
+                            # Set the operation's Workplane property
+                            self.operation.Workplane = normal
                             FreeCAD.ActiveDocument.recompute()
 
                             FreeCAD.Console.PrintMessage(
-                                f"Attached {self.operation.Label} to {obj.Label}.{subname}\n"
+                                f"Set workplane for {self.operation.Label} to ({normal.x:.3f}, {normal.y:.3f}, {normal.z:.3f})\n"
                             )
 
                             # Deactivate and remove observer
@@ -1457,6 +1454,7 @@ class TaskPanel(object):
             self.panelGetFields()
         FreeCAD.ActiveDocument.commitTransaction()
         self.cleanup(resetEdit)
+        self.obj.recompute()
 
     def reject(self, resetEdit=True):
         """reject() ... callback invoked when user presses the task panel Cancel button."""
@@ -1487,7 +1485,6 @@ class TaskPanel(object):
         FreeCADGui.Control.closeDialog()
         if resetEdit:
             FreeCADGui.ActiveDocument.resetEdit()
-        FreeCAD.ActiveDocument.recompute()
 
     def pageDirtyChanged(self, page):
         """pageDirtyChanged(page) ... internal callback"""
@@ -1498,7 +1495,7 @@ class TaskPanel(object):
         if button == QtGui.QDialogButtonBox.Apply:
             self.panelGetFields()
             self.setClean()
-            FreeCAD.ActiveDocument.recompute()
+            self.obj.recompute()
 
     def modifyStandardButtons(self, buttonBox):
         """modifyStandarButtons(buttonBox) ... callback in case the task panel buttons need to be modified."""

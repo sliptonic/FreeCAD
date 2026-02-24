@@ -722,7 +722,7 @@ class ObjectVcarve(PathEngraveBase.ObjectOp):
 
             for base in obj.BaseShapes:
                 if matrix is not None:
-                    transformed = base.Shape.copy().transformShape(matrix, True, False)
+                    transformed = base.Shape.copy().transformShape(matrix, False, False)
                     faces.extend(transformed.Faces)
                 else:
                     faces.extend(base.Shape.Faces)
