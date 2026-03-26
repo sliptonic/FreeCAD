@@ -256,12 +256,12 @@
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="buttonSelectByType">
+          <widget class="QPushButton" name="buttonWorkplan">
            <property name="toolTip">
-            <string>Select or deselect operations by type</string>
+            <string>Show the workplan (postable items structure)</string>
            </property>
            <property name="text">
-            <string>Select by Type...</string>
+            <string>Workplan</string>
            </property>
           </widget>
          </item>
