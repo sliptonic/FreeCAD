@@ -47,6 +47,18 @@ from CAMTests.TestPathGeneratorDogboneII import TestGeneratorDogboneII
 from CAMTests.TestPathGeom import TestPathGeom
 from CAMTests.TestPathLanguage import TestPathLanguage
 from CAMTests.TestPathOpDeburr import TestPathOpDeburr
+from CAMTests.TestDressupRegistry import (
+    TestDressupRegistryHelpers,
+    TestDressupPredicates,
+    TestFilterDressups,
+    TestPilotDressupRegistry,
+)
+from CAMTests.TestOpRegistry import (
+    TestRegistryHelpers,
+    TestToolTierClassification,
+    TestFilterWithSelection,
+    TestPilotRegistry,
+)
 from CAMTests.TestPathHelpers import TestPathHelpers
 from CAMTests.TestPathHelix import TestPathHelix
 from CAMTests.TestPathHelixGenerator import TestPathHelixGenerator

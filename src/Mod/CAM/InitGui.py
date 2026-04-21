@@ -269,7 +269,11 @@ class CAMWorkbench(Workbench):
         )
         self.appendToolbar(
             QT_TRANSLATE_NOOP("Workbench", "New Operations"),
-            twodopcmdlist + drillingcmdgroup + engravecmdgroup + threedcmdgroup,
+            ["CAM_CreateOperation", "Separator"]
+            + twodopcmdlist
+            + drillingcmdgroup
+            + engravecmdgroup
+            + threedcmdgroup,
         )
         self.appendToolbar(
             QT_TRANSLATE_NOOP("Workbench", "Path Modification"), modcmdlist + dressupcmdgroup
@@ -286,6 +290,7 @@ class CAMWorkbench(Workbench):
             + toolcmdlist
             + toolbitcmdlist
             + ["Separator"]
+            + ["CAM_CreateOperation", "Separator"]
             + twodopcmdlist
             + drillingcmdlist
             + engravecmdlist

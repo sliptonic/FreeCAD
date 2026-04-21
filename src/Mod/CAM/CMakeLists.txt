@@ -80,6 +80,7 @@ SET(PathPythonDressupGui_SRCS
     Path/Dressup/Gui/Boundary.py
     Path/Dressup/Gui/Preferences.py
     Path/Dressup/Gui/RampEntry.py
+    Path/Dressup/Gui/Registry.py
     Path/Dressup/Gui/Tags.py
     Path/Dressup/Gui/TagPreferences.py
     Path/Dressup/Gui/ZCorrect.py
@@ -413,7 +414,9 @@ SET(PathPythonOpGui_SRCS
     Path/Op/Gui/PocketBase.py
     Path/Op/Gui/PocketShape.py
     Path/Op/Gui/Probe.py
+    Path/Op/Gui/CreateOpDialog.py
     Path/Op/Gui/Profile.py
+    Path/Op/Gui/Registry.py
     Path/Op/Gui/Selection.py
     Path/Op/Gui/SimpleCopy.py
     Path/Op/Gui/Slot.py
@@ -554,10 +557,12 @@ SET(Tests_SRCS
     CAMTests/TestPathGeneratorDogboneII.py
     CAMTests/TestPathGeom.py
     CAMTests/TestPathHelix.py
+    CAMTests/TestDressupRegistry.py
     CAMTests/TestPathHelpers.py
     CAMTests/TestPathHelixGenerator.py
     CAMTests/TestPathLanguage.py
     CAMTests/TestPathLog.py
+    CAMTests/TestOpRegistry.py
     CAMTests/TestPathOpDeburr.py
     CAMTests/TestPathOpUtil.py
     CAMTests/TestPostCore.py

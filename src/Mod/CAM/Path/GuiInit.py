@@ -62,6 +62,7 @@ def Startup():
         from Path.Op.Gui import Adaptive
         from Path.Op.Gui import Array
         from Path.Op.Gui import Comment
+        from Path.Op.Gui import CreateOpDialog
         from Path.Op.Gui import Custom
         from Path.Op.Gui import Deburr
         from Path.Op.Gui import Drilling
