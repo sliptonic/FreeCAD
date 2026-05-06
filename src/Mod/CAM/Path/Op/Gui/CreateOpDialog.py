@@ -47,6 +47,13 @@ __title__ = "CAM Create-Operation picker"
 __doc__ = "Prototype unified operation picker."
 
 
+if True:
+    Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
+    Path.Log.trackModule(Path.Log.thisModule())
+else:
+    Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
+
+
 SUGGESTED_CATEGORY = "Suggested"
 ALL_CATEGORY = "All"
 
@@ -114,9 +121,22 @@ class CreateOpDialog(QtGui.QDialog):
         self._visible_results = []  # post-filter, post-category
         self._show_all = False
         self._selection_observer = None
+        self._doc_observer = None
+        # Hint for mode detection. After Create & Add, the just-created op is
+        # in edit mode and FreeCAD silently blocks Selection.addSelection on
+        # the in-edit object — so we cannot rely on the tree selection to
+        # drive dressup-mode for the freshly created op. We record it here
+        # and use it as a fallback in _detect_mode/_selected_path; once edit
+        # mode ends (slotResetEdit), we promote it into the tree selection.
+        self._last_created = None
+        # Set when Create & Add records a new op. The next slotResetEdit on
+        # that op promotes it into the tree selection (then clears the flag,
+        # so subsequent edits don't re-trigger).
+        self._pending_select_on_edit_end = None
 
         self._build_ui()
         self._install_selection_observer()
+        self._install_doc_observer()
         self._refresh()
 
     # -- UI construction --------------------------------------------------- #
@@ -237,39 +257,132 @@ class CreateOpDialog(QtGui.QDialog):
             pass
         self._selection_observer = None
 
+    # -- Document (edit-mode) observer ------------------------------------- #
+
+    def _install_doc_observer(self):
+        """Subscribe to ``slotResetEdit`` so that when edit mode ends on a
+        just-created op (the user dismissed its task panel), we promote it
+        into the tree selection. While the op is in edit, FreeCAD silently
+        rejects ``Selection.addSelection`` on it — so this is the earliest
+        moment the visual selection can be made to match the picker's
+        already-recorded ``_last_created`` hint."""
+
+        dialog = self
+
+        class _DocObserver:
+            def slotResetEdit(self, vp):
+                try:
+                    obj = vp.Object
+                except Exception:
+                    return
+                if obj is dialog._pending_select_on_edit_end:
+                    dialog._pending_select_on_edit_end = None
+                    QtCore.QTimer.singleShot(0, lambda: dialog._select_after_edit_end(obj))
+
+        try:
+            self._doc_observer = _DocObserver()
+            FreeCADGui.addDocumentObserver(self._doc_observer)
+        except Exception as exc:
+            Path.Log.debug("CreateOpDialog: addDocumentObserver failed: {}".format(exc))
+            self._doc_observer = None
+
+    def _remove_doc_observer(self):
+        if self._doc_observer is None:
+            return
+        try:
+            FreeCADGui.removeDocumentObserver(self._doc_observer)
+        except Exception:
+            pass
+        self._doc_observer = None
+
+    def _select_after_edit_end(self, obj):
+        if not self._is_valid_obj(obj):
+            return
+        try:
+            FreeCADGui.Selection.clearSelection()
+            FreeCADGui.Selection.addSelection(obj)
+            Path.Log.debug("Edit-end: promoted {} to tree selection".format(obj.Name))
+        except Exception as exc:
+            Path.Log.debug("Edit-end: addSelection raised: {}".format(exc))
+
     def _on_selection_changed(self):
         # Selection observer callbacks fire synchronously from FreeCAD; defer
         # the refresh to the Qt event loop so any in-flight selection mutation
         # is fully settled before we re-read it.
-        QtCore.QTimer.singleShot(0, self._refresh)
+        QtCore.QTimer.singleShot(0, self._safe_refresh)
+
+    def _safe_refresh(self):
+        # The deferred timer can fire after the dialog's C++ widgets have been
+        # destroyed (e.g. observer removal raced with a pending fire, or the
+        # widget was torn down via a path that did not run our cleanup).
+        # Catch the shiboken RuntimeError, drop the observer so further events
+        # are ignored, and bail out instead of crashing the console.
+        try:
+            self._refresh()
+        except RuntimeError:
+            self._remove_selection_observer()
 
     def closeEvent(self, event):
         self._remove_selection_observer()
+        self._remove_doc_observer()
         super().closeEvent(event)
+
+    def done(self, result):
+        # accept()/reject() (Cancel button, Esc, Create button) call done()
+        # directly and do *not* fire closeEvent, so observers would otherwise
+        # outlive the dialog. Remove them here too.
+        self._remove_selection_observer()
+        self._remove_doc_observer()
+        super().done(result)
 
     # -- Mode detection ---------------------------------------------------- #
 
+    def _is_valid_obj(self, obj):
+        """Lightweight liveness check on a stored DocumentObject reference."""
+        if obj is None:
+            return False
+        try:
+            return obj.Name and obj.Document is not None
+        except Exception:
+            return False
+
     def _detect_mode(self):
-        """Return MODE_DRESSUP if exactly one Path op/dressup is selected,
-        else MODE_OP. Driven by the live FreeCAD selection."""
+        """Return MODE_DRESSUP if exactly one Path op/dressup is selected, or
+        if a previous Create & Add recorded one. Otherwise MODE_OP."""
         try:
             sel = FreeCADGui.Selection.getSelection()
         except Exception:
-            return MODE_OP
+            sel = []
         if len(sel) == 1:
             try:
                 if PathDressup.isOp(sel[0]):
                     return MODE_DRESSUP
             except Exception:
                 pass
+        # Fallback: the just-created op (if any) is the implicit base for
+        # dressup stacking even when its tree selection didn't take (in-edit
+        # objects can't be added to the global selection until edit ends).
+        if self._is_valid_obj(self._last_created):
+            try:
+                if PathDressup.isOp(self._last_created):
+                    return MODE_DRESSUP
+            except Exception:
+                pass
         return MODE_OP
 
     def _selected_path(self):
-        """Return the selected operation/dressup object, or None."""
+        """Return the operation/dressup object that drives dressup-mode
+        filtering. Prefer the user's explicit selection; fall back to the
+        last Create & Add target."""
         try:
-            return PathDressup.selection()
+            sel_path = PathDressup.selection()
         except Exception:
-            return None
+            sel_path = None
+        if sel_path is not None:
+            return sel_path
+        if self._is_valid_obj(self._last_created):
+            return self._last_created
+        return None
 
     # -- Context gathering ------------------------------------------------- #
 
@@ -433,7 +546,33 @@ class CreateOpDialog(QtGui.QDialog):
         return result.entry if result else None
 
     def _run_create(self, entry):
-        """Dispatch to the existing per-op command."""
+        """Dispatch to the existing per-op command.
+
+        For dressups, the per-dressup command calls ``PathDressup.selection()``
+        which requires exactly one op/dressup in the global selection. The
+        picker tolerates running in dressup mode driven by ``_last_created``
+        even when the tree selection is empty — so before invoking the
+        command we promote the picker's notion of the base path into the
+        actual global selection. If the base is currently in edit mode the
+        addSelection silently no-ops and the dressup command will print its
+        own "select one toolpath object" warning, which is the right
+        behaviour: the user has the prior task panel open and needs to
+        dismiss it before stacking the next dressup.
+        """
+        if self._mode == MODE_DRESSUP:
+            base = self._selected_path()
+            Path.Log.debug("Dispatch: dressup mode, base={}".format(getattr(base, "Name", None)))
+            if base is not None:
+                try:
+                    sel_now = FreeCADGui.Selection.getSelection()
+                except Exception:
+                    sel_now = []
+                if sel_now != [base]:
+                    try:
+                        FreeCADGui.Selection.clearSelection()
+                        FreeCADGui.Selection.addSelection(base)
+                    except Exception as exc:
+                        Path.Log.debug("Dispatch: addSelection raised: {}".format(exc))
         try:
             FreeCADGui.runCommand(entry.command)
         except Exception as exc:
@@ -456,10 +595,80 @@ class CreateOpDialog(QtGui.QDialog):
     def _on_create_and_add(self):
         entry = self._current_entry()
         if entry is None:
+            Path.Log.debug("Create&Add: no current entry")
             return
+        job = self._current_job()
+        before_names = self._operation_names(job)
+        Path.Log.debug(
+            "Create&Add: entry={} job={} before_names={}".format(
+                entry.command,
+                getattr(job, "Name", None),
+                sorted(before_names),
+            )
+        )
         if self._run_create(entry):
-            # Selection and job state may have changed; re-score.
-            self._refresh()
+            # Defer to the next event-loop tick so the create-op transaction
+            # has fully committed and the new entry is visible in
+            # job.Operations.Group when we diff against `before_names`.
+            QtCore.QTimer.singleShot(0, lambda: self._after_create_and_add(job, before_names))
+
+    def _after_create_and_add(self, job, before_names):
+        # Matches the typical workflow (profile → tags → lead-in/out → ramp):
+        # the user clicks Create & Add expecting to keep stacking onto what
+        # they just made. We can't reliably set tree selection right now —
+        # the new op is in edit mode (setEdit was called by Create()) and
+        # FreeCAD silently blocks Selection.addSelection on the in-edit
+        # object. Instead we record the just-created op as a hint and let
+        # _detect_mode/_selected_path consult it on the next refresh. By the
+        # time the user dismisses the per-op task panel and comes back to
+        # the picker, edit mode will be over and the hint flips the picker
+        # into dressup mode for that op.
+        Path.Log.debug("Create&Add: after-create deferred handler running")
+        new_op = self._find_new_op(job, before_names)
+        if new_op is not None:
+            Path.Log.debug("Create&Add: recording last_created={}".format(new_op.Name))
+            self._last_created = new_op
+            # Arm the doc-observer to promote this op into the tree selection
+            # the moment its task panel is dismissed (slotResetEdit). The
+            # picker already shows dressup mode for it via _last_created;
+            # this just makes the selection visible to the user.
+            self._pending_select_on_edit_end = new_op
+        self._refresh()
+
+    @staticmethod
+    def _operation_names(job):
+        """Snapshot of names in ``job.Operations.Group``. Names (not object
+        refs) are compared because dressup creation re-parents objects, and a
+        Python wrapper for an op may even be torn down/recreated across the
+        transaction boundary."""
+        if job is None or not getattr(job, "Operations", None):
+            return set()
+        try:
+            return {o.Name for o in job.Operations.Group}
+        except Exception:
+            return set()
+
+    def _find_new_op(self, job, before_names):
+        """Diff ``job.Operations.Group`` against ``before_names`` and return
+        the most recently added entry, or None."""
+        if job is None or not getattr(job, "Operations", None):
+            return None
+        try:
+            after = list(job.Operations.Group)
+        except Exception as exc:
+            Path.Log.debug("Create&Add: failed to read Operations.Group: {}".format(exc))
+            return None
+        new_objects = [o for o in after if o.Name not in before_names]
+        Path.Log.debug(
+            "Create&Add: after={}, new={}".format(
+                [o.Name for o in after], [o.Name for o in new_objects]
+            )
+        )
+        if not new_objects:
+            return None
+        # Dressup creation replaces the base op at the same index in the
+        # group; either way the trailing entry is the relevant target.
+        return new_objects[-1]
 
     def _on_op_double_clicked(self, _item):
         self._on_create()
