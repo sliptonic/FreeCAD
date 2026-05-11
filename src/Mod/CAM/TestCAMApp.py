@@ -124,6 +124,7 @@ from CAMTests.TestGenericPlasma import TestGenericPlasma
 from CAMTests.TestLinuxCNCPost import TestLinuxCNCPost
 from CAMTests.TestMarlinPost import TestMarlinPost
 from CAMTests.TestDxfPost import TestDxfPost
+from CAMTests.TestFanucLegacyPost import TestFanucLegacyPost
 from CAMTests.TestFanucPost import TestFanucPost
 
 from CAMTests.TestGrblPost import TestGrblPost
