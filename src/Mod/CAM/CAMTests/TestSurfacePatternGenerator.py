@@ -1,26 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2025 Dimitrios Pana <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2025 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
-
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 import math
 import Path
@@ -204,7 +201,9 @@ class TestSurfacePattern(PathTestUtils.PathTestBase):
         """
         from Path.Base.Generator.surface_pattern import generate_offset_scan_lines
 
-        lines = generate_offset_scan_lines(self.square_face, stepover=4.0, tool_diam=3.0, sample_interval=1.0)
+        lines = generate_offset_scan_lines(
+            self.square_face, stepover=4.0, tool_diam=3.0, sample_interval=1.0
+        )
 
         self.assertIsNotNone(lines)
         # 20mm width, tool radius implicitly half of stepover.
@@ -230,7 +229,9 @@ class TestSurfacePattern(PathTestUtils.PathTestBase):
         """
         from Path.Base.Generator.surface_pattern import generate_offset_scan_lines
 
-        lines = generate_offset_scan_lines(self.face_with_hole, stepover=5.0, tool_diam=3.0, sample_interval=1.0)
+        lines = generate_offset_scan_lines(
+            self.face_with_hole, stepover=5.0, tool_diam=3.0, sample_interval=1.0
+        )
         self.assertIsNotNone(lines)
         # Outer: 40x40 -> 2 passes. Inner: 20x20 -> 1 pass. Total 3 wires * 2 passes/wire = 6 lines
         self.assertGreaterEqual(
