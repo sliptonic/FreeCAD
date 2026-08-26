@@ -1,24 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-# ***************************************************************************
-# *   Copyright (c) 2025 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+# SPDX-FileCopyrightText: 2025 Dimitrios Pana <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
+
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 """Waterline (constant-Z contour) generation using OpenCamLib.
 
@@ -280,7 +279,7 @@ def _reorient_loop_start(loop, start_pt):
     if not loop or not start_pt:
         return loop
 
-    min_dist = float('inf')
+    min_dist = float("inf")
     closest_idx = 0
 
     for i, pt in enumerate(loop):
@@ -349,7 +348,7 @@ def waterline_to_gcode(
             # 1. Loop sorting: Find the nearest loop to the tool
             if current_tool_pos:
                 best_idx = 0
-                best_dist = float('inf')
+                best_dist = float("inf")
 
                 for i, loop in enumerate(remaining_loops):
                     for pt in loop:
@@ -382,7 +381,7 @@ def waterline_to_gcode(
             if current_tool_pos:
                 dist = math.hypot(first[0] - current_tool_pos[0], first[1] - current_tool_pos[1])
             else:
-                dist = float('inf')
+                dist = float("inf")
 
             # Only retract and rapid if the tool is moving to a new XY location
             if dist > STAY_DOWN_TOLERANCE:
@@ -390,7 +389,9 @@ def waterline_to_gcode(
                     commands.append(Path.Command("G0", {"Z": safe_z, "F": vert_rapid}))
                     is_retracted = True
 
-                commands.append(Path.Command("G0", {"X": first[0], "Y": first[1], "F": horiz_rapid}))
+                commands.append(
+                    Path.Command("G0", {"X": first[0], "Y": first[1], "F": horiz_rapid})
+                )
 
             # 4. Cut the loop
             for i, pt in enumerate(pts):
@@ -400,8 +401,8 @@ def waterline_to_gcode(
                     Path.Command(
                         "G1",
                         {"X": pt[0], "Y": pt[1], "Z": pt[2], "F": feed},
-                     )
-                 )
+                    )
+                )
 
             # 5. Update magnet state
             current_tool_pos = (pts[-1][0], pts[-1][1])

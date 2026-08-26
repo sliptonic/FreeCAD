@@ -1,25 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2026 Dimitrios Pana <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2026 Dimitris75 <dimitriospana75@gmail.com>             *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 """Z-Level Hybrid (constant-Z contour) generation using native geometry.
 
@@ -93,8 +91,10 @@ def _apply_fill_hole_masks(
         merge_engine = Path.Area()
         merge_engine.setPlane(wpc)
 
-    while (fill_mask_idx < len(fill_holes_masks) and
-           fill_holes_masks[fill_mask_idx][0] >= z_target - loose_tol):
+    while (
+        fill_mask_idx < len(fill_holes_masks)
+        and fill_holes_masks[fill_mask_idx][0] >= z_target - loose_tol
+    ):
 
         mask = fill_holes_masks[fill_mask_idx][1]
 
@@ -151,9 +151,7 @@ def _fuse_coplanar_masks(fill_holes_masks):
             if hasattr(fused, "removeSplitter"):
                 fused = fused.removeSplitter()
             fused_list.append((max_z, fused))
-            Path.Log.debug(
-                f"_fuse_coplanar_masks: Fused {len(faces)} masks at Z={max_z:.4f}."
-            )
+            Path.Log.debug(f"_fuse_coplanar_masks: Fused {len(faces)} masks at Z={max_z:.4f}.")
         except Exception as e:
             Path.Log.warning(
                 f" Failed to compound {len(faces)} fill selected holes "
@@ -269,41 +267,6 @@ def fill_selected(base_property):
     return _fuse_coplanar_masks(fill_holes_masks)
 
 
-def _make_flat_cap(wire, cap_z):
-    """
-    Discretizes a wire, flattens all edges to cap_z, and returns a
-    closed Part.Face translated to Z=0 for use as a 2D mask.
-    Returns None on failure.
-    """
-    flat_edges = []
-    for edge in wire.Edges:
-        try:
-            points = edge.discretize(Distance=0.1)
-            flat_pts = [FreeCAD.Vector(p.x, p.y, cap_z) for p in points]
-            flat_edge = Part.makePolygon(flat_pts)
-            flat_edges.extend(flat_edge.Edges)
-        except Exception as e:
-            Path.Log.debug(
-                f"surface_zlevel.fill_selected: Edge flatten failed: {e}"
-            )
-            continue
-
-    if not flat_edges:
-        return None
-
-    try:
-        sorted_edges = Part.__sortEdges__(flat_edges)
-        flat_wire = Part.Wire(sorted_edges)
-        cap_face = Part.Face(flat_wire)
-        cap_face.translate(FreeCAD.Vector(0, 0, -cap_face.BoundBox.ZMin))
-        return cap_face
-    except Exception as e:
-        Path.Log.warning(
-            f"surface_zlevel.fill_selected: Failed to build cap face: {e}"
-        )
-        return None
-
-
 def _process_isolated_face(face, z_level):
     """
     Routes an isolated face to the appropriate capping strategy based on
@@ -345,6 +308,8 @@ def _cap_flat_face_holes(face, cap_z):
     Scenario A: Capping inner holes on a mathematically flat surface.
     Sorts wires by size; the largest is the outer boundary, the rest are holes.
     """
+    from . import surface_common
+
     masks = []
     # BoundingBox DiagonalLength is a fast, crash-proof way to sort wire size
     sorted_wires = sorted(face.Wires, key=lambda w: w.BoundBox.DiagonalLength)
@@ -355,7 +320,7 @@ def _cap_flat_face_holes(face, cap_z):
     for wire in inner_wires:
         if not wire.isClosed():
             continue
-        cap_face = _make_flat_cap(wire, cap_z)
+        cap_face = surface_common.flatten_wire_to_cap(wire, cap_z, translate_to_zero=True)
         if cap_face:
             masks.append((cap_z, cap_face))
 
@@ -367,33 +332,17 @@ def _cap_3d_wall(face):
     Scenario B: Extracting and capping the top rim of a 3D wall (e.g., sloped holes).
     Safely ignores vertical seams and crushes 3D splines into flat 2D polygons.
     """
+    from . import surface_common
+
     face_zmax = round(face.BoundBox.ZMax, 4)
-    face_zmin = round(face.BoundBox.ZMin, 4)
 
-    top_edges = []
-    for edge in face.Edges:
-        # 1. Identify and skip "seam" edges that run vertically down the walls
-        is_seam = (round(edge.BoundBox.ZMin, 4) <= face_zmin + 1e-3) and \
-                  (round(edge.BoundBox.ZMax, 4) >= face_zmax - 1e-3)
-        if is_seam:
-            continue
-
-        # 2. Keep only the edges that form the upper rim
-        if round(edge.BoundBox.ZMax, 4) >= face_zmax - 1e-3:
-            top_edges.append(edge)
-
-    if not top_edges:
+    top_wire = surface_common._extract_top_rim_wire(face)
+    if top_wire is None:
         return None
 
-    try:
-        sorted_edges = Part.__sortEdges__(top_edges)
-        top_wire = Part.Wire(sorted_edges)
-
-        cap_face = _make_flat_cap(top_wire, face_zmax)
-        if cap_face:
-            return (face_zmax, cap_face)
-    except Exception as e:
-        Path.Log.debug(f"Failed to cap complex 3D wall top rim: {e}")
+    cap_face = surface_common.flatten_wire_to_cap(top_wire, face_zmax, translate_to_zero=True)
+    if cap_face:
+        return (face_zmax, cap_face)
 
     return None
 
@@ -523,7 +472,7 @@ def categorize_floor_steps(shape, start_z, final_z, step_down, clear_planar_only
     # 3. Match standard steps to physical floors
     for z_std in z_heights:
         match_z = None
-        for floor_z in fused_geometry.keys():
+        for floor_z in fused_geometry:
             if abs(floor_z - z_std) < floor_match_tol:
                 match_z = floor_z
                 break
@@ -567,7 +516,8 @@ def _get_fused_floor_geometry(shape, start_z, final_z, tolerance=0.001):
     Returns:
         A dictionary: {z_height: fused_face_at_Z0}.
     """
-    def fuse_faces(faces):
+
+    def _fuse_faces(faces):
         fuse_engine = Path.Area()
         for i in range(len(faces)):
             fuse_engine.add(faces[i])
@@ -577,7 +527,7 @@ def _get_fused_floor_geometry(shape, start_z, final_z, tolerance=0.001):
             result = faces[0].multiFuse(faces[1:])
         return result
 
-    def is_planar(face):
+    def _is_planar(face):
         # If you ever have issues with Planar surfaces (if face.BoundBox.ZLength < 1e-5:)
         if not (hasattr(face.Surface, "TypeId") and "Plane" in face.Surface.TypeId):
             return False
@@ -587,7 +537,7 @@ def _get_fused_floor_geometry(shape, start_z, final_z, tolerance=0.001):
 
         return abs(norm.z > 0.99)
 
-    def isAccessibleFromTop(face, shape, abs_top):
+    def _is_accessible_from_top(face, shape, abs_top):
         # Accessibility Check: Solid Projection (Shadow Test)
         try:
             z = face.Vertexes[0].Z
@@ -603,6 +553,7 @@ def _get_fused_floor_geometry(shape, start_z, final_z, tolerance=0.001):
 
     # Detect pre-triangulated models and skip floor detection
     from . import surface_common
+
     is_triangulated = surface_common._is_triangulated_mesh(shape.Faces)
     if is_triangulated:
         Path.Log.warning(
@@ -616,10 +567,10 @@ def _get_fused_floor_geometry(shape, start_z, final_z, tolerance=0.001):
     z_min, z_max = min(start_z, final_z), max(start_z, final_z)
 
     for face in shape.Faces:
-        if is_planar(face):
+        if _is_planar(face):
             z = round(face.Vertexes[0].Z, 5)
             if (z >= z_min - tolerance) and (z < z_max):
-                if isAccessibleFromTop(face, shape, abs_top):
+                if _is_accessible_from_top(face, shape, abs_top):
                     f_copy = face.copy()
                     f_copy.translate(FreeCAD.Vector(0, 0, -f_copy.BoundBox.ZMin))
 
@@ -631,7 +582,7 @@ def _get_fused_floor_geometry(shape, start_z, final_z, tolerance=0.001):
 
     for z, faces in floor_accumulator.items():
         if len(faces) > 1:
-            res = fuse_faces(faces)
+            res = _fuse_faces(faces)
         else:
             res = faces[0]
         if hasattr(res, "removeSplitter"):
@@ -726,9 +677,15 @@ def zlevel_hybrid_stack(
             )
             continue
 
+        # Seed all_prev_comp if the first real cut level is deeper
+        # than the tool's corner radius below the model's top
+        if not all_prev_comp:
+            all_prev_comp = _first_pass_mask(
+                shape, wpc, model_top, z_target, tool_params, tol, critical_heights,
+            )
+
         # Determine the Slice Height (Model Footprint)
-        z_slice = z_target
-        z_slice = max(z_slice, model_bottom)
+        z_slice = max(z_target, model_bottom)
 
         # The depth at which the tool has submerged from the model_top
         dist_submerged = max(0, model_top - z_slice)
@@ -743,8 +700,14 @@ def zlevel_hybrid_stack(
 
         # B. Generate all 2D slices for this layer
         layer_slices = _generate_layer_slices(
-            area_engine, params, unique_steps, z_target, slice_bias,
-            stock_to_leave, model_top, model_bottom
+            area_engine,
+            params,
+            unique_steps,
+            z_target,
+            slice_bias,
+            stock_to_leave,
+            model_top,
+            model_bottom,
         )
 
         if not layer_slices or not len(layer_slices) > 0:
@@ -769,13 +732,27 @@ def zlevel_hybrid_stack(
         # E. Process and apply active fill hole masks
         if fill_holes_masks:
             fill_mask_idx, fill_holes_masks, floor_geo, all_prev_comp = _apply_fill_hole_masks(
-                wpc, fill_holes_masks, fill_mask_idx, current_silhouette,
-                status, floor_geo, all_prev_comp, z_target, loose_tol
+                wpc,
+                fill_holes_masks,
+                fill_mask_idx,
+                current_silhouette,
+                status,
+                floor_geo,
+                all_prev_comp,
+                z_target,
+                loose_tol,
             )
 
         # F: Calculate the final cutting area using the new helper
         cut_area = _calculate_cut_area(
-            wpc, status, current_silhouette, floor_geo, border_face, trim_face, all_prev_comp, z_target
+            wpc,
+            status,
+            current_silhouette,
+            floor_geo,
+            border_face,
+            trim_face,
+            all_prev_comp,
+            z_target,
         )
 
         # G: Finalize and store the result for this layer
@@ -794,6 +771,80 @@ def zlevel_hybrid_stack(
             )
 
     return stack
+
+
+def _first_pass_mask(shape, wpc, model_top, z_target, tool_params, tol, critical_heights=None):
+    """
+    Seeds all_prev_comp for a first cut level deeper than the tool's corner
+    radius below model_top — without this, the first level has no
+    "already cleared" context, and a feature that only exists between
+    model_top and a deep first step can be silently skipped (the tool's
+    own corner sampling isn't guaranteed to reach that far). R/c_rad=0 for
+    a flat endmill, so this triggers for virtually any nonzero first step.
+
+    Sections the model at one or more heights strictly between
+    first z_target and model_top — using the same Path.Area().makeSections()
+    mechanism and unions the results, rather than projecting the model's full
+    outline.
+
+    Returns None if the first step is shallow enough that this isn't
+    needed, or if it fails.
+    """
+    profile = tool_params["profile"]
+    radius = tool_params["radius"]
+    c_rad = tool_params["c_rad"]
+
+    if "ballend" in profile:
+        c_rad = radius
+
+    if (model_top - z_target) <= c_rad:
+        return None
+
+    top_h = round(model_top - tol, 6)
+    bottom_h = round(z_target + c_rad, 6)
+    mid_h = round((top_h + bottom_h) / 2.0, 6)
+
+    sample_heights = {top_h, bottom_h, mid_h}
+    if critical_heights:
+        sample_heights.update(h for h in critical_heights if bottom_h < h < top_h)
+
+    try:
+        section_engine = Path.Area()
+        section_engine.setPlane(wpc)
+        section_engine.add(shape)
+        params = section_engine.getDefaultParams()
+        params["SectionTolerance"] = 0.0001
+        params["Offset"] = radius
+        section_engine.setParams(**params)
+
+        slices = []
+        for h in sorted(sample_heights):
+            sections = section_engine.makeSections(mode=0, project=False, heights=[h])
+            if not sections:
+                continue
+            sub_face = sections[0].getShape()
+            if sub_face and not sub_face.isNull():
+                sub_face.translate(FreeCAD.Vector(0, 0, -sub_face.BoundBox.ZMin))
+                slices.append(sub_face)
+
+        if not slices:
+            Path.Log.warning(
+                "Failed to identify the top features of the model for the first roughing pass. "
+                "Inspect the generated tool path, or try a smaller step-down."
+            )
+            return None
+
+        fusion = Path.Area()
+        fusion.setPlane(wpc)
+        for s in slices:
+            fusion.add(s)
+        return fusion.getShape()
+    except Exception as e:
+        Path.Log.warning(
+            f"Failed to identify the top features of the model for the first "
+            f"roughing pass ({e}). Inspect the generated tool path, or try a smaller step-down."
+            )
+        return None
 
 
 def _generate_sampling_plan(
@@ -1236,8 +1287,18 @@ def zlevel_hybrid_to_gcode(
 
                 # Generate the wire-following path
                 commands.extend(
-                    _generate_wire_path(wire, z_target, safe_hght, start_p,
-                        feed_params, keep_tool_down, keep_down_ratio, reverse_pattern, cut_climb, sort_mode=0)
+                    _generate_wire_path(
+                        wire,
+                        z_target,
+                        safe_hght,
+                        start_p,
+                        feed_params,
+                        keep_tool_down,
+                        keep_down_ratio,
+                        reverse_pattern,
+                        cut_climb,
+                        sort_mode=0,
+                    )
                 )
 
     if not commands:
@@ -1252,7 +1313,9 @@ def zlevel_hybrid_to_gcode(
     return commands
 
 
-def _setup_adaptive_geofence(cut_area, bb_face, adaptive_params, radius, z_target, enforce_geofence):
+def _setup_adaptive_geofence(
+    cut_area, bb_face, adaptive_params, radius, z_target, enforce_geofence
+):
     """
     Analyzes the geometric relationship between the cut area and the stock boundary
     to detect open pockets, and configures safety overrides for the Adaptive2d algorithm.
@@ -1293,10 +1356,12 @@ def _setup_adaptive_geofence(cut_area, bb_face, adaptive_params, radius, z_targe
     is_open = False
 
     # Fast AABB Check
-    if (c_bb.XMin <= s_bb.XMin + tol or
-        c_bb.XMax >= s_bb.XMax - tol or
-        c_bb.YMin <= s_bb.YMin + tol or
-        c_bb.YMax >= s_bb.YMax - tol):
+    if (
+        c_bb.XMin <= s_bb.XMin + tol
+        or c_bb.XMax >= s_bb.XMax - tol
+        or c_bb.YMin <= s_bb.YMin + tol
+        or c_bb.YMax >= s_bb.YMax - tol
+    ):
         is_open = True
     else:
         # Irregular Stock Check
@@ -1313,7 +1378,7 @@ def _setup_adaptive_geofence(cut_area, bb_face, adaptive_params, radius, z_targe
     # Apply Safety Overrides
     if is_open and not force_insideout:
         # Respect the power-user toggle
-        geofence = True if enforce_geofence else False
+        geofence = bool(enforce_geofence)
         bb_offset = -0.01
         adaptive_params["finishing_profile"] = False
 
@@ -1356,9 +1421,7 @@ def _find_start_point(wire, start_point, cut_climb):
         # Find the vertex closest to the user-defined start point
         start_p = min(
             [FreeCAD.Vector(v.X, v.Y, v.Z) for v in V],
-            key=lambda v: math.hypot(
-                v.x - start_point.x, v.y - start_point.y
-            ),
+            key=lambda v: math.hypot(v.x - start_point.x, v.y - start_point.y),
         )
     else:
         # Default — climb starts at last vertex (end of CCW wire for inside profile)
@@ -1384,7 +1447,7 @@ def _reorient_wire_start(wire, start_point):
         return wire
 
     closest_idx = 0
-    min_dist = float('inf')
+    min_dist = float("inf")
 
     for i, edge in enumerate(edges):
         if not edge.Vertexes:
@@ -1426,7 +1489,7 @@ def _generate_wire_path(
 ):
     """Standardizes G-code generation for a single wire segment.
 
-Args:
+    Args:
         wire (Part.Wire or list): The geometric path or list of paths to follow.
         z_target (float): The target machining depth.
         safe_hght (float): The height for safe rapid transitions.
@@ -1443,7 +1506,7 @@ Args:
         list: A list of Path.Command objects.
     """
     commands = []
-    #if reverse_pattern and cut_climb:
+    # if reverse_pattern and cut_climb:
     orientation = cut_climb if cut_climb and reverse_pattern else not cut_climb
 
     # Extract feeds and speeds
@@ -1539,7 +1602,9 @@ def _generatePattern(
     Returns:
         list: A flat list of Path.Command objects representing the pattern G-code.
     """
-    Path.Log.debug(f"surface_zlevel._generatePattern: Generating {cut_pattern} pattern at Z={z_target}")
+    Path.Log.debug(
+        f"surface_zlevel._generatePattern: Generating {cut_pattern} pattern at Z={z_target}"
+    )
 
     commands = []
     sort_mode = 3
@@ -1627,16 +1692,32 @@ def _generatePattern(
                 start_p = _find_start_point(wire, start_point, False)
                 commands.extend(
                     _generate_wire_path(
-                        wire, z_target, safe_hght, start_p, feed_params,
-                        keep_tool_down, keep_down_ratio, reverse_pattern, cut_climb, sort_mode=0,
+                        wire,
+                        z_target,
+                        safe_hght,
+                        start_p,
+                        feed_params,
+                        keep_tool_down,
+                        keep_down_ratio,
+                        reverse_pattern,
+                        cut_climb,
+                        sort_mode=0,
                     )
                 )
         else:  # ZigZag, Offset, Grid patterns
             # Pass the raw current_start_pt down (it will be sanitized downstream)
             commands.extend(
                 _generate_wire_path(
-                    filtered_wires, z_target, safe_hght, current_start_pt, feed_params,
-                    keep_tool_down, keep_down_ratio, reverse_pattern, cut_climb, sort_mode,
+                    filtered_wires,
+                    z_target,
+                    safe_hght,
+                    current_start_pt,
+                    feed_params,
+                    keep_tool_down,
+                    keep_down_ratio,
+                    reverse_pattern,
+                    cut_climb,
+                    sort_mode,
                 )
             )
 

@@ -1,24 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-# ***************************************************************************
-# *   Copyright (c) 2025 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+# SPDX-FileCopyrightText: 2025 Dimitrios Pana <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
+
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 """
 2D Pattern Generation Engine for the 3D Surface Operation.
@@ -396,7 +395,7 @@ def _reorient_wire_start(wire, start_point):
         return wire
 
     closest_idx = 0
-    min_dist_sq = float('inf')
+    min_dist_sq = float("inf")
     sx, sy = start_point.x, start_point.y
 
     for i, edge in enumerate(edges):
@@ -532,7 +531,9 @@ def _emit_zones_nearest_neighbor(chains, sample_interval, climb, current_start_p
     return region_lines, current_start_pt
 
 
-def _offset_rings_for_region(face, stepover, tool_diam, sample_interval, climb, current_start_pt=None):
+def _offset_rings_for_region(
+    face, stepover, tool_diam, sample_interval, climb, current_start_pt=None
+):
     """
     Generates concentric offset rings for one connected region (outer
     boundary + any holes), keeping each hole's rings and the outer
@@ -559,9 +560,9 @@ def generate_offset_scan_lines(
     Generates concentric toolpath rings that progressively shrink inwards from a boundary,
     using Path.Area() to repeatedly collapse the boundary geometry by the stepover amount.
 
-    If boundary_face is a compound of disjoint regions (e.g. separate islands fused
-    together by build_optimized_boundary), each region is cleared fully before moving
-    to the next, rather than interleaving them ring-by-ring.
+    Pipeline: split boundary_face into disjoint regions -> visit regions nearest-neighbor,
+    each fully cleared via _offset_rings_for_region (collect levels -> chain into zones ->
+    emit zones nearest-neighbor) -> optionally reverse the whole sequence.
 
     Args:
         boundary_face (Part.Face): The outermost boundary mask to shrink.
