@@ -1,25 +1,24 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2025 sliptonic <shopinthewoods@gmail.com>
+# SPDX-FileCopyrightText: 2026 Dimitris75 <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2025 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 
 __title__ = "CAM Planar Surface Operation"
@@ -31,39 +30,43 @@ import FreeCAD
 
 translate = FreeCAD.Qt.translate
 
-# OCL must be installed
+# OCL must be installed. The import itself is the availability probe: unlike
+# importlib.util.find_spec it also catches a present-but-broken binary install.
 try:
-    try:
-        import ocl
-    except ImportError:
-        import opencamlib as ocl
+    import ocl
 except ImportError:
+    try:
+        import opencamlib as ocl
+    except ImportError:
+        ocl = None
+
+if ocl is None:
     msg = translate("CAM_PlanarSurface", "This operation requires OpenCamLib to be installed.")
     FreeCAD.Console.PrintError(msg + "\n")
-    raise ImportError
+    raise ImportError(msg)
 
-from PySide.QtCore import QT_TRANSLATE_NOOP
-import Path
-import Path.Op.Base as PathOp
-import Path.Base.Generator.surface_common as surface_common
-import Path.Base.Generator.surface_mesh as surface_mesh
-import Path.Base.Generator.surface_pattern as surface_pattern
-import Path.Base.Generator.surface_dropcutter as surface_dropcutter
-import Path.Base.Generator.surface_waterline as surface_waterline
-import Path.Base.Generator.surface_postprocess as surface_postprocess
-import PathScripts.PathUtils as PathUtils
 import time
+from typing import Any, ClassVar
 
 # lazily loaded modules
 from lazy_loader.lazy_loader import LazyLoader
+from PathScripts import PathUtils
+from PySide.QtCore import QT_TRANSLATE_NOOP
+
+import Path
+import Path.Op.Base as PathOp
+from Path.Base.Generator import (
+    surface_common,
+    surface_dropcutter,
+    surface_mesh,
+    surface_pattern,
+    surface_postprocess,
+    surface_waterline,
+)
 
 Part = LazyLoader("Part", globals(), "Part")
 
-if False:
-    Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
-    Path.Log.trackModule(Path.Log.thisModule())
-else:
-    Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
+Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
 
 
 class ObjectSurface(PathOp.ObjectOp):
@@ -76,7 +79,7 @@ class ObjectSurface(PathOp.ObjectOp):
     """
 
     # Accuracy level presets for Speed vs Accuracy control
-    ACCURACY_PRESETS = {
+    ACCURACY_PRESETS: ClassVar[dict[int, dict[str, Any]]] = {
         1: {  # Fastest - Coarse, for quick prototyping/verification
             "name": "Fastest",
             "angular_deflection": 0.5,  # Coarse chordal deviation for minimal mesh density
@@ -865,16 +868,15 @@ class ObjectSurface(PathOp.ObjectOp):
         obj.setEditorMode("BoundBox", show if not is_waterline else hide)
 
     def opOnChanged(self, obj, prop):
-        if hasattr(self, "propertiesReady"):
-            if self.propertiesReady:
-                if prop in ["Strategy", "CutPattern", "CutPatternZLevel", "AdaptiveSampling"]:
-                    self.setEditorProperties(obj)
-                elif prop == "MeshSimplification":
-                    if hasattr(obj, "MeshSimplification"):
-                        if obj.MeshSimplification < 1:
-                            obj.MeshSimplification = 1
-                        elif obj.MeshSimplification > 7:
-                            obj.MeshSimplification = 7
+        if not getattr(self, "propertiesReady", False):
+            return
+        if prop in ["Strategy", "CutPattern", "CutPatternZLevel", "AdaptiveSampling"]:
+            self.setEditorProperties(obj)
+        elif prop == "MeshSimplification" and hasattr(obj, "MeshSimplification"):
+            if obj.MeshSimplification < 1:
+                obj.MeshSimplification = 1
+            elif obj.MeshSimplification > 7:
+                obj.MeshSimplification = 7
 
     def opOnDocumentRestored(self, obj):
         self.propertiesReady = False
@@ -903,12 +905,8 @@ class ObjectSurface(PathOp.ObjectOp):
             if n in propList:
                 prop = getattr(obj, n)
                 val = PROP_DFLTS[n]
-                setVal = False
-                if hasattr(prop, "Value"):
-                    if isinstance(val, int) or isinstance(val, float):
-                        setVal = True
-                if setVal:
-                    setattr(prop, "Value", val)
+                if hasattr(prop, "Value") and isinstance(val, (int, float)):
+                    prop.Value = val
                 else:
                     setattr(obj, n, val)
 
@@ -936,14 +934,13 @@ class ObjectSurface(PathOp.ObjectOp):
             obj.OpFinalDepth.Value = -10
             obj.OpStartDepth.Value = 10
 
-        Path.Log.debug("Default OpFinalDepth: {}".format(obj.OpFinalDepth.Value))
-        Path.Log.debug("Default OpStartDepth: {}".format(obj.OpStartDepth.Value))
+        Path.Log.debug(f"Default OpFinalDepth: {obj.OpFinalDepth.Value}")
+        Path.Log.debug(f"Default OpStartDepth: {obj.OpStartDepth.Value}")
 
     def opApplyPropertyLimits(self, obj):
         """opApplyPropertyLimits(obj) ... Apply necessary limits to user input property values."""
         # Limit Keep Tool Down threshold to positive values
-        if obj.KeepToolDownRatio < 0:
-            obj.KeepToolDownRatio = 0
+        obj.KeepToolDownRatio = max(obj.KeepToolDownRatio, 0)
 
         # Limit linear deflection
         if obj.LinearDeflection.Value < 0.001:
@@ -982,10 +979,8 @@ class ObjectSurface(PathOp.ObjectOp):
             obj.CutPatternAngle = 0.0
 
         # Limit StepOver to natural number percentage
-        if obj.StepOver > 100.0:
-            obj.StepOver = 100.0
-        if obj.StepOver < 1.0:
-            obj.StepOver = 1.0
+        obj.StepOver = min(obj.StepOver, 100.0)
+        obj.StepOver = max(obj.StepOver, 1.0)
 
         # Limit AvoidLastX_Faces to zero and positive values
         if obj.AvoidLastX_Faces < 0:
@@ -1000,47 +995,55 @@ class ObjectSurface(PathOp.ObjectOp):
             obj.AvoidFacesOverlap.Value = 0.0
 
         # Limit StockToLeave to positive values
-        if obj.StockToLeave < 0:
-            obj.StockToLeave = 0
+        obj.StockToLeave = max(obj.StockToLeave, 0)
 
         # Limit LeadFeed to natural number percentage
-        if obj.LeadFeed > 100.0:
-            obj.LeadFeed = 100.0
-        if obj.LeadFeed < 1.0:
-            obj.LeadFeed = 1.0
+        obj.LeadFeed = min(obj.LeadFeed, 100.0)
+        obj.LeadFeed = max(obj.LeadFeed, 1.0)
 
         # Limit LeadLiftDistance to positive values
-        if obj.LeadLiftDistance < 0:
-            obj.LeadLiftDistance = 0
+        obj.LeadLiftDistance = max(obj.LeadLiftDistance, 0)
 
         # Limit Adaptive Helix max ramp angle
         if obj.HelixMaxRampAngle < 0.0 or obj.HelixMaxRampAngle >= 90.0:
             obj.HelixMaxRampAngle = 3.0
 
         # Limit Adaptive Helix Max Diameter percentage
-        if obj.HelixMaxDiameterPercent > 100.0:
-            obj.HelixMaxDiameterPercent = 100.0
-        if obj.HelixMaxDiameterPercent < 10.0:
-            obj.HelixMaxDiameterPercent = 10.0
+        obj.HelixMaxDiameterPercent = min(obj.HelixMaxDiameterPercent, 100.0)
+        obj.HelixMaxDiameterPercent = max(obj.HelixMaxDiameterPercent, 10.0)
 
         # Limit Adaptive Lift Distance to positive values
-        if obj.LiftDistance < 0:
-            obj.LiftDistance = 0
+        obj.LiftDistance = max(obj.LiftDistance, 0)
 
         # Limit Adaptive Keep Tool Down Ratio to positive values
-        if obj.KeepToolDownThreshold < 0:
-            obj.KeepToolDownThreshold = 0
+        obj.KeepToolDownThreshold = max(obj.KeepToolDownThreshold, 0)
 
         # Limit Volumetric Feed Percent
-        if obj.VolumetricFeedPercent > 100.0:
-            obj.VolumetricFeedPercent = 100.0
-        if obj.VolumetricFeedPercent < 0.0:
-            obj.VolumetricFeedPercent = 0.0
+        obj.VolumetricFeedPercent = min(obj.VolumetricFeedPercent, 100.0)
+        obj.VolumetricFeedPercent = max(obj.VolumetricFeedPercent, 0.0)
+
+    def _rotatedShape(self, shape):
+        """Return *shape* in the operation's working (Z-up) frame.
+
+        When a 3+2 workplane rotation is active the base class wraps
+        ``self.model`` / ``self.stock`` in transformed proxies for the duration
+        of ``opExecute()`` and ``baseShapes()`` yields transformed geometry.
+        ``updateDepths()`` runs before that wrapping, so depth calculations
+        apply the geometry transform here. With no rotation active this is the
+        identity.
+        """
+        matrix = getattr(self, "_geom_transform_matrix", None)
+        if matrix is None:
+            return shape
+        return shape.copy().transformShape(matrix, False, False)
 
     def opUpdateDepths(self, obj):
+        # All Z values below are in the working frame: baseShapes() yields
+        # transformed geometry when a workplane rotation is active, and model /
+        # stock shapes are transformed explicitly via _rotatedShape().
         if hasattr(obj, "Base") and obj.Base:
             zmin = float("inf")
-            for base, sublist in obj.Base:
+            for base, sublist in self.baseShapes(obj):
                 for sub in sublist:
                     try:
                         fbb = base.Shape.getElement(sub).BoundBox
@@ -1052,13 +1055,12 @@ class ObjectSurface(PathOp.ObjectOp):
         elif self.job:
             if hasattr(obj, "BoundBox"):
                 if obj.BoundBox == "BaseBoundBox":
-                    models = self.job.Model.Group
-                    zmin = models[0].Shape.BoundBox.ZMin
-                    for M in models:
-                        zmin = min(zmin, M.Shape.BoundBox.ZMin)
+                    models = getattr(self, "model", None) or self.job.Model.Group
+                    zmin = min(self._rotatedShape(M.Shape).BoundBox.ZMin for M in models)
                     obj.OpFinalDepth = zmin
                 if obj.BoundBox == "Stock":
-                    obj.OpFinalDepth = self.job.Stock.Shape.BoundBox.ZMin
+                    stock = getattr(self, "stock", None) or self.job.Stock
+                    obj.OpFinalDepth = self._rotatedShape(stock.Shape).BoundBox.ZMin
 
     # ---- Strategy execution methods ----
 
@@ -1095,10 +1097,8 @@ class ObjectSurface(PathOp.ObjectOp):
             length_offset = float(tool.LengthOffset)
 
         Path.Log.debug(
-            "Surface tool: type={}, diameter={}, edge_height={}, "
-            "corner_radius={}, flat_radius={}, edge_angle={}".format(
-                tool_type, diameter, edge_height, corner_radius, flat_radius, edge_angle
-            )
+            f"Surface tool: type={tool_type}, diameter={diameter}, edge_height={edge_height}, "
+            f"corner_radius={corner_radius}, flat_radius={flat_radius}, edge_angle={edge_angle}"
         )
 
         return {
@@ -1140,7 +1140,7 @@ class ObjectSurface(PathOp.ObjectOp):
         scan_bb = surface_pattern.BBox.from_bbox(bb)
         if not boundary_face and not cutting_faces:
             Path.Log.error("Failed to generate a valid boundary mask for the selected faces.")
-            return
+            return []
 
         # 3. Generate Scan Lines (Main Logic)
         angle = obj.CutPatternAngle
@@ -1205,7 +1205,6 @@ class ObjectSurface(PathOp.ObjectOp):
 
     def _project_scan_lines(self, obj, stl, cutter, raw_scan_lines):
         """Projects raw 2D scan lines onto the 3D STL mesh using the optimal OCL algorithm."""
-        import math
 
         scan_lines = []
 
@@ -1279,11 +1278,9 @@ class ObjectSurface(PathOp.ObjectOp):
         """
         all_final_cmds = []
 
-        cutting_faces = list(cutting_faces) if cutting_faces else []
-
-        is_whole_model_job = False if cutting_faces else True
+        is_whole_model_job = not cutting_faces
         sample_interval = obj.SampleInterval.Value
-        force_keep_down = True if obj.CutPattern in ("ZigZag", "CircularZigZag") else False
+        force_keep_down = obj.CutPattern in ("ZigZag", "CircularZigZag")
 
         options = {
             "depth_offset": obj.DepthOffset.Value,
@@ -1301,11 +1298,14 @@ class ObjectSurface(PathOp.ObjectOp):
 
         # Ensure we have cutting faces (Fallback to whole model if none selected)
         if not cutting_faces:
-            if bb_face:
-                cutting_faces.append(bb_face)
-            else:
+            if not bb_face:
                 Path.Log.error("Could not determine source faces for pattern generation.")
                 return []
+            cutting_faces = [bb_face]
+
+        if bb_face is None:
+            Path.Log.error("Could not determine the operation boundary face.")
+            return []
 
         # Determine the bounding box
         group_bb = bb_face.BoundBox
@@ -1455,12 +1455,12 @@ class ObjectSurface(PathOp.ObjectOp):
         6. Dispatch to surface_zlevel generator for C++ accelerated geometry stacking.
         7. Convert the resulting geometry stack into optimized G-code Path commands.
         """
-        import Path.Base.Generator.surface_zlevel as surface_zlevel
+        from Path.Base.Generator import surface_zlevel
 
         # 1. Extract and Validate Tool Parameters
         tool_diam = tool_params.get("diameter", 0.0)
         radius = tool_diam / 2.0
-        shape_type = tool_params.get("tool_type", "")
+        shape_type = tool_params.get("tool_type") or ""
         c_rad = tool_params.get("corner_radius", 0.0)
         is_3d = shape_type in ("ballend", "bullnose")
 
@@ -1534,12 +1534,12 @@ class ObjectSurface(PathOp.ObjectOp):
 
         # 3. Fill selected holes
         if fill_selected_holes:
-            base_prop = getattr(obj, "Base", [])
+            base_prop = list(self.baseShapes(obj))
             fill_holes_masks = surface_zlevel.fill_selected(base_prop)
 
         # 4. Boundary preparation
         buffer = tool_diam + obj.BoundaryAdjustment.Value
-        border_poly = surface_zlevel.extendedBoundBox(job.Stock.Shape.BoundBox, buffer, 0.0)
+        border_poly = surface_zlevel.extendedBoundBox(self.stock.Shape.BoundBox, buffer, 0.0)
         border_face = Part.makeFace(border_poly)
 
         trim_face = surface_zlevel.getTrimFace(border_face, bb_face, wpc)
@@ -1587,9 +1587,9 @@ class ObjectSurface(PathOp.ObjectOp):
 
         return cmds
 
-    def _prepare_geometry(self, JOB):
+    def _prepare_geometry(self):
         """
-        Resolves the Job's model bodies into one working shape, used
+        Resolves the model bodies into one working shape, used
         throughout opExecute for boundary and STL generation.
 
         Multiple bodies are fused into a single continuous solid where
@@ -1603,23 +1603,42 @@ class ObjectSurface(PathOp.ObjectOp):
             tuple: (base_objs, model_shape, model_faces, optimized_shape),
                 or None if there is no valid geometry to machine.
         """
-        base_objs = JOB.Model.Group
+
+        # Self.model / self.stock are provided by the base
+        # class and are already in the working frame when a 3+2 workplane
+        # rotation is active (see ObjectOp.execute); never read JOB.Model or
+        # JOB.Stock directly here or the rotation would be silently bypassed.
+        base_objs = self.model
         if not base_objs:
             Path.Log.error("No models found in Job.")
             return None
 
+        if getattr(self, "_geom_transform_matrix", None) is not None and any(
+            not hasattr(b, "Shape") for b in base_objs
+        ):
+            # Mesh::Feature bases carry no .Shape, so the base class cannot
+            # rotate them. Refuse rather than cut an unrotated mesh on a
+            # rotated setup.
+            Path.Log.error(
+                translate(
+                    "CAM_PlanarSurface",
+                    "Mesh base objects are not supported with a rotated Workplane.",
+                )
+            )
+            return None
+
         valid_shapes = []
         for b in base_objs:
-            if b.Shape and not b.Shape.isNull():
-                valid_shapes.append(b.Shape.copy())
-
+            shp = getattr(b, "Shape", None)
+            if shp is not None and not shp.isNull():
+                valid_shapes.append(shp.copy())
         if len(valid_shapes) > 1:
             try:
                 # Melt overlapping models into one clean continuous object
                 model_shape = valid_shapes[0].fuse(valid_shapes[1:])
                 if hasattr(model_shape, "removeSplitter"):
                     model_shape = model_shape.removeSplitter()
-            except Exception as e:
+            except (Part.OCCError, RuntimeError, ValueError) as e:
                 Path.Log.warning(f"Boolean fuse failed, falling back to Compound: {e}")
                 model_shape = Part.Compound(valid_shapes)
         elif len(valid_shapes) == 1:
@@ -1677,7 +1696,7 @@ class ObjectSurface(PathOp.ObjectOp):
 
         # Initialize geometric and OCL containers
         cutter = stl = safe_stl = stl_faces = None
-        cutting_faces = avoid_faces = bb_face = shape = None
+        cutting_faces = avoid_faces = bb_face = None
 
         # Base Strategy Flags
         is_surface_scan = strategy == "SurfaceScan"
@@ -1710,14 +1729,14 @@ class ObjectSurface(PathOp.ObjectOp):
             tool_params["length_offset"] = op_depth + tool_params["edge_height"]
 
         # Geometry preperation
-        geometry = self._prepare_geometry(JOB)
+        geometry = self._prepare_geometry()
         if geometry is None:
             return
         base_objs, model_shape, model_faces, optimized_shape = geometry
 
         # Split selected features
         if needs_face_selection:
-            base_prop = getattr(obj, "Base", [])
+            base_prop = list(self.baseShapes(obj))
             avoid_count = getattr(obj, "AvoidLastX_Faces", 0)
             cutting_faces, avoid_faces = surface_pattern.split_selected_features(
                 base_prop, avoid_count
@@ -1731,7 +1750,7 @@ class ObjectSurface(PathOp.ObjectOp):
             offset = obj.BoundaryAdjustment.Value - tool_radius - 0.01
 
             if obj.BoundBox == "Stock":
-                bb_face = surface_common.create_boundary_face(JOB.Stock.Shape.Faces, offset)
+                bb_face = surface_common.create_boundary_face(self.stock.Shape.Faces, offset)
             elif cutting_faces:
                 # Combine bounding boxes and explicitly convert to a 2D Part.Face
                 from functools import reduce
@@ -1745,8 +1764,10 @@ class ObjectSurface(PathOp.ObjectOp):
 
                 bb_face = Part.Face(Part.makePolygon([p1, p2, p3, p4, p1]))
             else:
-                # Create a boundary from model optimized_shape
-                bb_face = surface_common.create_boundary_face(model_faces, offset, avoids=False, compound=optimized_shape)
+                # Create a boundary from model_shape
+                bb_face = surface_common.create_boundary_face(
+                    model_shape.Faces, offset, avoids=False, compound=optimized_shape if optimize_stl else False
+                )
 
         # Avoid Faces processing
         avoid_boundary = None
@@ -1779,10 +1800,8 @@ class ObjectSurface(PathOp.ObjectOp):
 
             tool_diam = cutter.getDiameter()
             Path.Log.debug(
-                "Surface OCL cutter created: getDiameter()={}, StepOver={}%, "
-                "stepover_dist={}".format(
-                    tool_diam, obj.StepOver, tool_diam * (obj.StepOver / 100.0)
-                )
+                f"Surface OCL cutter created: getDiameter()={tool_diam}, StepOver={obj.StepOver}%, "
+                f"stepover_dist={tool_diam * (obj.StepOver / 100.0)}"
             )
 
         # Generate primary and secondary STL meshes
@@ -1817,7 +1836,7 @@ class ObjectSurface(PathOp.ObjectOp):
             )
             stl_time = time.time() - stl_start
 
-            Path.Log.info("STL creation took {:.3f}s".format(stl_time))
+            Path.Log.info(f"STL creation took {stl_time:.3f}s")
             if stl is None:
                 Path.Log.error(
                     "Failed to create a valid Mesh from the model (Check the Start and Final Depth)."
@@ -1826,17 +1845,17 @@ class ObjectSurface(PathOp.ObjectOp):
 
         # Begin GCode for operation with basic information
         if obj.Comment != "":
-            self.commandlist.append(Path.Command("N ({})".format(str(obj.Comment)), {}))
-        self.commandlist.append(Path.Command("N ({})".format(obj.Label), {}))
-        self.commandlist.append(Path.Command("N (Strategy: {})".format(strategy), {}))
+            self.commandlist.append(Path.Command(f"N ({obj.Comment!s})", {}))
+        self.commandlist.append(Path.Command(f"N ({obj.Label})", {}))
+        self.commandlist.append(Path.Command(f"N (Strategy: {strategy})", {}))
         self.commandlist.append(
             Path.Command("N (Tool diameter: {:.3f})".format(tool_params["diameter"]), {})
         )
         if not is_zlevel:
             self.commandlist.append(
-                Path.Command("N (Sample interval: {})".format(str(obj.SampleInterval.Value)), {})
+                Path.Command(f"N (Sample interval: {obj.SampleInterval.Value!s})", {})
             )
-        self.commandlist.append(Path.Command("N (Step over %: {})".format(str(obj.StepOver)), {}))
+        self.commandlist.append(Path.Command(f"N (Step over %: {obj.StepOver!s})", {}))
         self.commandlist.append(
             Path.Command("G0", {"Z": obj.ClearanceHeight.Value, "F": self.vertRapid})
         )
@@ -1869,9 +1888,7 @@ class ObjectSurface(PathOp.ObjectOp):
         minutes, seconds = divmod(remainder, 60)
 
         Path.Log.info(
-            "Surface operation completed in {:02.0f}h:{:02.0f}m:{:05.2f}s".format(
-                hours, minutes, seconds
-            )
+            f"Surface operation completed in {hours:02.0f}h:{minutes:02.0f}m:{seconds:05.2f}s"
         )
 
 
