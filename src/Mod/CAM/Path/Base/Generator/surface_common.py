@@ -838,8 +838,9 @@ def _extract_top_rim_wire(face, tolerance=1e-3):
     top_edges = []
     for edge in face.Edges:
         # Skip "seam" edges that run vertically down the full wall height
-        is_seam = (round(edge.BoundBox.ZMin, 4) <= face_zmin + tolerance) and \
-                  (round(edge.BoundBox.ZMax, 4) >= face_zmax - tolerance)
+        is_seam = (round(edge.BoundBox.ZMin, 4) <= face_zmin + tolerance) and (
+            round(edge.BoundBox.ZMax, 4) >= face_zmax - tolerance
+        )
         if is_seam:
             continue
         # Keep only the edges that form the upper rim
