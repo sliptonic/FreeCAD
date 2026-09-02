@@ -1,24 +1,23 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-/***************************************************************************
- *   Copyright (c) 2025 sliptonic <shopinthewoods@gmail.com>               *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU Lesser General Public License (LGPL)    *
- *   as published by the Free Software Foundation; either version 2 of     *
- *   the License, or (at your option) any later version.                   *
- *   for detail see the LICENCE text file.                                 *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU Library General Public License for more details.                  *
- *                                                                         *
- *   You should have received a copy of the GNU Library General Public     *
- *   License along with this program; if not, write to the Free Software   *
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
- *   USA                                                                   *
- *                                                                         *
- ***************************************************************************/
+// SPDX-FileCopyrightText: 2025 Dimitrios Pana <dimitriospana75@gmail.com>
+// SPDX-FileNotice: Part of the FreeCAD project.
+
+/******************************************************************************
+ *                                                                            *
+ *   FreeCAD is free software: you can redistribute it and/or modify          *
+ *   it under the terms of the GNU Lesser General Public License as           *
+ *   published by the Free Software Foundation, either version 2.1            *
+ *   of the License, or (at your option) any later version.                   *
+ *                                                                            *
+ *   FreeCAD is distributed in the hope that it will be useful,               *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty              *
+ *   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                  *
+ *   See the GNU Lesser General Public License for more details.              *
+ *                                                                            *
+ *   You should have received a copy of the GNU Lesser General Public         *
+ *   License along with FreeCAD. If not, see https://www.gnu.org/licenses     *
+ *                                                                            *
+ ******************************************************************************/
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -105,25 +104,28 @@ std::pair<std::vector<std::array<double, 3>>, std::vector<std::array<int, 3>>> s
     // the nearest micron and packed into three int64_t lanes, avoiding the
     // per-vertex double-to-string formatting/concatenation that a
     // std::string-keyed map would require in this hot loop.
-    struct VertexKey {
+    struct VertexKey
+    {
         int64_t x, y, z;
-        bool operator==(const VertexKey& other) const noexcept {
+        bool operator==(const VertexKey& other) const noexcept
+        {
             return x == other.x && y == other.y && z == other.z;
         }
     };
-    struct VertexKeyHash {
-        std::size_t operator()(const VertexKey& k) const noexcept {
+    struct VertexKeyHash
+    {
+        std::size_t operator()(const VertexKey& k) const noexcept
+        {
             // boost::hash_combine-style mixing of the three lanes. The magic
             // constant is 2^64 / golden_ratio (0x9e3779b97f4a7c15ULL), the
             // standard "golden ratio" mixing constant used by
             // boost::hash_combine: its bit pattern has no simple repeating
             // structure, which spreads the combined bits evenly and avoids
-            // clustering for inputs that are already close together — as our
-            // rounded-micron coordinates often are.
+            // clustering for inputs that are already close together.
             constexpr std::size_t kHashMix = 0x9e3779b97f4a7c15ULL;
-            std::size_t h = std::hash<int64_t>{}(k.x);
-            h ^= std::hash<int64_t>{}(k.y) + kHashMix + (h << 6) + (h >> 2);
-            h ^= std::hash<int64_t>{}(k.z) + kHashMix + (h << 6) + (h >> 2);
+            std::size_t h = std::hash<int64_t> {}(k.x);
+            h ^= std::hash<int64_t> {}(k.y) + kHashMix + (h << 6) + (h >> 2);
+            h ^= std::hash<int64_t> {}(k.z) + kHashMix + (h << 6) + (h >> 2);
             return h;
         }
     };
@@ -134,7 +136,7 @@ std::pair<std::vector<std::array<double, 3>>, std::vector<std::array<int, 3>>> s
 
     std::unordered_map<VertexKey, int, VertexKeyHash> vertex_map;
     auto get_vertex_index = [&](const gp_Pnt& p) -> int {
-        VertexKey key{
+        VertexKey key {
             static_cast<int64_t>(std::llround(p.X() * kDedupScale)),
             static_cast<int64_t>(std::llround(p.Y() * kDedupScale)),
             static_cast<int64_t>(std::llround(p.Z() * kDedupScale)),
@@ -671,7 +673,7 @@ std::vector<std::vector<std::array<double, 3>>> generate_spiral_pattern_cpp(
 
 PYBIND11_MODULE(surface_generator, m)
 {
-    m.doc() = "C++ helper for 3D SurfaceExp operations";
+    m.doc() = "C++ helper for Planar Surface operations";
 
     m.def(
         "shape_tessellate_fast",

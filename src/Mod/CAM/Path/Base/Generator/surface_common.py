@@ -1,24 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-# ***************************************************************************
-# *   Copyright (c) 2025 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+# SPDX-FileCopyrightText: 2025 Dimitrios Pana <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
+
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 """Shared utilities for 3D surface and waterline generators.
 
@@ -217,7 +216,9 @@ def make_safe_cutter(
 # ---------------------------------------------------------------------------
 
 
-def create_boundary_face(faces, offset=0.0, tolerance=0.005, avoids=False, compound=None):
+def create_boundary_face(
+    faces, offset=0.0, tolerance=0.005, avoids=False, compound=None
+):
     """
     Creates a flat 2D boundary face from 3D faces using Path.Area's HLR
     projection (Outline mode) as primary method, falling back to
@@ -272,9 +273,9 @@ def _boundary_via_area(compound, offset, outline):
         offset (float): Offset to apply to the resulting boundary.
         outline (bool): Path.Area's Outline mode flag.
 
-     Returns:
-         Part.Shape: The resulting boundary, or None if Path.Area
-         produced an empty/null shape or raised an exception.
+    Returns:
+        Part.Shape: The resulting boundary, or None if Path.Area
+        produced an empty/null shape or raised an exception.
     """
     try:
         wpc = Part.makeCircle(2)
@@ -282,11 +283,10 @@ def _boundary_via_area(compound, offset, outline):
         area.setPlane(wpc)
         area.add(compound)
         area.setParams(
-            Project=True,
             Outline=outline,
             Offset=offset,
             Coplanar=0,  # CoplanarNone — don't restrict to coplanar
-            Fill=2,
+            Fill=2,  # FillFace
         )
         result = area.getShape()
 
@@ -331,6 +331,7 @@ def _boundary_via_techdraw(compound, offset, outline):
         )
     try:
         import TechDraw
+
         direction = FreeCAD.Vector(0, 0, 1)
         outline_shape = TechDraw.findShapeOutline(compound, 1.0, direction)
 
@@ -398,10 +399,10 @@ def generate_pattern_mask(
     epsilon = max(0.01, tolerance + 0.001)
 
     if is_whole_model_job:
-        # Use whole model silhouette
+        # Use TechDraw.findShapeOutline for whole model silhouette
         main_boundary = bb_face
     else:
-        main_boundary = build_optimized_boundary([cutting_faces], outer_offset-epsilon, tolerance)
+        main_boundary = build_optimized_boundary([cutting_faces], outer_offset - epsilon, tolerance)
 
     if not main_boundary:
         Path.Log.warning("Could not determine geometry for main boundary mask.")
@@ -562,8 +563,7 @@ def _separate_touching_faces(faces, tolerance=0.01):
                     continue
             except Exception as e:
                 Path.Log.debug(
-                    f"_separate_touching_faces: distToShape failed for "
-                    f"faces {i},{j}: {e}"
+                    f"_separate_touching_faces: distToShape failed for " f"faces {i},{j}: {e}"
                 )
             # Fallback: check if face centroids are within a larger
             # proximity threshold based on average face diagonal.
@@ -576,25 +576,24 @@ def _separate_touching_faces(faces, tolerance=0.01):
                 cy_j = (bb_j.YMin + bb_j.YMax) / 2
                 centroid_dist = math.hypot(cx_i - cx_j, cy_i - cy_j)
                 avg_diag = (
-                    math.hypot(bb_i.XLength, bb_i.YLength) +
-                    math.hypot(bb_j.XLength, bb_j.YLength)
+                    math.hypot(bb_i.XLength, bb_i.YLength) + math.hypot(bb_j.XLength, bb_j.YLength)
                 ) / 2
                 if centroid_dist < avg_diag * 0.75:
                     union(i, j)
             except Exception as e:
                 Path.Log.debug(
-                    f"_separate_touching_faces: centroid check failed for "
-                    f"faces {i},{j}: {e}"
+                    f"_separate_touching_faces: centroid check failed for " f"faces {i},{j}: {e}"
                 )
 
     # Collect groups by root
     from collections import defaultdict
+
     groups = defaultdict(list)
     for i in range(n):
         groups[find(i)].append(flat_faces[i])
 
     touching_groups = []
-    isolated_faces  = []
+    isolated_faces = []
 
     for group in groups.values():
         if len(group) == 1:
@@ -676,7 +675,9 @@ def _filter_vertical(model_faces, tolerance=0.0005):
 
         # Reject truly vertical faces
         if normal_z < tolerance:
-            continue
+            # Except Cylindrical faces that can pass our filter
+            if not isinstance(face.Surface, Part.Cylinder):
+                continue
         filtered.append(face)
 
     if filtered:
@@ -747,7 +748,10 @@ def build_avoid_boundary(avoid_faces, avoid_overlap, tolerance):
     epsilon = max(0.01, tolerance + 0.001)
 
     avoid_boundary = build_optimized_boundary(
-        prepared_faces, avoid_overlap + epsilon, tolerance, avoids=True,
+        prepared_faces,
+        avoid_overlap + epsilon,
+        tolerance,
+        avoids=True,
     )
 
     if not avoid_boundary:
@@ -799,53 +803,114 @@ def _classify_and_cap_faces(raw_faces):
 
         # Non-Planar 3D Walls (Sloped, Tapered, Curved)
         face_zmax = round(raw_face.BoundBox.ZMax, 4)
-        face_zmin = round(raw_face.BoundBox.ZMin, 4)
 
-        top_edges = []
-        for edge in raw_face.Edges:
-            # 1. Identify and skip "seam" edges that run vertically down the walls
-            is_seam = (round(edge.BoundBox.ZMin, 4) <= face_zmin + 1e-3) and \
-                      (round(edge.BoundBox.ZMax, 4) >= face_zmax - 1e-3)
-            if is_seam:
-                continue
-
-            # 2. Keep only the edges that form the upper rim
-            if round(edge.BoundBox.ZMax, 4) >= face_zmax - 1e-3:
-                top_edges.append(edge)
-
-        if not top_edges:
+        top_wire = _extract_top_rim_wire(raw_face)
+        if top_wire is None:
             fallback_faces.append(raw_face)
             continue
 
-        try:
-            # Reconstruct just the top boundary into a new wire
-            sorted_edges = Part.__sortEdges__(top_edges)
-            top_wire = Part.Wire(sorted_edges)
-
-            # 3. Discretize and crush the 3D rim to a flat 2D polygon at Z-Max.
-            # This safely handles curved 3D splines and perfectly preserves the
-            # "egged" ellipse of angled holes without crashing OpenCASCADE.
-            flat_edges = []
-            for edge in top_wire.Edges:
-                points = edge.discretize(Distance=0.1)
-                flat_pts = [FreeCAD.Vector(p.x, p.y, face_zmax) for p in points]
-                flat_polygon = Part.makePolygon(flat_pts)
-                flat_edges.extend(flat_polygon.Edges)
-
-            sorted_flat = Part.__sortEdges__(flat_edges)
-            flat_wire = Part.Wire(sorted_flat)
-            cap_face = Part.Face(flat_wire)
-
-            if cap_face.isValid() and not cap_face.isNull():
-                prepared_faces.append(cap_face)
-            else:
-                fallback_faces.append(raw_face)
-
-        except Exception as e:
-            Path.Log.debug(
-                "_preprocess_avoid_faces: Failed to pre-process Avoid Face. "
-                f"Fall back to the original Avoid Faces process: {e}"
-            )
+        cap_face = flatten_wire_to_cap(top_wire, face_zmax, translate_to_zero=False)
+        if cap_face is not None:
+            prepared_faces.append(cap_face)
+        else:
             fallback_faces.append(raw_face)
 
     return prepared_faces, fallback_faces
+
+
+def _extract_top_rim_wire(face, tolerance=1e-3):
+    """
+    Extracts just the top rim of a non-planar 3D wall face (sloped,
+    tapered, or curved) as a single Part.Wire, skipping vertical seam
+    edges that run the full height of the wall.
+
+    Shared by _classify_and_cap_faces() here and surface_zlevel's
+    _cap_3d_wall() — both need to find "the top edge loop of an
+    arbitrary 3D wall" and previously duplicated this logic separately.
+
+    Returns:
+        Part.Wire or None: the top rim wire, or None if no top edges
+        were found or the wire couldn't be assembled.
+    """
+    face_zmax = round(face.BoundBox.ZMax, 4)
+    face_zmin = round(face.BoundBox.ZMin, 4)
+
+    top_edges = []
+    for edge in face.Edges:
+        # Skip "seam" edges that run vertically down the full wall height
+        is_seam = (round(edge.BoundBox.ZMin, 4) <= face_zmin + tolerance) and (
+            round(edge.BoundBox.ZMax, 4) >= face_zmax - tolerance
+        )
+        if is_seam:
+            continue
+        # Keep only the edges that form the upper rim
+        if round(edge.BoundBox.ZMax, 4) >= face_zmax - tolerance:
+            top_edges.append(edge)
+
+    if not top_edges:
+        return None
+
+    try:
+        sorted_edges = Part.__sortEdges__(top_edges)
+        return Part.Wire(sorted_edges)
+    except Exception as e:
+        Path.Log.debug(f"_extract_top_rim_wire: Failed to assemble top rim wire: {e}")
+        return None
+
+
+def flatten_wire_to_cap(wire, cap_z, discretize_distance=0.1, translate_to_zero=False):
+    """
+    Discretizes a wire, flattens all edges onto cap_z, and returns a
+    closed Part.Face. Safely handles curved 3D edges (e.g. the rim of
+    an angled hole) by crushing them to a flat 2D polygon rather than
+    attempting an exact projection, which can crash OpenCASCADE for
+    some inputs.
+
+    Shared by _classify_and_cap_faces() here and surface_zlevel's
+    _cap_3d_wall()/_cap_flat_face_holes() — all three previously
+    duplicated this flatten-and-rebuild logic separately, with subtly
+    different edge-case handling between copies.
+
+    Args:
+        wire (Part.Wire): the (possibly 3D/curved) wire to flatten.
+        cap_z (float): the Z height to flatten edges onto.
+        discretize_distance (float): point spacing used to discretize
+            curved edges before flattening.
+        translate_to_zero (bool): if True, translates the resulting
+            face so its ZMin is 0 (for use as a Z=0 mask); if False,
+            leaves it at cap_z.
+
+    Returns:
+        Part.Face or None: the flattened cap face, or None on failure.
+    """
+    flat_edges = []
+    for edge in wire.Edges:
+        try:
+            points = edge.discretize(Distance=discretize_distance)
+            flat_pts = [FreeCAD.Vector(p.x, p.y, cap_z) for p in points]
+            flat_edge = Part.makePolygon(flat_pts)
+            flat_edges.extend(flat_edge.Edges)
+        except Exception as e:
+            # A single bad edge shouldn't sink the whole cap — skip it
+            # and keep going with the rest.
+            Path.Log.debug(f"flatten_wire_to_cap: Edge flatten failed, skipping: {e}")
+            continue
+
+    if not flat_edges:
+        return None
+
+    try:
+        sorted_edges = Part.__sortEdges__(flat_edges)
+        flat_wire = Part.Wire(sorted_edges)
+        cap_face = Part.Face(flat_wire)
+
+        if not cap_face.isValid() or cap_face.isNull():
+            return None
+
+        if translate_to_zero:
+            cap_face.translate(FreeCAD.Vector(0, 0, -cap_face.BoundBox.ZMin))
+
+        return cap_face
+    except Exception as e:
+        Path.Log.debug(f"flatten_wire_to_cap: Failed to build cap face: {e}")
+        return None

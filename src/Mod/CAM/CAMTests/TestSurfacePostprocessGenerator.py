@@ -1,26 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2025 Dimitrios Pana <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2025 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
-
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 import Path
 import Part
@@ -330,11 +327,12 @@ class TestSurfacePostprocess(PathTestUtils.PathTestBase):
         from Path.Base.Generator.surface_postprocess import _probe_surface_z, _make_safe_pdc
 
         safe_pdc = _make_safe_pdc(self.flat_stl, self.cutter, 0.0, 0.5)
-        result   = _probe_surface_z((50.0, 50.0), 20.0, safe_pdc)
+        result = _probe_surface_z((50.0, 50.0), 20.0, safe_pdc)
 
         self.assertIsNotNone(result, "_probe_surface_z should return a value for an on-mesh point")
-        self.assertAlmostEqual(result, 10.0, delta=0.2,
-                               msg="Probed Z should be close to the box top face at Z=10")
+        self.assertAlmostEqual(
+            result, 10.0, delta=0.2, msg="Probed Z should be close to the box top face at Z=10"
+        )
 
     def test31_generate_lead_arc_geometry(self):
         """
@@ -359,7 +357,7 @@ class TestSurfacePostprocess(PathTestUtils.PathTestBase):
 
         # Line starts near the edge — one perpendicular side is off the model
         line = [
-            (3.0,  50.0, 10.0),
+            (3.0, 50.0, 10.0),
             (50.0, 50.0, 10.0),
             (97.0, 50.0, 10.0),
         ]
@@ -372,11 +370,14 @@ class TestSurfacePostprocess(PathTestUtils.PathTestBase):
             self.skipTest("No clear arc side found for this geometry — acceptable for flat box")
 
         self.assertGreater(len(cmds), 0)
-        self.assertIn(cmds[0].Name, ("G2", "G3"),
-                      "Lead-in arc should be G2 or G3")
+        self.assertIn(cmds[0].Name, ("G2", "G3"), "Lead-in arc should be G2 or G3")
         self.assertIsNotNone(entry_point)
-        self.assertAlmostEqual(entry_point[2], line[0][2], places=3,
-                               msg="Arc entry point must be at constant Z (same as cut Z)")
+        self.assertAlmostEqual(
+            entry_point[2],
+            line[0][2],
+            places=3,
+            msg="Arc entry point must be at constant Z (same as cut Z)",
+        )
 
         # Verify I and J are present and non-trivial
         params = cmds[0].Parameters
@@ -386,8 +387,9 @@ class TestSurfacePostprocess(PathTestUtils.PathTestBase):
         j_offset = params["J"]
         arc_radius = (i_offset**2 + j_offset**2) ** 0.5
         expected_radius = self.cutter.getDiameter() / 2.0
-        self.assertAlmostEqual(arc_radius, expected_radius, delta=0.1,
-                               msg="Arc radius should match cutter radius")
+        self.assertAlmostEqual(
+            arc_radius, expected_radius, delta=0.1, msg="Arc radius should match cutter radius"
+        )
 
     def test32_attempt_lead_arc_fallback_strategies(self):
         """
@@ -409,7 +411,7 @@ class TestSurfacePostprocess(PathTestUtils.PathTestBase):
         safe_pdc = _make_safe_pdc(self.flat_stl, self.cutter, 0.0, 0.5)
 
         line = [
-            (3.0,  50.0, 10.0),
+            (3.0, 50.0, 10.0),
             (50.0, 50.0, 10.0),
             (97.0, 50.0, 10.0),
         ]
@@ -422,8 +424,8 @@ class TestSurfacePostprocess(PathTestUtils.PathTestBase):
             self.assertIsNotNone(entry_point)
             self.assertAlmostEqual(entry_point[2], line[0][2], places=3)
         else:
-            self.assertIsNone(entry_point,
-                              "If no commands, entry_point should be None")
+            self.assertIsNone(entry_point, "If no commands, entry_point should be None")
+
     # -- Volumetric Feed Tests --
 
     def test40_segment_target_feed_height_and_plunge(self):
@@ -440,20 +442,35 @@ class TestSurfacePostprocess(PathTestUtils.PathTestBase):
         boost_factor = 1.5
 
         top_feed = _get_segment_target_feed(
-            (0, 0, layer_start_z), (10, 0, layer_start_z),
-            horiz_feed, vert_feed, layer_start_z, layer_target_z, boost_factor,
+            (0, 0, layer_start_z),
+            (10, 0, layer_start_z),
+            horiz_feed,
+            vert_feed,
+            layer_start_z,
+            layer_target_z,
+            boost_factor,
         )
         self.assertAlmostEqual(top_feed, horiz_feed * boost_factor, places=3)
 
         bottom_feed = _get_segment_target_feed(
-            (0, 0, layer_target_z), (10, 0, layer_target_z),
-            horiz_feed, vert_feed, layer_start_z, layer_target_z, boost_factor,
+            (0, 0, layer_target_z),
+            (10, 0, layer_target_z),
+            horiz_feed,
+            vert_feed,
+            layer_start_z,
+            layer_target_z,
+            boost_factor,
         )
         self.assertAlmostEqual(bottom_feed, horiz_feed, places=3)
 
         plunge_feed = _get_segment_target_feed(
-            (0, 0, layer_start_z), (0, 0, layer_target_z),
-            horiz_feed, vert_feed, layer_start_z, layer_target_z, boost_factor,
+            (0, 0, layer_start_z),
+            (0, 0, layer_target_z),
+            horiz_feed,
+            vert_feed,
+            layer_start_z,
+            layer_target_z,
+            boost_factor,
         )
         self.assertAlmostEqual(plunge_feed, vert_feed, places=3)
 
@@ -473,8 +490,12 @@ class TestSurfacePostprocess(PathTestUtils.PathTestBase):
         ]
 
         cmds = _generate_volumetric_cut_commands(
-            line, depth_offset=0.0, horiz_feed=300.0, vert_feed=50.0,
-            layer_start_z=layer_start_z, layer_target_z=layer_target_z,
+            line,
+            depth_offset=0.0,
+            horiz_feed=300.0,
+            vert_feed=50.0,
+            layer_start_z=layer_start_z,
+            layer_target_z=layer_target_z,
             volumetric_percent=50.0,
         )
 

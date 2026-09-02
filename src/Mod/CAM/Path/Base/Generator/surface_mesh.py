@@ -1,25 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2025 Dimitrios Pana <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2025 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 """
 Fast STL operations for surface generation.
@@ -41,6 +39,7 @@ import FreeCAD
 try:
     import pyvista as pv
     import numpy as np
+
     _HAS_SIMPLIFICATION = True
     Path.Log.info("Using PyVista for high-quality mesh optimization")
 except ImportError:
@@ -104,9 +103,12 @@ def _apply_mesh_simplification(vertices, facets, simplification_level, silence):
 
     try:
         # PyVista expects faces as a flat array: [3, v0, v1, v2, 3, v0, v1, v2...]
-        faces_pv = np.empty((len(facets), 4), dtype=int)
+        facets_arr = np.array(facets)
+        faces_pv = np.empty((len(facets_arr), 4), dtype=int)
         faces_pv[:, 0] = 3
-        faces_pv[:, 1:] = facets
+        faces_pv[:, 1] = facets_arr[:, 0]
+        faces_pv[:, 2] = facets_arr[:, 1]
+        faces_pv[:, 3] = facets_arr[:, 2]
         faces_flat = faces_pv.flatten()
 
         # Build the PyVista PolyData object
@@ -266,7 +268,11 @@ def _shape_to_stl_arrays(shape, linear_deflection, angular_deflection):
 
 
 def _shape_to_stl(
-    shape, linear_deflection, angular_deflection, mesh_simplification=1, silence=False,
+    shape,
+    linear_deflection,
+    angular_deflection,
+    mesh_simplification=1,
+    silence=False,
 ):
     """Convert a Part.Shape / Compound to ocl.STLSurf using raw arrays.
 
@@ -292,8 +298,12 @@ def _shape_to_stl(
         else:
             raise ValueError("Expected Part.Shape-like object or object with Shape property")
 
-    Path.Log.debug(f"surface_mesh._shape_to_stl: shape type={type(shape)}, ShapeType={getattr(shape, 'ShapeType', 'N/A')}")
-    Path.Log.debug(f"surface_mesh._shape_to_stl: deflection params linear={linear_deflection}, angular={angular_deflection}")
+    Path.Log.debug(
+        f"surface_mesh._shape_to_stl: shape type={type(shape)}, ShapeType={getattr(shape, 'ShapeType', 'N/A')}"
+    )
+    Path.Log.debug(
+        f"surface_mesh._shape_to_stl: deflection params linear={linear_deflection}, angular={angular_deflection}"
+    )
 
     # Tessellation phase
     tess_start = time.perf_counter()
@@ -301,7 +311,9 @@ def _shape_to_stl(
         try:
             verts, faces = _shape_to_stl_cpp(shape, linear_deflection, angular_deflection)
         except RuntimeError as e:
-            Path.Log.warning(f"High-speed mesh generation failed. Falling back to the slower standard method. (Error: {e})")
+            Path.Log.warning(
+                f"High-speed mesh generation failed. Falling back to the slower standard method. (Error: {e})"
+            )
             verts, faces = _shape_to_stl_python(shape, linear_deflection, angular_deflection)
     else:
         verts, faces = _shape_to_stl_python(shape, linear_deflection, angular_deflection)
@@ -365,11 +377,11 @@ def _mesh_to_stl(mesh_obj):
     Returns:
         ocl.STLSurf: The generated OCL mesh object, or None on failure.
     """
+    from . import surface_common
+
     if not hasattr(mesh_obj, "Mesh") or not mesh_obj.Mesh.Facets:
         Path.Log.error("The provided object is not a valid mesh or is empty.")
         return None
-
-    from . import surface_common
 
     mesh_start = time.perf_counter()
     mesh_data = mesh_obj.Mesh
@@ -521,8 +533,10 @@ def _model_optimization(
 
     # Detect pre-triangulated models and skip optimization
     if not exempt_faces and surface_common._is_triangulated_mesh(faces):
-            Path.Log.debug("surface_mesh._model_optimization: Pre-triangulated model detected. Skipping face optimization.")
-            return shape
+        Path.Log.debug(
+            "surface_mesh._model_optimization: Pre-triangulated model detected. Skipping face optimization."
+        )
+        return shape
 
     filtered = []
     rejected = 0
@@ -559,8 +573,12 @@ def _model_optimization(
             # Reject faces outside of the selection boundary
             if clip_bb:
                 bb = face.BoundBox
-                if (bb.XMax < clip_bb["XMin"] or bb.XMin > clip_bb["XMax"] or
-                    bb.YMax < clip_bb["YMin"] or bb.YMin > clip_bb["YMax"]):
+                if (
+                    bb.XMax < clip_bb["XMin"]
+                    or bb.XMin > clip_bb["XMax"]
+                    or bb.YMax < clip_bb["YMin"]
+                    or bb.YMin > clip_bb["YMax"]
+                ):
                     rejected += 1
                     continue
 
@@ -648,9 +666,7 @@ def _shape_to_safe_stl(
             avoid.translate(FreeCAD.Vector(0, 0, start_depth + 0.1))
             fused_shapes.append(avoid)
         except Exception as e:
-            Path.Log.error(
-                f"Generating avoid zones for avoided faces failed: {e}"
-            )
+            Path.Log.error(f"Generating avoid zones for avoided faces failed: {e}")
 
     # Fuse and create a coarse mesh
     safe_compound = Part.Compound(fused_shapes)
@@ -739,7 +755,9 @@ def generate_stl(
     stl = safe_stl = clipped_shape = optimized_shape = None
 
     if not base_objs:
-        Path.Log.error("No 3D models were found in the Job. Please add a base model to the Job setup.")
+        Path.Log.error(
+            "No 3D models were found in the Job. Please add a base model to the Job setup."
+        )
         return None, None
 
     # Dispatch based on geometry type
@@ -749,7 +767,7 @@ def generate_stl(
         Path.Log.debug(
             "surface_mesh.generate_stl. Mesh object detected as Base. Using direct mesh conversion."
         )
-        stl = mesh_to_stl(base_objs[0])
+        stl = _mesh_to_stl(base_objs[0])
         if stl is None:
             Path.Log.error("Could not create a valid shape for primary STL generation.")
             return None, None

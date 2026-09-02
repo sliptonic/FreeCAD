@@ -1,26 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2026 Dimitrios Pana <dimitriospana75@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2026 Dimitris75 <dimitriospana75@gmail.com>             *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
-
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 import Path
 import Part
@@ -83,18 +80,17 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
           - Hole A: 8mm diameter cylinder at center (30,30), floor at Z=10
           - Hole B: 6mm diameter cylinder at (15,15), floor at Z=15
         """
-        base    = Part.makeBox(60, 60, 20)
-        hole_a  = Part.makeCylinder(4, 10, FreeCAD.Vector(30, 30, 10))
-        hole_b  = Part.makeCylinder(3, 5,  FreeCAD.Vector(15, 15, 15))
-        model   = base.cut(hole_a).cut(hole_b).removeSplitter()
+        base = Part.makeBox(60, 60, 20)
+        hole_a = Part.makeCylinder(4, 10, FreeCAD.Vector(30, 30, 10))
+        hole_b = Part.makeCylinder(3, 5, FreeCAD.Vector(15, 15, 15))
+        model = base.cut(hole_a).cut(hole_b).removeSplitter()
 
         # Find the cylindrical wall faces of each hole (non-planar, vertical)
         hole_a_face = None
         hole_b_face = None
         for face in model.Faces:
             bb = face.BoundBox
-            if (hasattr(face.Surface, "TypeId") and
-                    "Cylinder" in face.Surface.TypeId):
+            if hasattr(face.Surface, "TypeId") and "Cylinder" in face.Surface.TypeId:
                 center_x = (bb.XMin + bb.XMax) / 2.0
                 center_y = (bb.YMin + bb.YMax) / 2.0
                 if abs(center_x - 30) < 1.0 and abs(center_y - 30) < 1.0:
@@ -131,7 +127,9 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
         """
         from Path.Base.Generator.surface_zlevel import categorize_floor_steps
 
-        steps = categorize_floor_steps(self.test_model, start_z=20.0, final_z=0.0, step_down=7.5, clear_planar_only=False)
+        steps = categorize_floor_steps(
+            self.test_model, start_z=20.0, final_z=0.0, step_down=7.5, clear_planar_only=False
+        )
 
         # Expected Z-levels: 20 -> 12.5 (Pure) -> 10 (Extra) -> 5 (Mixed, as 12.5-7.5=5 lands near 5) -> 0
         self.assertGreaterEqual(len(steps), 4)
@@ -209,7 +207,7 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
             accuracy_val="4",
             z_offset=0.0,
             wpc=self.wpc,
-            start_z=25
+            start_z=25,
         )
 
         self.assertGreater(len(stack), 0, "Stack should contain generated layers")
@@ -240,7 +238,17 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
         tool = self._get_mock_tool_params()
 
         stack = zlevel_hybrid_stack(
-            self.test_model, steps, self.border_face, self.trim_face, self.fill_holes_masks, tool, 0.0, "4", 0.0, self.wpc, start_z=25
+            self.test_model,
+            steps,
+            self.border_face,
+            self.trim_face,
+            self.fill_holes_masks,
+            tool,
+            0.0,
+            "4",
+            0.0,
+            self.wpc,
+            start_z=25,
         )
 
         feed_params = {"horizFeed": 300, "vertFeed": 100, "horizRapid": 1000, "vertRapid": 1000}
@@ -265,7 +273,7 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
             is_adaptive=False,
             adaptive_params={},
             bb_face=self.border_face,
-            enforce_geofence=False,
+            enforce_geofence=True,
         )
 
         self.assertGreater(len(cmds), 0, "G-code generation produced no commands")
@@ -291,27 +299,29 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
 
         # Build three simple flat faces
         def _make_square_face(x, y, size, z):
-            wire = Part.makePolygon([
-                FreeCAD.Vector(x,        y,        z),
-                FreeCAD.Vector(x + size, y,        z),
-                FreeCAD.Vector(x + size, y + size, z),
-                FreeCAD.Vector(x,        y + size, z),
-                FreeCAD.Vector(x,        y,        z),
-            ])
+            wire = Part.makePolygon(
+                [
+                    FreeCAD.Vector(x, y, z),
+                    FreeCAD.Vector(x + size, y, z),
+                    FreeCAD.Vector(x + size, y + size, z),
+                    FreeCAD.Vector(x, y + size, z),
+                    FreeCAD.Vector(x, y, z),
+                ]
+            )
             f = Part.Face(wire)
             f.translate(FreeCAD.Vector(0, 0, -f.BoundBox.ZMin))
             return f
 
-        mask_a1 = _make_square_face(0,  0,  5, 10)   # Z=10
-        mask_a2 = _make_square_face(10, 0,  5, 10)   # Z=10 — should fuse with a1
-        mask_b  = _make_square_face(0,  0,  5,  5)   # Z=5  — separate group
+        mask_a1 = _make_square_face(0, 0, 5, 10)  # Z=10
+        mask_a2 = _make_square_face(10, 0, 5, 10)  # Z=10 — should fuse with a1
+        mask_b = _make_square_face(0, 0, 5, 5)  # Z=5  — separate group
 
         raw = [(10.0, mask_a1), (10.0, mask_a2), (5.0, mask_b)]
         result = _fuse_coplanar_masks(raw)
 
         self.assertEqual(len(result), 2, "Should have two Z-groups after fusing")
         self.assertEqual(result[0][0], 10.0, "First entry should be Z=10 (descending)")
-        self.assertEqual(result[1][0],  5.0, "Second entry should be Z=5")
+        self.assertEqual(result[1][0], 5.0, "Second entry should be Z=5")
 
     def test41_fill_selected_single_face(self):
         """
@@ -336,6 +346,7 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
         # fill_selected calls _get_selected_faces which expects this format.
         # We bypass the FreeCAD object lookup by patching _get_selected_faces.
         from Path.Base.Generator import surface_zlevel
+
         original = surface_zlevel._get_selected_faces
         try:
             surface_zlevel._get_selected_faces = lambda _: [hole_a_face]
@@ -349,8 +360,9 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
         self.assertAlmostEqual(max_z, hole_a_face.BoundBox.ZMax, places=3)
         self.assertIsInstance(mask_face, Part.Shape)
         self.assertFalse(mask_face.isNull())
-        self.assertAlmostEqual(mask_face.BoundBox.ZMin, 0.0, places=3,
-                               msg="Mask face should be translated to Z=0")
+        self.assertAlmostEqual(
+            mask_face.BoundBox.ZMin, 0.0, places=3, msg="Mask face should be translated to Z=0"
+        )
 
     def test42_fill_selected_two_faces_same_z(self):
         """
@@ -382,7 +394,9 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
 
         # Both faces have the same ZMax — so we expect one fused entrie
         # (only co-planar masks fuse). Validate we got one valid result.
-        self.assertEqual(len(result), 1, "Should produce exactly one mask for two holes at the same Z")
+        self.assertEqual(
+            len(result), 1, "Should produce exactly one mask for two holes at the same Z"
+        )
         for max_z, mask_face in result:
             self.assertIsInstance(mask_face, Part.Shape)
             self.assertFalse(mask_face.isNull())
@@ -390,7 +404,7 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
 
     def test43_apply_fill_hole_masks_pure_step(self):
         """
-        Tests _apply_fill_hole_masks adds mask to all_prev_comp on a Pure step.
+        Tests _apply_fill_hole_masks adds mask to allPrevComp on a Pure step.
 
         INPUT:
         - Function: _apply_fill_hole_masks()
@@ -398,33 +412,37 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
 
         EXPECTED OUTPUT:
         - fill_mask_idx incremented to 1 (mask consumed).
-        - all_prev_comp is non-null (mask was added).
+        - allPrevComp is non-null (mask was added).
         - floor_geo unchanged (None).
         """
         from Path.Base.Generator.surface_zlevel import _apply_fill_hole_masks
 
-        wire = Part.makePolygon([
-            FreeCAD.Vector(0,  0,  0),
-            FreeCAD.Vector(10, 0,  0),
-            FreeCAD.Vector(10, 10, 0),
-            FreeCAD.Vector(0,  10, 0),
-            FreeCAD.Vector(0,  0,  0),
-        ])
+        wire = Part.makePolygon(
+            [
+                FreeCAD.Vector(0, 0, 0),
+                FreeCAD.Vector(10, 0, 0),
+                FreeCAD.Vector(10, 10, 0),
+                FreeCAD.Vector(0, 10, 0),
+                FreeCAD.Vector(0, 0, 0),
+            ]
+        )
         mask_face = Part.Face(wire)
 
-        silhouette_wire = Part.makePolygon([
-            FreeCAD.Vector(-5, -5, 0),
-            FreeCAD.Vector(20, -5, 0),
-            FreeCAD.Vector(20, 20, 0),
-            FreeCAD.Vector(-5, 20, 0),
-            FreeCAD.Vector(-5, -5, 0),
-        ])
+        silhouette_wire = Part.makePolygon(
+            [
+                FreeCAD.Vector(-5, -5, 0),
+                FreeCAD.Vector(20, -5, 0),
+                FreeCAD.Vector(20, 20, 0),
+                FreeCAD.Vector(-5, 20, 0),
+                FreeCAD.Vector(-5, -5, 0),
+            ]
+        )
         silhouette = Part.Face(silhouette_wire)
 
         fill_holes_masks = [(10.0, mask_face)]
         wpc = Part.makeCircle(2.0)
 
-        idx, masks, floor_geo, all_prev_comp = _apply_fill_hole_masks(
+        idx, masks, floor_geo, allPrevComp = _apply_fill_hole_masks(
             wpc=wpc,
             fill_holes_masks=fill_holes_masks,
             fill_mask_idx=0,
@@ -439,7 +457,7 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
         self.assertEqual(idx, 0, "Index should reset to 0 after consuming")
         self.assertEqual(len(masks), 0, "Consumed masks should be removed from list")
         self.assertIsNone(floor_geo, "floor_geo should be unchanged for Pure step")
-        self.assertIsNotNone(all_prev_comp, "all_prev_comp should be updated for Pure step")
+        self.assertIsNotNone(allPrevComp, "allPrevComp should be updated for Pure step")
 
     def test44_stack_with_fill_holes(self):
         """
@@ -460,36 +478,38 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
         )
 
         # Simple model: box with a pocket
-        base    = Part.makeBox(50, 50, 20)
-        pocket  = Part.makeBox(20, 20, 10, FreeCAD.Vector(15, 15, 10))
-        model   = base.cut(pocket).removeSplitter()
+        base = Part.makeBox(50, 50, 20)
+        pocket = Part.makeBox(20, 20, 10, FreeCAD.Vector(15, 15, 10))
+        model = base.cut(pocket).removeSplitter()
 
         # Build a fill-hole mask covering the pocket floor at Z=10
-        mask_wire = Part.makePolygon([
-            FreeCAD.Vector(15, 15, 0),
-            FreeCAD.Vector(35, 15, 0),
-            FreeCAD.Vector(35, 35, 0),
-            FreeCAD.Vector(15, 35, 0),
-            FreeCAD.Vector(15, 15, 0),
-        ])
+        mask_wire = Part.makePolygon(
+            [
+                FreeCAD.Vector(15, 15, 0),
+                FreeCAD.Vector(35, 15, 0),
+                FreeCAD.Vector(35, 35, 0),
+                FreeCAD.Vector(15, 35, 0),
+                FreeCAD.Vector(15, 15, 0),
+            ]
+        )
         mask_face = Part.Face(mask_wire)
         fill_holes_masks = [(10.0, mask_face)]
 
         steps = categorize_floor_steps(model, 20.0, 0.0, 8.0, False)
-        tool  = self._get_mock_tool_params()
+        tool = self._get_mock_tool_params()
 
         stack = zlevel_hybrid_stack(
-            shape            = model,
-            categorized_steps = steps,
-            border_face      = self.border_face,
-            trim_face        = self.trim_face,
-            fill_holes_masks = fill_holes_masks,
-            tool_params      = tool,
-            stock_to_leave   = 0.0,
-            accuracy_val     = "4",
-            z_offset         = 0.0,
-            wpc              = self.wpc,
-            start_z          = 25,
+            shape=model,
+            categorized_steps=steps,
+            border_face=self.border_face,
+            trim_face=self.trim_face,
+            fill_holes_masks=fill_holes_masks,
+            tool_params=tool,
+            stock_to_leave=0.0,
+            accuracy_val="4",
+            z_offset=0.0,
+            wpc=self.wpc,
+            start_z=25,
         )
 
         self.assertGreater(len(stack), 0, "Stack should contain generated layers")
@@ -498,5 +518,5 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
         statuses = {s for _, _, s in stack}
         self.assertTrue(
             "Extra" in statuses or "Mixed" in statuses,
-            "Stack should contain at least one floor-type layer"
+            "Stack should contain at least one floor-type layer",
         )
