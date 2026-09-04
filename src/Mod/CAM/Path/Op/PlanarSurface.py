@@ -1647,8 +1647,12 @@ class ObjectSurface(PathOp.ObjectOp):
             Path.Log.error("No valid shapes found to machine.")
             return None
 
-        model_faces = surface_common._filter_vertical(model_shape.Faces)
-        optimized_shape = model_faces[0] if len(model_faces) == 1 else Part.makeCompound(model_faces)
+        # NOTE: Temporarily disable the model optimization on 3+2 axis operations
+        model_faces = None
+        optimized_shape = False
+        if not getattr(self, "_geom_transform_matrix", None):
+            model_faces = surface_common._filter_vertical(model_shape.Faces)
+            optimized_shape = model_faces[0] if len(model_faces) == 1 else Part.makeCompound(model_faces)
 
         return base_objs, model_shape, model_faces, optimized_shape
 

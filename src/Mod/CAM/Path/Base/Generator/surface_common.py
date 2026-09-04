@@ -675,9 +675,7 @@ def _filter_vertical(model_faces, tolerance=0.0005):
 
         # Reject truly vertical faces
         if normal_z < tolerance:
-            # Except Cylindrical faces that can pass our filter
-            if not isinstance(face.Surface, Part.Cylinder):
-                continue
+            continue
         filtered.append(face)
 
     if filtered:
