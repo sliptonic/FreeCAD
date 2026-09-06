@@ -273,6 +273,7 @@ def _shape_to_stl(
     angular_deflection,
     mesh_simplification=1,
     silence=False,
+    use_cpp=True,
 ):
     """Convert a Part.Shape / Compound to ocl.STLSurf using raw arrays.
 
@@ -307,7 +308,7 @@ def _shape_to_stl(
 
     # Tessellation phase
     tess_start = time.perf_counter()
-    if _HAS_CPP:
+    if _HAS_CPP and use_cpp:
         try:
             verts, faces = _shape_to_stl_cpp(shape, linear_deflection, angular_deflection)
         except RuntimeError as e:
@@ -617,6 +618,7 @@ def _shape_to_safe_stl(
     linear_deflection,
     angular_deflection,
     mesh_simplification,
+    use_cpp,
 ):
     """
     Generates the secondary (safety) STL mesh for collision avoidance.
@@ -689,6 +691,7 @@ def _shape_to_safe_stl(
             safe_ang_def,
             max(mesh_simplification, 2),
             silence=True,
+            use_cpp=use_cpp,
         )
         Path.Log.debug("surface_mesh._shape_to_safe_stl: Safe STL generated successfully.")
     except Exception as e:
@@ -719,6 +722,7 @@ def generate_stl(
     angular_deflection,
     mesh_simplification,
     model_faces=None,
+    use_cpp=True,
 ):
     """
     Orchestrates the creation of the primary (machining) and secondary (safety) STL meshes.
@@ -811,6 +815,7 @@ def generate_stl(
             angular_deflection,
             mesh_simplification,
             silence=False,
+            use_cpp=use_cpp,
         )
 
         # Check if the STL object is None OR if it contains zero triangles.
@@ -840,6 +845,7 @@ def generate_stl(
                 linear_deflection,
                 angular_deflection,
                 mesh_simplification=max(mesh_simplification, 2),
+                use_cpp=use_cpp,
             )
 
         if safe_stl is None:

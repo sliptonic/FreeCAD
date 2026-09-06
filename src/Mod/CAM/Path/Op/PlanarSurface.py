@@ -1647,12 +1647,8 @@ class ObjectSurface(PathOp.ObjectOp):
             Path.Log.error("No valid shapes found to machine.")
             return None
 
-        # NOTE: Temporarily disable the model optimization on 3+2 axis operations
-        model_faces = None
-        optimized_shape = False
-        if not getattr(self, "_geom_transform_matrix", None):
-            model_faces = surface_common._filter_vertical(model_shape.Faces)
-            optimized_shape = model_faces[0] if len(model_faces) == 1 else Part.makeCompound(model_faces)
+        model_faces = surface_common._filter_vertical(model_shape.Faces)
+        optimized_shape = model_faces[0] if len(model_faces) == 1 else Part.makeCompound(model_faces)
 
         return base_objs, model_shape, model_faces, optimized_shape
 
@@ -1706,6 +1702,9 @@ class ObjectSurface(PathOp.ObjectOp):
         is_surface_scan = strategy == "SurfaceScan"
         is_waterline = strategy == "Waterline"
         is_zlevel = strategy == "ZLevelHybrid"
+        # NOTE: Temporarily disable optimization and CPP tessellation for 3+2 axis operations
+        is_three_plus_two = getattr(self, "_geom_transform_matrix", None)
+        use_cpp = True
 
         # Geometry & Generation Requirements
         needs_face_selection = is_surface_scan
@@ -1737,6 +1736,13 @@ class ObjectSurface(PathOp.ObjectOp):
         if geometry is None:
             return
         base_objs, model_shape, model_faces, optimized_shape = geometry
+
+        # NOTE: Temporarily disable the model optimization on 3+2 axis operations
+        if is_three_plus_two:
+            use_cpp = False
+            model_faces = None
+            optimized_shape = model_shape
+            optimize_stl = False
 
         # Split selected features
         if needs_face_selection:
@@ -1837,6 +1843,7 @@ class ObjectSurface(PathOp.ObjectOp):
                 linear_deflection=obj.LinearDeflection.Value,
                 angular_deflection=obj.AngularDeflection.Value,
                 mesh_simplification=getattr(obj, "MeshSimplification", 1),
+                use_cpp=use_cpp,
             )
             stl_time = time.time() - stl_start
 
