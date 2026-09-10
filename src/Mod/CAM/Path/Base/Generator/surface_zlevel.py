@@ -860,7 +860,7 @@ def _first_pass_mask(
         Path.Log.warning(
             f"Failed to identify the top features of the model for the first "
             f"roughing pass ({e}). Inspect the generated tool path, or try a smaller step-down."
-            )
+        )
         return None
 
 
