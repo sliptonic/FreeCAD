@@ -475,7 +475,9 @@ std::vector<std::vector<std::array<double, 3>>> clip_polyline_bisection(
 static void require_positive_stepover(double stepover)
 {
     if (!(stepover > 0.0)) {
-        throw std::invalid_argument("stepover must be positive, got " + std::to_string(stepover));
+        throw std::invalid_argument(
+            "stepover must be positive, got " + std::to_string(stepover)
+        );
     }
 }
 
