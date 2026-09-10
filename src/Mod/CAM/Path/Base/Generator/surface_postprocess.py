@@ -745,15 +745,16 @@ def _generate_volumetric_cut_commands(
                 curr_target = (curr_target + next_target) / 2.0
 
         # Threshold Cache: Only update if the change is significant enough
-        if abs(curr_target - current_feed) >= threshold:
+        if not abs(curr_target - current_feed) >= threshold:
+            # Same feed
+            commands.append(Path.Command("G1", {"X": pt[0], "Y": pt[1], "Z": z, "F": current_feed}))
+        else:
+            # Update feed
             calculated_feed = round(curr_target, 2)
             commands.append(
                 Path.Command("G1", {"X": pt[0], "Y": pt[1], "Z": z, "F": calculated_feed})
             )
             current_feed = calculated_feed  # Update the cache
-        else:
-            # Same speed, just output the coordinates
-            commands.append(Path.Command("G1", {"X": pt[0], "Y": pt[1], "Z": z}))
 
     return commands
 
