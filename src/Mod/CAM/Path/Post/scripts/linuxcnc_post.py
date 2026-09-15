@@ -309,7 +309,7 @@ class Linuxcnc(PostProcessor):
     def get_sanity_checks(self, job):
         """LinuxCNC specific sanity checks."""
         Path.Log.track("LinuxCNC.get_sanity_checks() called")
-        squawks = []
+        squawks = super().get_sanity_checks(job)
 
         # Check blend tolerance vs operation precision
         Path.Log.track("Checking blend tolerance")
