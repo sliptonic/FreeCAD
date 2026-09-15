@@ -600,7 +600,7 @@ class GenericSheetCutting(PostProcessor):
     def get_sanity_checks(self, job):
         """Sheet cutter specific sanity checks."""
         Path.Log.track("GenericSheetCutting.get_sanity_checks() called")
-        squawks = []
+        squawks = super().get_sanity_checks(job)
 
         # Check pierce delay vs material thickness
         pierce_delay = self.values.get("PIERCE_DELAY", 1000)

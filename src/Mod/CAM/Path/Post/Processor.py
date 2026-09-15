@@ -45,6 +45,7 @@ from Path.Post import PostList
 import Path.Post.Utils as PostUtils
 from Path.Post.PostList import Postable
 from Path.Post.DrillCycleExpander import DrillCycleExpander
+from Path.Post import TiltedWorkPlane
 from Path.Post.CAMErrors import CAMError, CAMValueError, CAMAttributeError
 from Path.Post.UtilsParse import format_command_line
 from Path.Post.PathOptimizationUtils import modal_gcode, modal_axis
@@ -300,6 +301,15 @@ def properties_in_scope(schema, *scopes) -> List[Dict[str, Any]]:
     return [prop for prop in schema if property_scope(prop) in wanted]
 
 
+def _tool_axis_tilted(placement):
+    """Whether a work plane's tool axis leaves Z: what needs rotary axes.
+
+    A plane with its Z up but an origin elsewhere, or a turned X, is not
+    tilted; any three-axis machine cuts it from world coordinates."""
+    z_up = FreeCAD.Vector(0, 0, 1)
+    return not placement.Rotation.multVec(z_up).isEqual(z_up, 1e-6)
+
+
 class PostProcessorFactory:
     """Factory class for creating post processors."""
 
@@ -375,6 +385,17 @@ def needsTcOp(oldTc, newTc):
 
 class PostProcessor:
     """Base Class.  All non-legacy postprocessors should inherit from this class."""
+
+    # Which rotation strategies this post can emit for an operation on a
+    # tilted work plane, by RotationStrategy value. The machine selects one;
+    # a post that cannot write it refuses. "dwo" commands the rotaries and
+    # emits the path in the frame the machine reaches, "twp" declares the
+    # plane and emits the path in plane coordinates.
+    ROTATION_STRATEGIES = ("dwo", "twp")
+    # The tilted-work-plane command family this post writes for "twp": the
+    # control family is what selecting a post means. See
+    # Path.Post.TiltedWorkPlane for the dialects.
+    PLANE_COMMAND = TiltedWorkPlane.PlaneCommand.G68_2
 
     @classmethod
     def get_common_property_schema(cls) -> List[Dict[str, Any]]:
@@ -572,7 +593,15 @@ class PostProcessor:
                 "type": "text",
                 "label": translate("CAM", "Pre-Rotary Move"),
                 "default": "",
-                "help": translate("CAM", "G-code commands inserted before rotary axis moves."),
+                "help": translate(
+                    "CAM",
+                    "G-code commands inserted before the rotary axes move: before a rotary "
+                    "positioning move, and before a tilted work plane is declared when the "
+                    "control positions the axes itself. Put the moves that bring the tool clear "
+                    "of the part here, in machine coordinates (for example G53 G0 Z0); an "
+                    "operation's clearance height is measured in its own work plane and says "
+                    "nothing about the tool while the table turns.",
+                ),
             },
             {
                 "name": "post_rotary_move",
@@ -580,7 +609,60 @@ class PostProcessor:
                 "type": "text",
                 "label": translate("CAM", "Post-Rotary Move"),
                 "default": "",
-                "help": translate("CAM", "G-code commands inserted after rotary axis moves."),
+                "help": translate(
+                    "CAM",
+                    "G-code commands inserted after the rotary axes have moved, and after a "
+                    "tilted work plane has been declared and aligned to.",
+                ),
+            },
+            {
+                "name": "twp_control_positions_rotaries",
+                "scope": SCOPE_MACHINE,
+                "type": "bool",
+                "label": translate("CAM", "Tilted work plane: control positions the rotaries"),
+                "default": True,
+                "help": translate(
+                    "CAM",
+                    "The plane command positions the rotary axes itself (G53.1, TURN). Off, the "
+                    "program commands them with a rotary move before declaring the plane.",
+                ),
+            },
+            {
+                "name": "twp_declare",
+                "scope": SCOPE_MACHINE,
+                "type": "string",
+                "label": translate("CAM", "Tilted work plane: declare"),
+                "default": "",
+                "help": translate(
+                    "CAM",
+                    "The line that declares a tilted work plane, with {x} {y} {z} the plane's "
+                    "origin and {a1} {a2} {a3} the plane command's angles. Empty uses the "
+                    "plane command's own form.",
+                ),
+            },
+            {
+                "name": "twp_align",
+                "scope": SCOPE_MACHINE,
+                "type": "string",
+                "label": translate("CAM", "Tilted work plane: align"),
+                "default": "",
+                "help": translate(
+                    "CAM",
+                    "The line that points the tool along a declared plane when the control "
+                    "positions the rotary axes itself. Empty uses the plane command's own form.",
+                ),
+            },
+            {
+                "name": "twp_cancel",
+                "scope": SCOPE_MACHINE,
+                "type": "string",
+                "label": translate("CAM", "Tilted work plane: cancel"),
+                "default": "",
+                "help": translate(
+                    "CAM",
+                    "The line that cancels a declared plane. Empty uses the plane command's "
+                    "own form.",
+                ),
             },
             {
                 "name": "show_dialog",
@@ -1791,6 +1873,298 @@ class PostProcessor:
 
         return self._edit_postable_list(postables, prepend)
 
+    def _rotation_strategy(self):
+        """The machine's RotationStrategy, or None when there is no rotary machine."""
+        machine = self._machine
+        if machine is None or not getattr(machine, "has_rotary_axes", False):
+            return None
+        return machine.kinematics.rotation_strategy
+
+    def _refuse_without_rotary_axes(self, item):
+        machine = getattr(self._machine, "name", None)
+        raise CAMValueError(
+            translate(
+                "CAM",
+                "{op} is on a tilted work plane, and {machine} has no rotary axes to point the "
+                "tool along it. Without rotary axes a work plane must be parallel to the table.",
+            ).format(
+                op=item.label,
+                machine=("machine '%s'" % machine) if machine else translate("CAM", "the Job"),
+            ),
+            job=self._job,
+            operation=item.source,
+        )
+
+    def _check_rotation_strategy(self, strategy, item):
+        """Refuse a tilted operation the machine or this post cannot express."""
+        from Machine.models.machine import RotationStrategy
+
+        name = self._machine.name
+        if strategy == RotationStrategy.NONE:
+            raise CAMValueError(
+                translate(
+                    "CAM",
+                    "{op} is on a tilted work plane, and machine '{machine}' does not say how "
+                    "it handles rotation. Set its Rotation strategy in the Machine Editor: DWO "
+                    "for a control with dynamic work offsets, TWP for one with a tilted work "
+                    "plane command.",
+                ).format(op=item.label, machine=name),
+                job=self._job,
+                operation=item.source,
+            )
+        if strategy == RotationStrategy.POST_TRANSFORM:
+            raise CAMValueError(
+                translate(
+                    "CAM",
+                    "{op} is on a tilted work plane, and machine '{machine}' declares the "
+                    "post-transform strategy, which is not available yet.",
+                ).format(op=item.label, machine=name),
+                job=self._job,
+                operation=item.source,
+            )
+        if strategy.value not in self.ROTATION_STRATEGIES:
+            raise CAMValueError(
+                translate(
+                    "CAM",
+                    "{op} is on a tilted work plane, and this post-processor cannot emit the "
+                    "{strategy} strategy machine '{machine}' declares.",
+                ).format(op=item.label, strategy=strategy.value.upper(), machine=name),
+                job=self._job,
+                operation=item.source,
+                pp=self.values["MACHINE_NAME"],
+            )
+
+    def _format_angle(self, value):
+        precision = self.values["AXIS_PRECISION"]
+        return f"{float(value):.{precision}f}"
+
+    def _plane_postables(self, key, placement=None):
+        """Postables for one tilted-work-plane line: TWP_DECLARE, TWP_ALIGN or
+        TWP_CANCEL, from the post property of that name when it is set, else
+        the plane command's own form.
+        """
+        dialect = self.PLANE_COMMAND
+        text = TiltedWorkPlane.template(
+            dialect, key.split("_", 1)[1].lower(), self.values.get(key) or None
+        )
+        if not text:
+            return []
+        fields = {}
+        if key == "TWP_DECLARE":
+            a1, a2, a3 = TiltedWorkPlane.plane_angles(dialect, placement.Rotation)
+            fields = {
+                "x": self.format_parameter("X", placement.Base.x),
+                "y": self.format_parameter("Y", placement.Base.y),
+                "z": self.format_parameter("Z", placement.Base.z),
+                "a1": self._format_angle(a1),
+                "a2": self._format_angle(a2),
+                "a3": self._format_angle(a3),
+            }
+        label = {
+            "TWP_DECLARE": "Work plane",
+            "TWP_ALIGN": "Align to work plane",
+            "TWP_CANCEL": "Cancel work plane",
+        }[key]
+        return [self._make_postable(f"Post: {label}", text.format(**fields))]
+
+    def _rotary_block_postables(self, key):
+        """The machine's PRE_ROTARY_MOVE or POST_ROTARY_MOVE block, if any."""
+        lines = self.values.get(key) or ""
+        if not lines.strip():
+            return []
+        label = "pre-rotary" if key == "PRE_ROTARY_MOVE" else "post-rotary"
+        return [self._make_postable(f"Post: {label}", lines)]
+
+    def _pose_change_postables(self, strategy, placement, positions, declared, rotaries_move):
+        """What the machine does between one operation's pose and the next.
+
+        DWO: the rotary move. TWP: cancel the plane that was declared,
+        position the rotaries unless the control's align command does it,
+        declare the new plane, align. A return to the table-parallel pose
+        under TWP cancels and commands the rotaries home explicitly, since
+        cancelling a plane moves nothing.
+
+        When the rotaries move, the machine's pre- and post-rotary blocks
+        wrap the whole of it. That is where the moves that bring the tool
+        clear of the part belong: a rotary move here is marked so
+        _expand_rotary_move does not wrap it a second time.
+        """
+        from Machine.models.machine import RotationStrategy
+
+        items = []
+        twp = strategy == RotationStrategy.TWP
+        tilted = _tool_axis_tilted(placement)
+        control_positions = (
+            twp and tilted and self.values.get("TWP_CONTROL_POSITIONS_ROTARIES", True)
+        )
+
+        if rotaries_move:
+            items.extend(self._rotary_block_postables("PRE_ROTARY_MOVE"))
+        if twp and declared:
+            items.extend(self._plane_postables("TWP_CANCEL"))
+        if positions and not control_positions:
+            items.append(
+                Postable(
+                    item_type="rotation",
+                    label="Rotary positioning",
+                    path=Path.Path([Path.Command("G0", positions)]),
+                    source=None,
+                    data={"pose_change": True},
+                )
+            )
+        if twp and tilted:
+            items.extend(self._plane_postables("TWP_DECLARE", placement))
+            if control_positions:
+                items.extend(self._plane_postables("TWP_ALIGN"))
+        if rotaries_move:
+            items.extend(self._rotary_block_postables("POST_ROTARY_MOVE"))
+        return items
+
+    def _expand_workplane_frames(self, postables):
+        """Operations on a work plane: express each in the form the machine runs.
+
+        An operation's path is stored in its work plane's frame, with the
+        operation's Placement positioning it in the world and its
+        RotaryPositions recording the rotary angles it was solved for.
+        Generation knows nothing about the machine; this is where the machine
+        comes in, and the machine's rotation strategy decides the shape:
+
+        DWO (dynamic work offset): the rotaries move to the recorded
+        positions and the path is emitted in the frame the machine reaches
+        after that move - world coordinates rotated by the machine's rotation
+        for those angles, relative to the Job's zero. The control applies the
+        pivot. Rotating a world path by that rotation is exact for the path
+        representation, because it is the one that makes the plane's cuts
+        horizontal again: lines stay lines and arcs stay arcs in XY.
+
+        TWP (tilted work plane): the plane is declared to the control in its
+        own command and the path is emitted exactly as stored, in plane
+        coordinates. The control positions the rotaries and applies the
+        pivot. The plane is cancelled before a tool or fixture change and at
+        the end of the section. Only a tilted plane is declared: a datum
+        plane or a turned X is a shift and a turn about Z, which world
+        coordinates carry exactly, and is emitted as under DWO.
+
+        Whenever the rotaries move, the machine's pre- and post-rotary blocks
+        wrap the move: that is where the user puts the moves that bring the
+        tool clear of the part, since an operation's clearance height is
+        measured in its own plane and says nothing about the tool while the
+        table turns. A pose is commanded when it differs from the previous
+        operation's, and after a tool or fixture change, where the control's
+        state is not assumed.
+
+        A tilted operation on a rotary machine that declares no strategy, or
+        one this post cannot emit, refuses to post, and so does a tilted
+        operation without a rotary machine at all. An operation with no plane
+        and no recorded positions is left untouched, so a three-axis Job is
+        byte-identical to before. A plane parallel to the table - a datum for
+        depths, a turned X - is placed into world coordinates without a
+        rotary machine, and under a strategy the machine has not declared:
+        rotating a 2.5D path about Z keeps it 2.5D, and any machine cuts it.
+        """
+        import Path.Base.Generator.rotation as rotation
+        from Machine.models.machine import RotationStrategy
+
+        # Imported here, not at module level: PathUtils imports the Job, and
+        # the Job imports this module.
+        import PathScripts.PathUtils as PathUtils
+
+        machine = self._machine
+        strategy = self._rotation_strategy()
+        chain = rotation.build_kinematic_chain(machine) if strategy is not None else []
+
+        def frame_of(item):
+            src = item.source
+            if src is None or item.item_type != "operation":
+                return None, None
+            placement = getattr(src, "Placement", None)
+            recorded = dict(getattr(src, "RotaryPositions", {}) or {})
+            positions = {k: float(v) for k, v in recorded.items()}
+            if (placement is None or placement.isIdentity(1e-9)) and not positions:
+                return None, None
+            return placement or FreeCAD.Placement(), positions
+
+        tool_axis_tilted = _tool_axis_tilted
+
+        def pose_of(placement, positions):
+            frame = tuple(round(v, 6) for v in placement.toMatrix().A)
+            angles = tuple(sorted((k, round(v, 6)) for k, v in positions.items()))
+            return frame, angles
+
+        result = []
+        for section_name, sublist in postables:
+            pose = None  # (frame, angles) the machine is at; None when not assumed
+            declared = False  # a TWP plane is in effect
+            new_items = []
+            for item in sublist:
+                if item.item_type in ("tool_controller", "fixture"):
+                    if declared:
+                        new_items.extend(self._plane_postables("TWP_CANCEL"))
+                        declared = False
+                    pose = None
+                    new_items.append(item)
+                    continue
+
+                placement, positions = frame_of(item)
+                if placement is None:
+                    new_items.append(item)
+                    continue
+                framed = not placement.isIdentity(1e-9)
+                tilted = tool_axis_tilted(placement)
+
+                if strategy is None:
+                    if tilted:
+                        self._refuse_without_rotary_axes(item)
+                    if positions:
+                        Path.Log.warning(
+                            f"{item.label}: recorded rotary positions but the post's "
+                            f"machine has no rotary axes; emitting without positioning"
+                        )
+                    if framed:
+                        item.path = PathUtils.applyPlacementToPath(placement, item.path)
+                    new_items.append(item)
+                    continue
+
+                if tilted:
+                    self._check_rotation_strategy(strategy, item)
+
+                # A plane that will not be declared has no pose of its own
+                # beyond the rotary angles: two datum planes at different
+                # heights share one, and nothing moves between them.
+                declares = strategy == RotationStrategy.TWP and tilted
+                frame, angles = pose_of(placement if declares else FreeCAD.Placement(), positions)
+                if (frame, angles) != pose:
+                    rotaries_move = pose is None or angles != pose[1]
+                    new_items.extend(
+                        self._pose_change_postables(
+                            strategy, placement, positions, declared, rotaries_move
+                        )
+                    )
+                    pose = (frame, angles)
+                    declared = strategy == RotationStrategy.TWP and tilted
+
+                if strategy != RotationStrategy.TWP or not tilted:
+                    # A datum plane under TWP is not declared: its frame is
+                    # a shift and a turn about Z, which world coordinates
+                    # carry exactly, with nothing for the control to solve.
+                    # world = placement * local; machine = R_m * world
+                    machine_rotation = (
+                        rotation.compute_rotation_matrix(chain, positions)
+                        if positions
+                        else FreeCAD.Rotation()
+                    )
+                    to_machine = FreeCAD.Placement(
+                        FreeCAD.Vector(0, 0, 0), machine_rotation
+                    ).multiply(placement)
+                    if not to_machine.isIdentity(1e-9):
+                        item.path = PathUtils.applyPlacementToPath(to_machine, item.path)
+                new_items.append(item)
+
+            if declared:
+                new_items.extend(self._plane_postables("TWP_CANCEL"))
+            result.append((section_name, new_items))
+        return result
+
     def _expand_rotary_move(self, postables):
         """Wrap any commands that have ABC axis
         with PRE_ROTARY_MOVE/POST_ROTARY_MOVE
@@ -1808,6 +2182,9 @@ class PostProcessor:
 
             def is_rotary_pred(cmd):
                 return any(param in cmd.Parameters for param in ["A", "B", "C"])
+
+            if item.data.get("pose_change"):
+                return None, None  # already wrapped by _expand_workplane_frames
 
             # only rebuild if there is a rotary
             if item.Path and any(is_rotary_pred(c) for c in item.Path.Commands):
@@ -2317,6 +2694,11 @@ class PostProcessor:
 
         # ===== STAGE 2: COMMAND EXPANSION =====
 
+        # First, before anything reads a coordinate: bring each operation's
+        # path from its work plane's frame into the frame the machine reaches,
+        # and command the rotaries it was solved for.
+        postables = self._expand_workplane_frames(postables)
+
         self._expand_prefix(postables)
         # postables = self._expand_pre_job(postables) # FIXME: need an item for a job, handled by _expand_prefix for now
         postables = self._expand_pre_item(postables)
@@ -2604,7 +2986,47 @@ class PostProcessor:
 
                 return squawks
         """
-        return []  # Default implementation: no custom checks
+        return self._rotation_sanity_checks(job)
+
+    def _rotation_sanity_checks(self, job):
+        """Warn when this program will move the rotary axes between operations
+        and the machine's Pre-Rotary Move block is empty: nothing then brings
+        the tool clear of the part before the table turns."""
+        machine = getattr(self, "_machine", None)
+        if machine is None or not getattr(machine, "has_rotary_axes", False):
+            return []
+        if (getattr(self, "values", {}).get("PRE_ROTARY_MOVE") or "").strip():
+            return []
+        if not self._rotaries_move_between_operations(job):
+            return []
+        return [
+            self._create_squawk(
+                "WARNING",
+                translate(
+                    "CAM",
+                    "The rotary axes move between operations and the Pre-Rotary Move property "
+                    "of machine '{machine}' is empty. Put the moves that bring the tool clear "
+                    "of the part there, in machine coordinates (for example G53 G0 Z0).",
+                ).format(machine=machine.name),
+            )
+        ]
+
+    @staticmethod
+    def _rotaries_move_between_operations(job):
+        """Whether consecutive operations were solved to different rotary positions."""
+        import Path.Dressup.Utils as PathDressup
+
+        previous = None
+        for op in job.Operations.Group:
+            base = PathDressup.baseOp(op)
+            positions = dict(getattr(base, "RotaryPositions", {}) or {})
+            if not positions:
+                continue
+            key = tuple(sorted((k, round(float(v), 6)) for k, v in positions.items()))
+            if previous is not None and key != previous:
+                return True
+            previous = key
+        return False
 
     def _create_squawk(self, squawk_type, note):
         """
@@ -3197,7 +3619,9 @@ class WrapperPost(PostProcessor):
     def export(self):
         """Dynamically reload the module for the export to ensure up-to-date usage."""
 
+        self._refuse_tilted_operations()
         postables = self._buildPostList()
+        self._place_operations(postables)
         Path.Log.debug(f"postables count: {len(postables)}")
 
         g_code_sections = []
@@ -3208,6 +3632,43 @@ class WrapperPost(PostProcessor):
             Path.Log.debug(f"Exported {partname}")
             g_code_sections.append((partname, gcode))
         return g_code_sections
+
+    def _refuse_tilted_operations(self):
+        """Legacy posts read world coordinates and never position a rotary
+        machine. Multi-axis output is for post-processors of the current
+        kind; an operation on a tilted work plane is refused here rather
+        than posted unpositioned. A plane parallel to the table - a datum, a
+        turned X - is fine: world coordinates are all it needs."""
+        import Path.Dressup.Utils as PathDressup
+
+        for op in self._job.Operations.Group:
+            base = PathDressup.baseOp(op)
+            placement = getattr(base, "Placement", None)
+            if placement is not None and _tool_axis_tilted(placement):
+                raise CAMValueError(
+                    translate(
+                        "CAM",
+                        "{op} is on a tilted work plane. Legacy post-processor '{post}' cannot "
+                        "position a rotary machine; select a post-processor of the current kind.",
+                    ).format(op=base.Label, post=self.module_name),
+                    job=self._job,
+                    operation=base,
+                )
+
+    @staticmethod
+    def _place_operations(postables):
+        """An operation on a work plane stores its path in the plane's frame;
+        a legacy script reads the path it is given as world coordinates. Place
+        each one, as the current posts do in _expand_workplane_frames."""
+        import PathScripts.PathUtils as PathUtils
+
+        for _, items in postables:
+            for item in items:
+                if item.item_type != "operation" or item.source is None:
+                    continue
+                placement = getattr(item.source, "Placement", None)
+                if placement is not None and not placement.isIdentity(1e-9):
+                    item.path = PathUtils.applyPlacementToPath(placement, item.path)
 
     @property
     def tooltip(self):
