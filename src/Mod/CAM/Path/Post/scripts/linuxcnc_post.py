@@ -33,7 +33,7 @@ import FreeCAD
 
 translate = FreeCAD.Qt.translate
 import Path
-from Path.Post.Processor import PostProcessor, SCOPE_JOB, SCOPE_MACHINE
+from Path.Post.Processor import PostProcessor, SCOPE_JOB, SCOPE_MACHINE, _tool_axis_tilted
 from Path.Post.TiltedWorkPlane import PlaneCommand
 import Constants
 from Machine.models.machine import OutputUnits
@@ -232,7 +232,7 @@ class Linuxcnc(PostProcessor):
 
         for op in self._job.Operations.Group:
             placement = getattr(PathDressup.baseOp(op), "Placement", None)
-            if placement is not None and not placement.isIdentity(1e-9):
+            if placement is not None and _tool_axis_tilted(placement):
                 return True
         return False
 
