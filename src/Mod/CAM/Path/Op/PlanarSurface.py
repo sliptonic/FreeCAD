@@ -1478,7 +1478,7 @@ class ObjectSurface(PathOp.ObjectOp):
         depth_offset = obj.DepthOffset.Value
 
         # Start Point handling
-        start_point = obj.StartPoint if getattr(obj, "UseStartPoint", False) else None
+        start_point = self.startPoint(obj) if getattr(obj, "UseStartPoint", False) else None
 
         zlevel_tool_params = {
             "radius": radius,
@@ -1873,8 +1873,8 @@ class ObjectSurface(PathOp.ObjectOp):
                 Path.Command(
                     "G0",
                     {
-                        "X": obj.StartPoint.x,
-                        "Y": obj.StartPoint.y,
+                        "X": self.startPoint(obj).x,
+                        "Y": self.startPoint(obj).y,
                         "F": self.horizRapid,
                     },
                 )
