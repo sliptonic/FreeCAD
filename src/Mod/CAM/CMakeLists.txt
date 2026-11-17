@@ -619,6 +619,7 @@ SET(Tests_SRCS
     CAMTests/TestPathGeom.py
     CAMTests/TestPathHelix.py
     CAMTests/TestPathHelpers.py
+    CAMTests/TestPathJobRemove.py
     CAMTests/TestPathHelixGenerator.py
     CAMTests/TestPathLeadInOutGenerator.py
     CAMTests/TestPathLanguage.py
