@@ -773,3 +773,170 @@ class TestPlanarSurfaceOp(PathTestWithAssets):
         self.assertTrue(cut_z, "ZLevelHybrid should produce cutting moves")
         self.assertLess(max(cut_z), 16.0, "Cuts must not use the unrotated Z range (0..30)")
         self.assertLess(min(cut_z), -5.0, "Cuts must descend into the rotated Z range (-15..15)")
+
+    # -- Z-Level Hybrid, Adaptive cut pattern: stock outline tests --
+
+    def _createAdaptiveZLevelOp(self, bound_box):
+        """Helper: Z-Level Hybrid op with the Adaptive cut pattern, executed.
+
+        The model is a 60x60x10 plate with a 30x30x10 boss in its center. The
+        stock extends 10 mm past the model on each side in X and Y, so a
+        10 mm band of material surrounds the model.
+        """
+        plate = Part.makeBox(60, 60, 10)
+        boss = Part.makeBox(30, 30, 10, FreeCAD.Vector(15, 15, 10))
+        model = self.doc.addObject("Part::Feature", "TestModel")
+        model.Shape = plate.fuse(boss).removeSplitter()
+
+        job = PathJob.Create("Job", [model])
+        toolbit = self.assets.get("toolbit://5mm_Endmill")
+        job.Tools.Group[0].Tool = toolbit.attach_to_doc(doc=self.doc)
+        for prop in ("ExtXneg", "ExtXpos", "ExtYneg", "ExtYpos"):
+            setattr(job.Stock, prop, 10.0)
+        self.doc.recompute()
+
+        op = FreeCAD.ActiveDocument.addObject("Path::FeaturePython", "PlanarSurface")
+        proxy = PathPlanarSurface.ObjectSurface(op, "PlanarSurface")
+        proxy.initOperation(op)
+        op.Strategy = "ZLevelHybrid"
+        op.CutPatternZLevel = "Adaptive"
+        op.BoundBox = bound_box
+        op.Base = job.Model.Group
+        job.Operations.addObject(op)
+        self.doc.recompute()
+
+        self.assertTrue(len(op.Path.Commands) > 0, "The op should produce G-code commands")
+        return job, op
+
+    @staticmethod
+    def _toolPositions(op):
+        """Each motion of the op as (name, start, end); start and end are (x, y, z)."""
+        x = y = z = None
+        moves = []
+        for c in op.Path.Commands:
+            if c.Name not in ("G0", "G1", "G2", "G3"):
+                continue
+            p = c.Parameters
+            nx, ny, nz = p.get("X", x), p.get("Y", y), p.get("Z", z)
+            if None not in (x, y, z):
+                moves.append((c.Name, (x, y, z), (nx, ny, nz)))
+            x, y, z = nx, ny, nz
+        return moves
+
+    @staticmethod
+    def _clearOf(bb, x, y, distance):
+        """True when (x, y) is outside the XY extent of *bb* by a minimum of *distance*."""
+        return (
+            x <= bb.XMin - distance
+            or x >= bb.XMax + distance
+            or y <= bb.YMin - distance
+            or y >= bb.YMax + distance
+        )
+
+    def _entryPlunges(self, job, op, radius):
+        """Straight plunges from Safe Height or above that end in the stock.
+
+        Returns a list of (x, y, z_end, cleared). *cleared* is True when the
+        tool center was at a maximum distance of one tool radius from the
+        plunge position, at the plunge depth or lower plus 0.2 mm, before the
+        plunge. A plunge where the tool is fully outside the stock outline is
+        not in the list.
+        """
+        stock_bb = job.Stock.Shape.BoundBox
+        safe = op.SafeHeight.Value
+        visited = []
+        plunges = []
+        for name, (x0, y0, z0), (x1, y1, z1) in self._toolPositions(op):
+            vertical = abs(x1 - x0) < 1e-6 and abs(y1 - y0) < 1e-6
+            if (
+                vertical
+                and z0 >= safe - 1e-6
+                and z1 < stock_bb.ZMax - 1e-6
+                and not self._clearOf(stock_bb, x1, y1, radius - 0.1)
+            ):
+                cleared = any(
+                    vz <= z1 + 0.2 and (vx - x1) ** 2 + (vy - y1) ** 2 <= radius**2
+                    for vx, vy, vz in visited
+                )
+                plunges.append((x1, y1, z1, cleared))
+            visited.append((x1, y1, z1))
+        return plunges
+
+    def test60(self):
+        """
+        Executes Z-Level Hybrid with the Adaptive cut pattern and the
+        BaseBoundBox boundary on a model that is smaller than the stock.
+
+        INPUT:
+        - Function: ObjectSurface.opExecute()
+        - Parameters: Strategy=ZLevelHybrid, CutPatternZLevel=Adaptive,
+          BoundBox=BaseBoundBox, ForceInsideOut=False (default)
+        - Input data: plate with a center boss; the stock is 10 mm larger than
+          the model on each side in X and Y; 5 mm endmill
+
+        EXPECTED OUTPUT:
+        - The band between the model bounding box and the stock outline is
+          material that this op does not remove. No tool position below the
+          top of the stock is in that band.
+        - Each straight plunge from Safe Height into the stock is at a
+          position that the tool cleared before.
+        """
+        job, op = self._createAdaptiveZLevelOp("BaseBoundBox")
+        radius = 2.5
+
+        stock_bb = job.Stock.Shape.BoundBox
+        model_bb = job.Model.Group[0].Shape.BoundBox
+        self.assertGreater(model_bb.XMin - stock_bb.XMin, 9.0, "Test needs a band of stock")
+
+        in_band = []
+        for _name, start, end in self._toolPositions(op):
+            for x, y, z in (start, end):
+                if z >= stock_bb.ZMax - 1e-6:
+                    continue
+                in_model = not self._clearOf(model_bb, x, y, 0.1)
+                if not in_model and not self._clearOf(stock_bb, x, y, radius - 0.1):
+                    in_band.append((round(x, 3), round(y, 3), round(z, 3)))
+        self.assertEqual(
+            in_band[:5], [], f"{len(in_band)} tool positions are in uncut stock around the model"
+        )
+
+        not_cleared = [p for p in self._entryPlunges(job, op, radius) if not p[3]]
+        self.assertEqual(not_cleared, [], "Straight plunge into stock that is not cleared")
+
+    def test61(self):
+        """
+        Executes Z-Level Hybrid with the Adaptive cut pattern and the Stock
+        boundary.
+
+        INPUT:
+        - Function: ObjectSurface.opExecute()
+        - Parameters: Strategy=ZLevelHybrid, CutPatternZLevel=Adaptive,
+          BoundBox=Stock, ForceInsideOut=False (default)
+        - Input data: plate with a center boss; the stock is 10 mm larger than
+          the model on each side in X and Y; 5 mm endmill
+
+        EXPECTED OUTPUT:
+        - The tool enters from outside the stock: a minimum of one straight
+          plunge from Safe Height is fully outside the stock outline.
+        - No straight plunge from Safe Height touches stock that is not
+          cleared. A plunge with the tool center on the stock edge is such a
+          plunge.
+        """
+        job, op = self._createAdaptiveZLevelOp("Stock")
+        radius = 2.5
+
+        stock_bb = job.Stock.Shape.BoundBox
+        safe = op.SafeHeight.Value
+        outside_entries = [
+            end
+            for _name, start, end in self._toolPositions(op)
+            if abs(end[0] - start[0]) < 1e-6
+            and abs(end[1] - start[1]) < 1e-6
+            and start[2] >= safe - 1e-6
+            and end[2] < stock_bb.ZMax - 1e-6
+            and self._clearOf(stock_bb, end[0], end[1], radius - 0.1)
+        ]
+        self.assertTrue(outside_entries, "The tool should enter from outside the stock")
+
+        not_cleared = [p for p in self._entryPlunges(job, op, radius) if not p[3]]
+        self.assertEqual(not_cleared, [], "Straight plunge into stock that is not cleared")

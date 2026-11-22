@@ -599,3 +599,271 @@ class TestAdaptiveCommon(PathTestUtils.PathTestBase):
             expected_max_bound + tolerance,
             f"Path max_y ({max_y}) is outside the expected inner bound ({expected_max_bound})",
         )
+
+    # -----------------------------------------------------------------------
+    # Conversion of Adaptive2d results to commands
+    # -----------------------------------------------------------------------
+
+    CUTTING = 0
+    LINK_CLEAR = 1
+    LINK_NOT_CLEAR = 2
+
+    def _convert(self, adaptive_paths, lift_distance=0.5):
+        """Runs _results_to_commands() on one region that has a plunge entry at (10, 10).
+
+        Returns the commands that follow the three entry commands
+        (G0 Z safe, G0 XY start, G1 Z target).
+        """
+        from types import SimpleNamespace
+        from Path.Base.Generator.adaptive_common import _results_to_commands
+
+        fake_area = SimpleNamespace(
+            AdaptiveMotionType=SimpleNamespace(
+                Cutting=self.CUTTING,
+                LinkClear=self.LINK_CLEAR,
+                LinkNotClear=self.LINK_NOT_CLEAR,
+            )
+        )
+        # HelixCenterPoint == StartPoint: no helix, a straight plunge at StartPoint
+        region = SimpleNamespace(
+            HelixCenterPoint=(10.0, 10.0),
+            StartPoint=(10.0, 10.0),
+            AdaptivePaths=adaptive_paths,
+        )
+
+        cmds = _results_to_commands(
+            _area=fake_area,
+            results=[region],
+            z_target=self.z_target,
+            prev_z=self.prev_z,
+            safe_z=self.safe_z,
+            radius=self.radius,
+            feed_params=self.feed_params,
+            lift_distance=lift_distance,
+            helix_min_diameter=1.0,
+            helix_angle=3.0,
+            helix_cone_angle=0.0,
+        )
+
+        entry = [(c.Name, c.Parameters) for c in cmds[:3]]
+        self.assertEqual(entry[0][0], "G0")
+        self.assertRoughly(entry[0][1]["Z"], self.safe_z)
+        self.assertEqual(entry[1][0], "G0")
+        self.assertRoughly(entry[1][1]["X"], 10.0)
+        self.assertEqual(entry[2][0], "G1")
+        self.assertRoughly(entry[2][1]["Z"], self.z_target)
+        return cmds[3:]
+
+    @staticmethod
+    def _summary(cmds):
+        """Commands as (name, X, Y, Z) tuples, None for a word that is absent."""
+        return [
+            (c.Name, c.Parameters.get("X"), c.Parameters.get("Y"), c.Parameters.get("Z"))
+            for c in cmds
+        ]
+
+    def test30_results_cutting_has_no_z_move_after_entry(self):
+        """
+        Tests that no Z move follows the entry when the first motion is a cut.
+
+        INPUT:
+        - One Cutting path with two points. The entry leaves the tool at z_target.
+
+        EXPECTED OUTPUT:
+        - Two G1 XY moves with the horizontal feed and no Z word.
+        """
+        cmds = self._convert([(self.CUTTING, [[12.0, 10.0], [14.0, 10.0]])])
+
+        self.assertEqual(
+            self._summary(cmds),
+            [("G1", 12.0, 10.0, None), ("G1", 14.0, 10.0, None)],
+        )
+        for c in cmds:
+            self.assertRoughly(c.Parameters["F"], self.feed_params["horizFeed"])
+
+    def test31_results_link_clear_lifts_once(self):
+        """
+        Tests a link through cleared area between two cuts.
+
+        INPUT:
+        - Cutting, LinkClear with two points, Cutting. lift_distance = 0.5.
+
+        EXPECTED OUTPUT:
+        - One G0 Z move to z_target + 0.5 before the link, not one for each point.
+        - The link points are G0 XY moves.
+        - One G1 Z move to z_target before the next cut.
+        """
+        cmds = self._convert(
+            [
+                (self.CUTTING, [[12.0, 10.0]]),
+                (self.LINK_CLEAR, [[14.0, 12.0], [16.0, 12.0]]),
+                (self.CUTTING, [[18.0, 10.0], [20.0, 10.0]]),
+            ]
+        )
+
+        lift_z = self.z_target + 0.5
+        self.assertEqual(
+            self._summary(cmds),
+            [
+                ("G1", 12.0, 10.0, None),
+                ("G0", None, None, lift_z),
+                ("G0", 14.0, 12.0, None),
+                ("G0", 16.0, 12.0, None),
+                ("G1", None, None, self.z_target),
+                ("G1", 18.0, 10.0, None),
+                ("G1", 20.0, 10.0, None),
+            ],
+        )
+        self.assertRoughly(cmds[4].Parameters["F"], self.feed_params["vertFeed"])
+
+    def test32_results_link_not_clear_retracts_and_skips_link_points(self):
+        """
+        Tests a link that crosses material that is not cleared.
+
+        INPUT:
+        - Cutting, two LinkNotClear paths, one LinkClear path, Cutting.
+
+        EXPECTED OUTPUT:
+        - One G0 Z move to safe_z.
+        - No move goes to a link point: the tool is above the part.
+        - A G0 XY move to the first point of the next cut, then a G1 plunge
+          to z_target, then G1 XY cuts.
+        """
+        cmds = self._convert(
+            [
+                (self.CUTTING, [[12.0, 10.0]]),
+                (self.LINK_NOT_CLEAR, [[13.0, 30.0], [14.0, 30.0]]),
+                (self.LINK_NOT_CLEAR, [[15.0, 30.0]]),
+                (self.LINK_CLEAR, [[16.0, 30.0]]),
+                (self.CUTTING, [[18.0, 10.0], [20.0, 10.0]]),
+            ]
+        )
+
+        self.assertEqual(
+            self._summary(cmds),
+            [
+                ("G1", 12.0, 10.0, None),
+                ("G0", None, None, self.safe_z),
+                ("G0", 18.0, 10.0, None),
+                ("G1", None, None, self.z_target),
+                ("G1", 20.0, 10.0, None),
+            ],
+        )
+
+    def test33_results_link_not_clear_at_end_leaves_tool_retracted(self):
+        """
+        Tests a region that ends with a link across material.
+
+        INPUT:
+        - Cutting, then LinkNotClear as the last path.
+
+        EXPECTED OUTPUT:
+        - The last command is the G0 Z move to safe_z. There is no plunge.
+        """
+        cmds = self._convert(
+            [
+                (self.CUTTING, [[12.0, 10.0]]),
+                (self.LINK_NOT_CLEAR, [[13.0, 30.0]]),
+            ]
+        )
+
+        self.assertEqual(
+            self._summary(cmds),
+            [("G1", 12.0, 10.0, None), ("G0", None, None, self.safe_z)],
+        )
+
+    # -----------------------------------------------------------------------
+    # Stock outline semantics with forceInsideOut off
+    # -----------------------------------------------------------------------
+
+    def _generate_outside_in(self, cut_area, bb_face):
+        from Path.Base.Generator.adaptive_common import generate
+
+        params = _make_default_params()
+        params["force_insideout"] = False
+
+        return generate(
+            adaptive_params=params,
+            feed_params=self.feed_params,
+            radius=self.radius,
+            step_over=self.step_over,
+            z_target=self.z_target,
+            safe_z=self.safe_z,
+            prev_z=self.prev_z,
+            cut_area=cut_area,
+            min_face_area=0.0,
+            bb_face=bb_face,
+        )
+
+    @staticmethod
+    def _positions_below(cmds, z_limit):
+        """XY of each command endpoint whose Z is below z_limit."""
+        x = y = z = None
+        result = []
+        for c in cmds:
+            x = c.Parameters.get("X", x)
+            y = c.Parameters.get("Y", y)
+            z = c.Parameters.get("Z", z)
+            if None not in (x, y, z) and z < z_limit:
+                result.append((x, y))
+        return result
+
+    @unittest.skipUnless(_area_available, "libarea Adaptive2d not available")
+    def test40_generate_stays_in_pocket_enclosed_by_stock(self):
+        """
+        Tests that material between the cut area and the stock outline is not
+        used as air.
+
+        INPUT:
+        - 40x40 cut area (5..45) inside the 60x60 stock (-5..55).
+        - force_insideout=False, so Adaptive2d can enter from outside the stock.
+
+        EXPECTED OUTPUT:
+        - The 10 mm band between the cut area and the stock outline is material.
+          Each tool position below safe_z is inside the cut area.
+        """
+        cmds = self._generate_outside_in(self.cut_area, self.bb_face)
+        self.assertGreater(len(cmds), 0)
+
+        positions = self._positions_below(cmds, self.safe_z)
+        self.assertTrue(positions)
+        tol = 0.2
+        for x, y in positions:
+            self.assertTrue(
+                5.0 - tol <= x <= 45.0 + tol and 5.0 - tol <= y <= 45.0 + tol,
+                f"Tool position ({x:.3f}, {y:.3f}) is in the material around the cut area",
+            )
+
+    @unittest.skipUnless(_area_available, "libarea Adaptive2d not available")
+    def test41_generate_enters_from_outside_the_stock(self):
+        """
+        Tests that a cut area which reaches the stock outline is entered from
+        the air outside the stock.
+
+        INPUT:
+        - The cut area is the full 60x60 stock face (-5..55).
+        - force_insideout=False.
+
+        EXPECTED OUTPUT:
+        - The entry is a straight plunge, with no helix arcs.
+        - The plunge is outside the stock outline by a minimum of the tool
+          radius, so the tool does not touch the stock.
+        """
+        cmds = self._generate_outside_in(self.bb_face, self.bb_face)
+        self.assertGreater(len(cmds), 0)
+
+        self.assertFalse(
+            [c for c in cmds if c.Name in ("G2", "G3")], "Entry from outside must not use a helix"
+        )
+
+        # Entry: G0 Z safe, G0 XY start, G1 Z target
+        self.assertRoughly(cmds[0].Parameters["Z"], self.safe_z)
+        x, y = cmds[1].Parameters["X"], cmds[1].Parameters["Y"]
+        self.assertRoughly(cmds[2].Parameters["Z"], self.z_target)
+
+        clearance = max(-5.0 - x, x - 55.0, -5.0 - y, y - 55.0)
+        self.assertGreaterEqual(
+            clearance,
+            self.radius - 0.1,
+            f"Entry plunge at ({x:.3f}, {y:.3f}) touches the stock",
+        )

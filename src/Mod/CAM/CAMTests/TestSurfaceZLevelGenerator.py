@@ -519,3 +519,180 @@ class TestSurfaceZLevel(PathTestUtils.PathTestBase):
             "Extra" in statuses or "Mixed" in statuses,
             "Stack should contain at least one floor-type layer",
         )
+
+    # -- Adaptive2d stock outline tests --
+
+    @staticmethod
+    def _rect_face(xmin, ymin, xmax, ymax):
+        return Part.Face(
+            Part.makePolygon(
+                [
+                    FreeCAD.Vector(xmin, ymin, 0),
+                    FreeCAD.Vector(xmax, ymin, 0),
+                    FreeCAD.Vector(xmax, ymax, 0),
+                    FreeCAD.Vector(xmin, ymax, 0),
+                    FreeCAD.Vector(xmin, ymin, 0),
+                ]
+            )
+        )
+
+    def test50_validate_stock_outline_accepts_real_outline(self):
+        """
+        Tests validate_stock_outline() with the outline that PlanarSurface builds.
+
+        INPUT:
+        - Function: validate_stock_outline()
+        - Input data: A 70x70 stock, its outline shrunk by 0.02 mm, and a 50x50
+          model inside the stock. A second call has no model bounding box.
+
+        EXPECTED OUTPUT:
+        - Both calls return (True, "").
+        """
+        from Path.Base.Generator.surface_zlevel import validate_stock_outline
+
+        stock_bb = FreeCAD.BoundBox(-10, -10, 0, 60, 60, 20)
+        model_bb = FreeCAD.BoundBox(0, 0, 0, 50, 50, 20)
+        outline = self._rect_face(-9.98, -9.98, 59.98, 59.98)
+
+        self.assertEqual(validate_stock_outline(outline, stock_bb, model_bb), (True, ""))
+        self.assertEqual(validate_stock_outline(outline, stock_bb, None), (True, ""))
+
+    def test51_validate_stock_outline_rejects_empty_outline(self):
+        """
+        Tests validate_stock_outline() with no usable outline.
+
+        INPUT:
+        - Function: validate_stock_outline()
+        - Input data: None, a null shape, and a wire that has no face.
+
+        EXPECTED OUTPUT:
+        - Each call returns False and a reason.
+        """
+        from Path.Base.Generator.surface_zlevel import validate_stock_outline
+
+        stock_bb = FreeCAD.BoundBox(-10, -10, 0, 60, 60, 20)
+        wire = self._rect_face(-10, -10, 60, 60).OuterWire
+
+        for outline in (None, Part.Shape(), wire):
+            valid, reason = validate_stock_outline(outline, stock_bb, None)
+            self.assertFalse(valid)
+            self.assertTrue(reason)
+
+    def test52_validate_stock_outline_rejects_wrong_extent(self):
+        """
+        Tests that an outline which does not span the stock is rejected.
+
+        INPUT:
+        - Function: validate_stock_outline()
+        - Input data: A 70x70 stock. One outline is the 50x50 machining
+          boundary, one outline is the stock moved 5 mm along X, and one
+          outline is smaller than the stock by less than the tolerance.
+
+        EXPECTED OUTPUT:
+        - The first two outlines are rejected: Adaptive2d would use the
+          material outside them as air.
+        - The third outline is accepted.
+        """
+        from Path.Base.Generator.surface_zlevel import validate_stock_outline
+
+        stock_bb = FreeCAD.BoundBox(-10, -10, 0, 60, 60, 20)
+
+        too_small = self._rect_face(0, 0, 50, 50)
+        moved = self._rect_face(-5, -10, 65, 60)
+        self.assertFalse(validate_stock_outline(too_small, stock_bb, None)[0])
+        self.assertFalse(validate_stock_outline(moved, stock_bb, None)[0])
+
+        within_tol = self._rect_face(-9.6, -9.6, 59.6, 59.6)
+        self.assertTrue(validate_stock_outline(within_tol, stock_bb, None)[0])
+
+    def test53_validate_stock_outline_rejects_model_outside_stock(self):
+        """
+        Tests that the outline must enclose the model.
+
+        INPUT:
+        - Function: validate_stock_outline()
+        - Input data: A 70x70 stock with a correct outline. One model extends
+          5 mm outside the stock on each side in turn. One model extends
+          outside by less than the tolerance.
+
+        EXPECTED OUTPUT:
+        - Each model that extends 5 mm outside is rejected.
+        - The model inside the tolerance is accepted.
+        """
+        from Path.Base.Generator.surface_zlevel import validate_stock_outline
+
+        stock_bb = FreeCAD.BoundBox(-10, -10, 0, 60, 60, 20)
+        outline = self._rect_face(-9.98, -9.98, 59.98, 59.98)
+
+        outside = (
+            FreeCAD.BoundBox(-15, 0, 0, 50, 50, 20),
+            FreeCAD.BoundBox(0, 0, 0, 65, 50, 20),
+            FreeCAD.BoundBox(0, -15, 0, 50, 50, 20),
+            FreeCAD.BoundBox(0, 0, 0, 50, 65, 20),
+        )
+        for model_bb in outside:
+            valid, reason = validate_stock_outline(outline, stock_bb, model_bb)
+            self.assertFalse(valid, f"Model {model_bb} must be rejected")
+            self.assertTrue(reason)
+
+        flush = FreeCAD.BoundBox(-10.3, -10.3, 0, 60.3, 60.3, 20)
+        self.assertTrue(validate_stock_outline(outline, stock_bb, flush)[0])
+
+    def test54_resolve_adaptive_stock_uses_stock_outline(self):
+        """
+        Tests that the real stock outline goes to Adaptive2d unchanged.
+
+        INPUT:
+        - Function: _resolve_adaptive_stock()
+        - Input data: A stock outline, a smaller machining boundary, and
+          adaptive parameters with force_insideout=False.
+
+        EXPECTED OUTPUT:
+        - The stock outline is returned, not the machining boundary.
+        - The offset is 0.0.
+        - The parameters are returned as they were given.
+        """
+        from Path.Base.Generator.surface_zlevel import _resolve_adaptive_stock
+
+        stock_face = self._rect_face(-10, -10, 60, 60)
+        params = {"force_insideout": False, "finishing_profile": True}
+
+        a2d_stock, offset, out_params = _resolve_adaptive_stock(
+            stock_face, self.border_face, 2.5, params
+        )
+
+        self.assertTrue(a2d_stock.isSame(stock_face))
+        self.assertEqual(offset, 0.0)
+        self.assertIs(out_params, params)
+        self.assertFalse(out_params["force_insideout"])
+
+    def test55_resolve_adaptive_stock_falls_back_to_inside_out(self):
+        """
+        Tests the fallback when there is no stock outline.
+
+        INPUT:
+        - Function: _resolve_adaptive_stock()
+        - Input data: stock_face=None and a null shape, a machining boundary,
+          tool radius 2.5, and adaptive parameters with force_insideout=False.
+
+        EXPECTED OUTPUT:
+        - The machining boundary is returned with the offset radius - 0.01.
+        - The returned parameters have force_insideout=True, so Adaptive2d
+          does not enter from outside the boundary.
+        - The other parameters are kept.
+        - The dictionary of the caller is not changed.
+        """
+        from Path.Base.Generator.surface_zlevel import _resolve_adaptive_stock
+
+        for missing in (None, Part.Shape()):
+            params = {"force_insideout": False, "finishing_profile": True}
+
+            a2d_stock, offset, out_params = _resolve_adaptive_stock(
+                missing, self.border_face, 2.5, params
+            )
+
+            self.assertTrue(a2d_stock.isSame(self.border_face))
+            self.assertAlmostEqual(offset, 2.49)
+            self.assertTrue(out_params["force_insideout"])
+            self.assertTrue(out_params["finishing_profile"])
+            self.assertFalse(params["force_insideout"], "Caller's dict must not be modified")
