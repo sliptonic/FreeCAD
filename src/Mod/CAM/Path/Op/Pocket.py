@@ -142,6 +142,10 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
     def pocketInvertExtraOffset(self):
         return False
 
+    def areaOpCombineCollectively(self, obj):
+        """areaOpCombineCollectively(obj) ... return False, areaOpShapes() fuses the faces."""
+        return False
+
     def opUpdateDepths(self, obj):
         """opUpdateDepths(obj) ... Implement special depths calculation."""
         # Set Final Depth to bottom of model if whole model is used

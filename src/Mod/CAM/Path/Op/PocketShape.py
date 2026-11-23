@@ -360,6 +360,7 @@ def SetupProperties():
     # Add properties initialized here in PocketShape
     setup.append("UseOutline")
     setup.append("CloseOpenPaths")
+    setup.append("HandleMultipleFeatures")
     return setup
 
 

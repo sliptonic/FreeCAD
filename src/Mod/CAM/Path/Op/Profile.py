@@ -1417,6 +1417,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
 def SetupProperties():
     setup = PathAreaOp.SetupProperties()
     setup.extend([tup[1] for tup in ObjectProfile.areaOpProperties(False)])
+    setup.append("HandleMultipleFeatures")  # added by the Area base operation
     return setup
 
 

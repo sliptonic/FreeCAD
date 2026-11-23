@@ -24,6 +24,7 @@ import Part
 import Path.Geom as PathGeom
 import Path.Op.MillFace as PathMillFace
 import Path.Op.Pocket as PathPocket
+import Path.Op.PocketShape as PathPocketShape
 import Path.Main.Job as PathJob
 import Path.Tool.Controller as PathToolController
 import Constants as CAMConstants
@@ -930,6 +931,77 @@ class TestPathPocket(PathTestBase):
 
                 # Assert that it executes without error
                 self.assertTrue(mill_face.isValid(), mill_face.getStatusString())
+
+    def _createTwoPocketShapeOp(self, label):
+        """Create a Pocket Shape operation on a part with two separate pockets.
+        The pocket centers are at X=20 and X=70."""
+        solid = Part.makeBox(90, 40, 20)
+        for x in (10, 60):
+            solid = solid.cut(Part.makeBox(20, 20, 6, FreeCAD.Vector(x, 10, 14)))
+        part_obj = FreeCAD.ActiveDocument.addObject("Part::Feature", "TwoPocketPart")
+        part_obj.Shape = solid
+
+        job = PathJob.Create("Job_{}".format(label), [part_obj])
+        op = PathPocketShape.Create(label, parentJob=job)
+        tc = PathToolController.Create(name="TC: 5mm Endmill")
+        job.Proxy.addToolController(tc)
+        tc.Tool.Diameter = 5.0
+        op.ToolController = tc
+
+        model = job.Model.Group[0]
+        floors = [
+            "Face{}".format(i + 1)
+            for i, face in enumerate(model.Shape.Faces)
+            if PathGeom.isRoughly(face.BoundBox.ZMin, 14)
+            and PathGeom.isRoughly(face.BoundBox.ZMax, 14)
+        ]
+        self.assertEqual(len(floors), 2)
+        op.Base = [(model, floors)]
+        op.setExpression("StepDown", None)
+        op.StepDown = 2
+        return op
+
+    @staticmethod
+    def _pocketVisitSequence(op):
+        """Return the sequence of pockets that the cutting moves visit.
+        "L" is the pocket at X=20, "R" is the pocket at X=70."""
+        sequence = []
+        for cmd in op.Path.Commands:
+            if cmd.Name in ("G1", "G2", "G3") and "X" in cmd.Parameters:
+                side = "L" if cmd.Parameters["X"] < 45 else "R"
+                if not sequence or sequence[-1] != side:
+                    sequence.append(side)
+        return "".join(sequence)
+
+    def test_pocket_shape_handle_multiple_features(self):
+        """Verify Pocket Shape processes two pockets individually or collectively."""
+        op = self._createTwoPocketShapeOp("pocket_shape_multiple_features")
+
+        # Default: complete one pocket, then the other
+        self.assertEqual(op.HandleMultipleFeatures, "Individually")
+        self.doc.recompute()
+        self.assertTrue(op.isValid(), op.getStatusString())
+        self.assertEqual(len(self._pocketVisitSequence(op)), 2)
+
+        # Collectively: each of the three step downs visits the two pockets
+        op.HandleMultipleFeatures = "Collectively"
+        self.doc.recompute()
+        self.assertTrue(op.isValid(), op.getStatusString())
+        self.assertGreaterEqual(len(self._pocketVisitSequence(op)), 6)
+
+    def test_handle_multiple_features_restored(self):
+        """Verify an operation from an old document gets HandleMultipleFeatures on restore."""
+        op = self._createTwoPocketShapeOp("pocket_shape_restore")
+        op.removeProperty("HandleMultipleFeatures")
+        self.assertFalse(hasattr(op, "HandleMultipleFeatures"))
+
+        op.Proxy.onDocumentRestored(op)
+
+        self.assertEqual(op.HandleMultipleFeatures, "Individually")
+        self.assertEqual(
+            op.getEnumerationsOfProperty("HandleMultipleFeatures"),
+            ["Individually", "Collectively"],
+        )
 
 
 def _addViewProvider(pocketOp):

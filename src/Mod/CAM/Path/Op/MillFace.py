@@ -126,6 +126,16 @@ class ObjectFace(PathPocketBase.ObjectPocket):
         for n in self.propertyEnumerations():
             setattr(obj, n[0], n[1])
 
+        obj.setEditorMode("HandleMultipleFeatures", 2)  # hide, no effect on facing
+
+    def areaOpOnDocumentRestored(self, obj):
+        """areaOpOnDocumentRestored(obj) ... hide properties that have no effect on facing."""
+        obj.setEditorMode("HandleMultipleFeatures", 2)
+
+    def areaOpCombineCollectively(self, obj):
+        """areaOpCombineCollectively(obj) ... return False, areaOpShapes() merges the faces."""
+        return False
+
     def pocketInvertExtraOffset(self):
         return True
 

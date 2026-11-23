@@ -327,3 +327,20 @@ class TestPathSetupSheet(PathTestBase):
         self.assertEqual(op.StepOver, 0)
         o2.Proxy.setOperationProperties(op, opname)
         self.assertEqual(op.StepOver, 75)
+
+    def test30(self):
+        """Verify the Setup Sheet can edit HandleMultipleFeatures for the Area operations."""
+        import Path.Op.Pocket as PathPocket
+        import Path.Op.PocketShape as PathPocketShape
+        import Path.Op.Profile as PathProfile
+
+        for module in (PathProfile, PathPocketShape, PathPocket):
+            with self.subTest(op=module.__name__):
+                self.assertIn("HandleMultipleFeatures", module.SetupProperties())
+
+                opname = module.__name__.split(".")[-1] + "HMF"
+                PathSetupSheet.RegisterOperation(opname, module.Create, module.SetupProperties)
+                self.addCleanup(PathSetupSheet._RegisteredOps.pop, opname, None)
+                ptt = PathSetupSheet._RegisteredOps[opname].prototype(opname)
+                prop = ptt.getProperty("HandleMultipleFeatures")
+                self.assertCountEqual(prop.getEnumValues(), ["Individually", "Collectively"])

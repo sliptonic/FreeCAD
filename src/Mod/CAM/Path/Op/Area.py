@@ -101,7 +101,8 @@ class ObjectOp(PathOp.ObjectOp):
                 "Choose how to process multiple Base Geometry features.",
             ),
         )
-        obj.HandleMultipleFeatures = ("Individually", "Collectively")
+        # A list is necessary: the Setup Sheet prototype accepts only a list as enumeration
+        obj.HandleMultipleFeatures = ["Individually", "Collectively"]
 
         self.initAreaOp(obj)
 
@@ -163,7 +164,7 @@ class ObjectOp(PathOp.ObjectOp):
                     "Choose how to process multiple Base Geometry features.",
                 ),
             )
-            obj.HandleMultipleFeatures = ("Individually", "Collectively")
+            obj.HandleMultipleFeatures = ["Individually", "Collectively"]
 
         self.areaOpOnDocumentRestored(obj)
 
@@ -526,7 +527,7 @@ class ObjectOp(PathOp.ObjectOp):
         if (
             len(shapes) > 1
             and obj.HandleMultipleFeatures == "Collectively"
-            and obj.Proxy.__module__ != "Path.Op.Pocket"  # Pocket3D has own Collectively
+            and self.areaOpCombineCollectively(obj)
         ):
             keys = {(iH, desc) for _, iH, desc in shapes}
             collectively = []
@@ -582,6 +583,12 @@ class ObjectOp(PathOp.ObjectOp):
         """areaOpUseProcjection(obj) ... return True if the operation can use procjection, defaults to False.
         Can safely be overwritten by subclasses."""
         return False
+
+    def areaOpCombineCollectively(self, obj):
+        """areaOpCombineCollectively(obj) ... return True if opExecute() combines the shapes
+        into one compound when HandleMultipleFeatures is Collectively, defaults to True.
+        Can safely be overwritten by subclasses."""
+        return True
 
     # Support methods
     def _customDepthParams(self, obj, strDep, finDep):
