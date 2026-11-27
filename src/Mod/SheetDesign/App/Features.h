@@ -119,12 +119,12 @@ protected:
  *
  * The bend lines are the center lines of the bend zones. They divide the profile into panels.
  */
-class SheetDesignExport Refold: public Feature
+class SheetDesignExport FoldBlank: public Feature
 {
-    PROPERTY_HEADER_WITH_OVERRIDE(SheetDesign::Refold);
+    PROPERTY_HEADER_WITH_OVERRIDE(SheetDesign::FoldBlank);
 
 public:
-    Refold();
+    FoldBlank();
 
     App::PropertyLink Profile;
     App::PropertyLink BendLines;
@@ -239,12 +239,12 @@ protected:
 };
 
 /// A bend on a line across a panel. The flat pattern does not change.
-class SheetDesignExport Fold: public Feature
+class SheetDesignExport SketchedBend: public Feature
 {
-    PROPERTY_HEADER_WITH_OVERRIDE(SheetDesign::Fold);
+    PROPERTY_HEADER_WITH_OVERRIDE(SheetDesign::SketchedBend);
 
 public:
-    Fold();
+    SketchedBend();
 
     App::PropertyLink Source;
     App::PropertyLink BendLines;

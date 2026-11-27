@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>TaskRefold</class>
- <widget class="QWidget" name="TaskRefold">
+ <class>TaskFoldBlank</class>
+ <widget class="QWidget" name="TaskFoldBlank">
   <property name="windowTitle">
-   <string>Refold</string>
+   <string>Fold Blank</string>
   </property>
   <layout class="QVBoxLayout" name="mainLayout">
    <item>
     <widget class="QGroupBox" name="group0">
      <property name="title">
-      <string>Refold</string>
+      <string>Fold Blank</string>
      </property>
      <layout class="QFormLayout" name="layout0">
       <item row="0" column="0">

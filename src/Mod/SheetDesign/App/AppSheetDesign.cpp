@@ -341,12 +341,12 @@ PyMOD_INIT_FUNC(SheetDesign)
     // clang-format off
     SheetDesign::Feature     ::init();
     SheetDesign::BasePanel   ::init();
-    SheetDesign::Refold    ::init();
+    SheetDesign::FoldBlank    ::init();
     SheetDesign::Unfold   ::init();
     SheetDesign::Flange      ::init();
     SheetDesign::Cut         ::init();
     SheetDesign::Extend      ::init();
-    SheetDesign::Fold        ::init();
+    SheetDesign::SketchedBend        ::init();
     SheetDesign::Hem         ::init();
     SheetDesign::CornerRelief::init();
     SheetDesign::BaseShape   ::init();

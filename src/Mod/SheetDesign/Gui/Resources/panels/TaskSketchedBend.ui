@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>TaskFold</class>
- <widget class="QWidget" name="TaskFold">
+ <class>TaskSketchedBend</class>
+ <widget class="QWidget" name="TaskSketchedBend">
   <property name="windowTitle">
-   <string>Fold</string>
+   <string>Sketched Bend</string>
   </property>
   <layout class="QVBoxLayout" name="mainLayout">
    <item>
     <widget class="QGroupBox" name="group0">
      <property name="title">
-      <string>Fold</string>
+      <string>Sketched Bend</string>
      </property>
      <layout class="QFormLayout" name="layout0">
       <item row="0" column="0">

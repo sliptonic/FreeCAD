@@ -618,9 +618,9 @@ std::shared_ptr<SheetModel> BasePanel::buildModel()
 
 // ------------------------------------------------------------------------------------------------
 
-PROPERTY_SOURCE(SheetDesign::Refold, SheetDesign::Feature)
+PROPERTY_SOURCE(SheetDesign::FoldBlank, SheetDesign::Feature)
 
-Refold::Refold()
+FoldBlank::FoldBlank()
 {
     ADD_PROPERTY_TYPE(Profile, (nullptr), "Sheet Design", App::Prop_None, "Outline of the flat pattern");
     ADD_PROPERTY_TYPE(
@@ -650,7 +650,7 @@ Refold::Refold()
     Rule.setScope(App::LinkScope::Global);
 }
 
-std::shared_ptr<SheetModel> Refold::buildModel()
+std::shared_ptr<SheetModel> FoldBlank::buildModel()
 {
     const SheetParams params = readRule(Rule.getValue());
     gp_Trsf placement;
@@ -746,8 +746,8 @@ std::shared_ptr<SheetModel> Unfold::buildModel()
     GProp_GProps made;
     BRepGProp::VolumeProperties(solid, source);
     BRepGProp::VolumeProperties(result->makeFolded(false, false), made);
-    // A sharp fold gets a bend with a radius, thus the volume is then different on purpose.
-    if (result->sharpFolds == 0
+    // A sharp bend gets a bend with a radius, thus the volume is then different on purpose.
+    if (result->sharpBends == 0
         && std::fabs(source.Mass() - made.Mass()) > 1.0e-3 * std::fabs(source.Mass())) {
         Base::Console().warning(
             "Sheet design: {}: the volume of the model ({:.3f}) is different from the volume of "
@@ -1184,9 +1184,9 @@ std::shared_ptr<SheetModel> Extend::buildModel()
 
 // ------------------------------------------------------------------------------------------------
 
-PROPERTY_SOURCE(SheetDesign::Fold, SheetDesign::Feature)
+PROPERTY_SOURCE(SheetDesign::SketchedBend, SheetDesign::Feature)
 
-Fold::Fold()
+SketchedBend::SketchedBend()
 {
     ADD_PROPERTY_TYPE(Source, (nullptr), "Sheet Design", App::Prop_None, "Feature to fold");
     ADD_PROPERTY_TYPE(
@@ -1202,7 +1202,7 @@ Fold::Fold()
     BendLines.setScope(App::LinkScope::Global);
 }
 
-std::shared_ptr<SheetModel> Fold::buildModel()
+std::shared_ptr<SheetModel> SketchedBend::buildModel()
 {
     auto result = std::make_shared<SheetModel>(*sourceModel(Source.getValue()));
     const TopoDS_Shape shape = profileShape(BendLines.getValue(), toLocal(BendLines.getValue()));

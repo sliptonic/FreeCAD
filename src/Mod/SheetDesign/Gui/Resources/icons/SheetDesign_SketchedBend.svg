@@ -3,7 +3,7 @@
    width="64px"
    height="64px"
    viewBox="0 0 64 64"
-   id="SheetDesign_Fold"
+   id="SheetDesign_SketchedBend"
    version="1.1"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -22,11 +22,11 @@
       <cc:Work rdf:about="">
         <dc:format>image/svg+xml</dc:format>
         <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title>SheetDesign_Fold</dc:title>
+        <dc:title>SheetDesign_SketchedBend</dc:title>
         <dc:date>2026-11-26</dc:date>
         <dc:creator><cc:Agent><dc:title>[sliptonic]</dc:title></cc:Agent></dc:creator>
         <dc:publisher><cc:Agent><dc:title>FreeCAD</dc:title></cc:Agent></dc:publisher>
-        <dc:identifier>FreeCAD/src/Mod/SheetDesign/Resources/icons/SheetDesign_Fold.svg</dc:identifier>
+        <dc:identifier>FreeCAD/src/Mod/SheetDesign/Resources/icons/SheetDesign_SketchedBend.svg</dc:identifier>
         <dc:rights><cc:Agent><dc:title>FreeCAD LGPL2+</dc:title></cc:Agent></dc:rights>
         <cc:license>https://www.gnu.org/copyleft/lesser.html</cc:license>
         <dc:relation>https://www.freecad.org/wiki/index.php?title=Artwork</dc:relation>

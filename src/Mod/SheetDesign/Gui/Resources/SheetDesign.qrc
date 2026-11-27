@@ -12,11 +12,11 @@
         <file>icons/SheetDesign_Extend.svg</file>
         <file>icons/SheetDesign_Flange.svg</file>
         <file>icons/SheetDesign_FlatPattern.svg</file>
-        <file>icons/SheetDesign_Fold.svg</file>
+        <file>icons/SheetDesign_SketchedBend.svg</file>
         <file>icons/SheetDesign_Form.svg</file>
         <file>icons/SheetDesign_Hem.svg</file>
         <file>icons/SheetDesign_Perforation.svg</file>
-        <file>icons/SheetDesign_Refold.svg</file>
+        <file>icons/SheetDesign_FoldBlank.svg</file>
         <file>icons/SheetDesign_Rule.svg</file>
         <file>icons/SheetDesign_Unfold.svg</file>
         <file>panels/TaskBasePanel.ui</file>
@@ -27,11 +27,11 @@
         <file>panels/TaskExtend.ui</file>
         <file>panels/TaskFlange.ui</file>
         <file>panels/TaskFlatPattern.ui</file>
-        <file>panels/TaskFold.ui</file>
+        <file>panels/TaskSketchedBend.ui</file>
         <file>panels/TaskForm.ui</file>
         <file>panels/TaskHem.ui</file>
         <file>panels/TaskPerforation.ui</file>
-        <file>panels/TaskRefold.ui</file>
+        <file>panels/TaskFoldBlank.ui</file>
         <file>panels/TaskUnfold.ui</file>
     </qresource>
 </RCC>

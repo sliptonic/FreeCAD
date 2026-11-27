@@ -22,7 +22,7 @@
 """Parametric blanks for the box styles of the International Fibreboard Case Code.
 
 This is data of the Packaging domain. Each style function gives the pieces of one box style as
-flat outlines with bend lines and angles, for the Refold operation. The styles follow the blank
+flat outlines with bend lines and angles, for the Fold Blank operation. The styles follow the blank
 drawings of the Fibre Box Handbook (Box Styles chapter). The drawings have no dimensions, thus
 the proportions here are an interpretation.
 
@@ -814,9 +814,14 @@ def style_0457(t, L, W, D):
     for key in ("far", "near"):
         wall = blank.flap(base.edge(key), depth, 90.0, widen=(t, t))
         # The side of a hook flap at the bottom is a diagonal. The head is at the far end.
-        for end, taper in (("left", (0.45 * depth, 0.1 * depth)), ("right", (0.1 * depth, 0.45 * depth))):
+        # The head is wider than its neck on the side away from the bottom: the undercut locks.
+        barb = 0.1 * depth
+        for end, taper, wide in (
+            ("left", (0.45 * depth, 0.2 * depth), (0.0, barb)),
+            ("right", (0.2 * depth, 0.45 * depth), (barb, 0.0)),
+        ):
             hook = blank.flap(wall.edge(end), 0.55 * depth, 90.0, taper=taper)
-            _tongue(blank, hook, 0.35 * depth, chamfer=0.12 * depth)
+            _tongue(blank, hook, 0.35 * depth, hook=wide, chamfer=0.08 * depth)
     return [blank.piece("tray")]
 
 
@@ -963,10 +968,12 @@ def style_0711(t, L, W, D):
     allowance = blank.allowance(90.0)
     for panel, layer in ((panels[0], 0), (panels[2], 1)):
         flap = blank.flap(panel.edge("right"), depth, 90.0, offset=layer * t)
-        _notch(blank, flap, 0.15 * L, 0.15 * depth)
-        # On the edge "right", the first end is at the side of the next panel.
+        # On the edge "right", the first end is at the side of the next panel. The score goes
+        # from that corner to the corner of the notch, thus it divides the flap.
+        reach = 0.85 * depth
+        _window(blank, flap, reach, reach + 0.15 * L, reach, depth + 1.0)
         u, n = _frame(flap)
-        blank.score(flap.a + u * 5.0 + n * 2.0, flap.a + u * (0.7 * depth) + n * (0.7 * depth), 0.0)
+        blank.score(flap.a + u * 5.0 + n * 5.0, flap.a + u * reach + n * reach, 0.0)
     for panel, layer in ((panels[1], 2), (panels[3], 3)):
         blank.flap(panel.edge("right"), W / 2, 90.0, offset=layer * t, taper=(W / 4, W / 4))
     return [blank.piece("box")]
@@ -1206,7 +1213,7 @@ def fold(doc, rule, piece, name="Folded"):
         return feature
     scores = doc.addObject("Part::Feature", name + "Scores")
     scores.Shape = Part.makeCompound(piece.lines)
-    feature = doc.addObject("SheetDesign::Refold", name)
+    feature = doc.addObject("SheetDesign::FoldBlank", name)
     feature.Profile = profile
     feature.BendLines = scores
     feature.Angles = piece.angles

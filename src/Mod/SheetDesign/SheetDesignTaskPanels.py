@@ -293,10 +293,10 @@ class TaskCut(TaskPanel):
         self.form.profileLabel.setText(label_of(self.obj.Profile))
 
 
-class TaskRefold(TaskPanel):
-    ui_file = "TaskRefold.ui"
-    title = "Refold"
-    icon = "SheetDesign_Refold"
+class TaskFoldBlank(TaskPanel):
+    ui_file = "TaskFoldBlank.ui"
+    title = "Fold Blank"
+    icon = "SheetDesign_FoldBlank"
 
     def setup(self):
         """One row with an angle for each bend line."""
@@ -601,10 +601,10 @@ class TaskExtend(TaskPanel):
             self.widget(name).setEnabled(profile is None)
 
 
-class TaskFold(TaskPanel):
-    ui_file = "TaskFold.ui"
-    title = "Fold"
-    icon = "SheetDesign_Fold"
+class TaskSketchedBend(TaskPanel):
+    ui_file = "TaskSketchedBend.ui"
+    title = "Sketched Bend"
+    icon = "SheetDesign_SketchedBend"
 
     def update(self):
         super().update()
@@ -681,14 +681,14 @@ PANELS = {
     "SheetDesign::Form": TaskForm,
     "SheetDesign::Perforation": TaskPerforation,
     "SheetDesign::Extend": TaskExtend,
-    "SheetDesign::Fold": TaskFold,
+    "SheetDesign::SketchedBend": TaskSketchedBend,
     "SheetDesign::Hem": TaskHem,
     "SheetDesign::CornerRelief": TaskCornerRelief,
     "SheetDesign::BaseShape": TaskBaseShape,
     "SheetDesign::BasePanel": TaskBasePanel,
     "SheetDesign::Flange": TaskFlange,
     "SheetDesign::Cut": TaskCut,
-    "SheetDesign::Refold": TaskRefold,
+    "SheetDesign::FoldBlank": TaskFoldBlank,
     "SheetDesign::Unfold": TaskUnfold,
     "SheetDesign::FlatPattern": TaskFlatPattern,
 }

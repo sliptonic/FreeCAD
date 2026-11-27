@@ -333,8 +333,8 @@ class TestSheetDesign(unittest.TestCase):
 
     # ------------------------------------------------------- entry from a finished flat pattern
 
-    def add_refold(self, face, lines, angles):
-        obj = self.doc.addObject("SheetDesign::Refold", "Refold")
+    def add_fold_blank(self, face, lines, angles):
+        obj = self.doc.addObject("SheetDesign::FoldBlank", "FoldBlank")
         obj.Profile = self.add_shape(face, "FlatProfile")
         obj.BendLines = self.add_shape(Part.makeCompound(lines), "BendLines")
         obj.Angles = angles
@@ -349,12 +349,12 @@ class TestSheetDesign(unittest.TestCase):
             )
         )
 
-    def test_refold_one_bend(self):
+    def test_fold_blank_one_bend(self):
         allowance = self.allowance()
         face = self.flat_rectangle(self.LENGTH + allowance + 20.0)
         x = self.LENGTH + allowance / 2
         line = Part.makeLine(V(x, 10, 0), V(x, 40, 0))  # The line can be shorter than the part.
-        folded = self.add_refold(face, [line], [90.0])
+        folded = self.add_fold_blank(face, [line], [90.0])
         self.assertSolid(folded)
         box = folded.Shape.BoundBox
         self.assertAlmostEqual(box.XMax, self.LENGTH + self.R + self.T, places=6)
@@ -364,15 +364,15 @@ class TestSheetDesign(unittest.TestCase):
         self.assertAlmostEqual(flat.Shape.Faces[0].Area, face.Area, places=6)
         self.assertEqual(len(flat.Shape.Faces[0].Edges), 4)
 
-    def test_refold_negative_angle_bends_down(self):
+    def test_fold_blank_negative_angle_bends_down(self):
         allowance = self.allowance()
         face = self.flat_rectangle(self.LENGTH + allowance + 20.0)
         x = self.LENGTH + allowance / 2
-        folded = self.add_refold(face, [Part.makeLine(V(x, 0, 0), V(x, 50, 0))], [-90.0])
+        folded = self.add_fold_blank(face, [Part.makeLine(V(x, 0, 0), V(x, 50, 0))], [-90.0])
         self.assertSolid(folded)
         self.assertAlmostEqual(folded.Shape.BoundBox.ZMin, -(self.R + 20.0), places=6)
 
-    def test_refold_agrees_with_flanges(self):
+    def test_fold_blank_agrees_with_flanges(self):
         """The flat pattern of a part with flanges gives the same part again."""
         first = self.add_end_flange(self.add_base(), Gap1=5.0, Gap2=5.0)
         second = self.add_flange(
@@ -382,7 +382,7 @@ class TestSheetDesign(unittest.TestCase):
         face = flat.Shape.Faces[0]
         lines = flat.Shape.SubShapes[1:]
         self.assertEqual(len(lines), 2)
-        folded = self.add_refold(face, lines, [90.0, 45.0])
+        folded = self.add_fold_blank(face, lines, [90.0, 45.0])
         self.assertSolid(folded)
         self.assertAlmostEqual(folded.Shape.Volume, second.Shape.Volume, places=4)
         for name in ("XMin", "XMax", "YMin", "YMax", "ZMin", "ZMax"):
@@ -395,9 +395,9 @@ class TestSheetDesign(unittest.TestCase):
         more = self.add_flange(folded, V(x, 5, z), V(x, self.WIDTH - 5, z), Length=8.0)
         self.assertSolid(more)
 
-    def test_refold_line_off_the_part_is_rejected(self):
+    def test_fold_blank_line_off_the_part_is_rejected(self):
         face = self.flat_rectangle(100.0)
-        folded = self.add_refold(face, [Part.makeLine(V(200, 0, 0), V(200, 50, 0))], [90.0])
+        folded = self.add_fold_blank(face, [Part.makeLine(V(200, 0, 0), V(200, 50, 0))], [90.0])
         self.assertFalse(folded.isValid())
 
     # ----------------------------------------------------------------- entry from a folded solid
@@ -567,7 +567,7 @@ class TestSheetDesign(unittest.TestCase):
             Part.makeLine(V(0, depth + offset + a / 2, 0), V(length, depth + offset + a / 2, 0)),
             Part.makeLine(V(x2, depth + a / 2, 0), V(x2 + width, depth + a / 2, 0)),
         ]
-        return self.add_refold(face, lines, [90.0])
+        return self.add_fold_blank(face, lines, [90.0])
 
     def flat_rectangle_at(self, x0, y0, x1, y1):
         return Part.Face(
@@ -625,11 +625,11 @@ class TestSheetDesign(unittest.TestCase):
         line = flat.Shape.getElement(reverse[f"{flange.Name}_BendLine"])
         self.assertAlmostEqual(line.CenterOfMass.x, self.LENGTH + self.allowance() / 2, places=6)
 
-    def test_refold_and_unfold_names(self):
+    def test_fold_blank_and_unfold_names(self):
         allowance = self.allowance()
         face = self.flat_rectangle(self.LENGTH + allowance + 20.0)
         x = self.LENGTH + allowance / 2
-        folded = self.add_refold(face, [Part.makeLine(V(x, 0, 0), V(x, 50, 0))], [90.0])
+        folded = self.add_fold_blank(face, [Part.makeLine(V(x, 0, 0), V(x, 50, 0))], [90.0])
         faces = self.names(folded, "Face")
         self.assertTrue({f"{folded.Name}_Root_Top", f"{folded.Name}_L1_Top"} <= faces)
         converted = self.add_unfold(self.part_bracket(), 1.0)
@@ -793,29 +793,29 @@ class TestSheetDesign(unittest.TestCase):
         face = faces[0].fuse(faces[1:]).removeSplitter().Faces[0]
         return face, [Part.makeLine(V(0, 100 + a / 2, 0), V(200, 100 + a / 2, 0))]
 
-    def test_refold_flap_that_tapers_from_the_bend_line(self):
+    def test_fold_blank_flap_that_tapers_from_the_bend_line(self):
         face, lines = self.tapered_flap()
-        folded = self.add_refold(face, lines, [90.0])
+        folded = self.add_fold_blank(face, lines, [90.0])
         self.assertSolid(folded)
         self.assertEqual(folded.Overlap.Value, 0.0)
         self.assertAlmostEqual(folded.Shape.Volume, face.Area * self.T, places=3)
         flat = self.add_flat(folded)
         self.assertAlmostEqual(flat.Shape.Faces[0].Area, face.Area, places=5)
 
-    def test_refold_tapered_flap_with_radius_zero(self):
+    def test_fold_blank_tapered_flap_with_radius_zero(self):
         self.rule.Thickness = 4.0
         self.rule.BendRadius = 0.0
         face, lines = self.tapered_flap()
-        folded = self.add_refold(face, lines, [90.0])
+        folded = self.add_fold_blank(face, lines, [90.0])
         self.assertSolid(folded)
         self.assertEqual(folded.Overlap.Value, 0.0)
 
-    def test_refold_with_hole_on_the_bend_line(self):
+    def test_fold_blank_with_hole_on_the_bend_line(self):
         allowance = self.allowance()
         face = self.flat_rectangle(self.LENGTH + allowance + 20.0)
         x = self.LENGTH + allowance / 2
         face = face.cut(self.rectangle(x - 6, 20, x + 6, 30)).Faces[0]
-        folded = self.add_refold(face, [Part.makeLine(V(x, 0, 0), V(x, self.WIDTH, 0))], [90.0])
+        folded = self.add_fold_blank(face, [Part.makeLine(V(x, 0, 0), V(x, self.WIDTH, 0))], [90.0])
         self.assertSolid(folded)
         self.assertEqual(folded.Overlap.Value, 0.0)
         self.assertAlmostEqual(folded.Shape.Volume, face.Area * self.T, places=4)
@@ -1001,7 +1001,7 @@ class TestSheetDesign(unittest.TestCase):
         self.rule.BendRadius = 0.0
         return 0.5 * 4.0 * math.pi / 2
 
-    def test_refold_round_flap_with_radius_zero(self):
+    def test_fold_blank_round_flap_with_radius_zero(self):
         """Box style 0427: the arcs of the flap start on the score."""
         a = self.board()
         arc1 = Part.Arc(
@@ -1016,7 +1016,7 @@ class TestSheetDesign(unittest.TestCase):
             )
         )
         face = self.rectangle(0, 0, 200, 100).fuse(flap).removeSplitter().Faces[0]
-        folded = self.add_refold(face, [Part.makeLine(V(0, 100 + a / 2, 0), V(200, 100 + a / 2, 0))], [90.0])
+        folded = self.add_fold_blank(face, [Part.makeLine(V(0, 100 + a / 2, 0), V(200, 100 + a / 2, 0))], [90.0])
         self.assertSolid(folded)
         self.assertEqual(folded.Overlap.Value, 0.0)
         self.assertAlmostEqual(self.add_flat(folded).Shape.Faces[0].Area, face.Area, places=5)
@@ -1030,12 +1030,12 @@ class TestSheetDesign(unittest.TestCase):
         self.assertFalse(cut.isValid())
         self.assertIn("radius zero", cut.getStatusString())
 
-    def test_refold_line_with_angle_zero_stays_flat(self):
+    def test_fold_blank_line_with_angle_zero_stays_flat(self):
         allowance = self.allowance()
         face = self.flat_rectangle(self.LENGTH + allowance + 20.0)
         x = self.LENGTH + allowance / 2
         lines = [Part.makeLine(V(50, 0, 0), V(50, self.WIDTH, 0)), Part.makeLine(V(x, 0, 0), V(x, self.WIDTH, 0))]
-        folded = self.add_refold(face, lines, [0.0, 90.0])
+        folded = self.add_fold_blank(face, lines, [0.0, 90.0])
         self.assertSolid(folded)
         self.assertAlmostEqual(folded.Shape.BoundBox.ZMax, self.T + self.R + 20.0, places=6)
         self.assertEqual(len(self.add_flat(folded).Shape.SubShapes), 2)  # The face and one bend line.
@@ -1057,9 +1057,9 @@ class TestSheetDesign(unittest.TestCase):
             Part.makeLine(V(length + a, width + 2 * a, 0), V(length + depth - a, width + depth, 0)),
             Part.makeLine(V(x5, width + a, 0), V(x5, width + a + depth, 0)),  # Web to wall 2.
         ]
-        return face, self.add_refold(face, lines, angles)
+        return face, self.add_fold_blank(face, lines, angles)
 
-    def test_refold_corner_web_closes_a_loop_of_panels(self):
+    def test_fold_blank_corner_web_closes_a_loop_of_panels(self):
         """Box styles 0226 and 0760: two walls and the two halves of a web meet at a corner."""
         face, folded = self.web_corner([90.0, 90.0, 180.0, 180.0, 90.0])
         self.assertSolid(folded)
@@ -1073,7 +1073,7 @@ class TestSheetDesign(unittest.TestCase):
         self.assertAlmostEqual(flat.Shape.Faces[0].Area, face.Area, places=5)
         self.assertEqual(len(flat.Shape.SubShapes), 6)  # The face and five bend lines.
 
-    def test_refold_corner_web_with_wrong_angle_is_rejected(self):
+    def test_fold_blank_corner_web_with_wrong_angle_is_rejected(self):
         _face, folded = self.web_corner([90.0, 90.0, 180.0, 180.0, 45.0])
         self.assertFalse(folded.isValid())
         self.assertIn("do not close", folded.getStatusString())
@@ -1760,7 +1760,7 @@ class TestSheetDesign(unittest.TestCase):
 
     def test_fold_divides_a_panel(self):
         base = self.add_base()
-        fold = self.add_feature("Fold", "Fold", Source=base, BendLines=self.bend_line(60.0))
+        fold = self.add_feature("SketchedBend", "SketchedBend", Source=base, BendLines=self.bend_line(60.0))
         self.assertSolid(fold)
         half = self.allowance() / 2
         box = fold.Shape.BoundBox
@@ -1778,7 +1778,7 @@ class TestSheetDesign(unittest.TestCase):
     def test_fold_moves_the_features_after_the_line(self):
         flange = self.add_end_flange(self.add_base())
         before = self.add_flat(flange).Shape.Faces[0].Area
-        fold = self.add_feature("Fold", "Fold", Source=flange, BendLines=self.bend_line(60.0))
+        fold = self.add_feature("SketchedBend", "SketchedBend", Source=flange, BendLines=self.bend_line(60.0))
         self.assertSolid(fold)
         self.assertEqual(fold.Overlap.Value, 0.0)
         half = self.allowance() / 2
@@ -1791,7 +1791,7 @@ class TestSheetDesign(unittest.TestCase):
         x = self.LENGTH + self.R + self.T
         z = self.T + self.R + 20.0
         line = self.add_shape(Part.makeLine(V(x, 0, z), V(x, self.WIDTH, z)), "Line")
-        fold = self.add_feature("Fold", "Fold", Source=flange, BendLines=line, Angle=45.0)
+        fold = self.add_feature("SketchedBend", "SketchedBend", Source=flange, BendLines=line, Angle=45.0)
         self.assertSolid(fold)
         self.assertEqual(fold.Overlap.Value, 0.0)
         flat = self.add_flat(fold)
@@ -1802,7 +1802,7 @@ class TestSheetDesign(unittest.TestCase):
         base = self.add_base()
         hole = Part.Face(Part.Wire(Part.makeCircle(5.0, V(60, 25, 0))))
         cut = self.add_cut(base, self.add_shape(hole, "Hole"), "Flat")
-        fold = self.add_feature("Fold", "Fold", Source=cut, BendLines=self.bend_line(60.0))
+        fold = self.add_feature("SketchedBend", "SketchedBend", Source=cut, BendLines=self.bend_line(60.0))
         self.assertSolid(fold)
         self.assertEqual(fold.Overlap.Value, 0.0)
         expected = self.LENGTH * self.WIDTH - math.pi * 25.0
@@ -1810,7 +1810,7 @@ class TestSheetDesign(unittest.TestCase):
 
     def test_fold_line_off_the_part_is_rejected(self):
         base = self.add_base()
-        fold = self.add_feature("Fold", "Fold", Source=base, BendLines=self.bend_line(60.0, z=10.0))
+        fold = self.add_feature("SketchedBend", "SketchedBend", Source=base, BendLines=self.bend_line(60.0, z=10.0))
         self.assertFalse(fold.isValid())
         self.assertIn("not on a panel", fold.getStatusString())
 
@@ -1973,7 +1973,7 @@ class TestSheetDesign(unittest.TestCase):
         before = self.add_flat(flange).Shape.Faces[0].Area
         self.assertAlmostEqual(self.add_flat(wrapped).Shape.Faces[0].Area, before - 120.0, places=5)
 
-    # ---------------------------------------------------------------- unfold of sharp folds
+    # ---------------------------------------------------------------- unfold of sharp bends
 
     def sharp_bracket(self, height=30.0):
         base = Part.makeBox(self.LENGTH, self.WIDTH, self.T)
@@ -2407,10 +2407,10 @@ class TestSheetDesign(unittest.TestCase):
         worst = SheetDesignFold.worst_overlap(flat, steps=8, in_sequence=True)
         self.assertGreaterEqual(worst[0], 0.0)
 
-    def test_refold_with_all_angles_zero_is_the_flat_blank(self):
+    def test_fold_blank_with_all_angles_zero_is_the_flat_blank(self):
         face = self.flat_rectangle(140.0)
         line = Part.makeLine(V(100, 0, 0), V(100, self.WIDTH, 0))
-        obj = self.add_refold(face, [line], [0.0])
+        obj = self.add_fold_blank(face, [line], [0.0])
         self.assertSolid(obj)
         self.assertAlmostEqual(obj.Shape.Volume, 140.0 * self.WIDTH * self.T, places=6)
 

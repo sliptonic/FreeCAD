@@ -2696,7 +2696,7 @@ SheetModel SheetModel::fromSolid(
             }
             BRepAdaptor_Surface bendSurface(bendFace);
             if (bendSurface.GetType() == GeomAbs_Plane) {
-                // A sharp fold: two faces of the top side meet on a line with no cylinder. The
+                // A sharp bend: two faces of the top side meet on a line with no cylinder. The
                 // model gets a bend with the radius of the rule, tangent to the two faces.
                 const gp_Dir other = outerNormal(bendFace).Transformed(inverse);
                 const double cosine = other.Z();
@@ -2738,7 +2738,7 @@ SheetModel SheetModel::fromSolid(
                     if (parts.size() != 1) {
                         throw Base::ValueError(
                             "Sheet design: a panel of the solid is too small for the bend radius "
-                            "at a sharp fold"
+                            "at a sharp bend"
                         );
                     }
                     return parts.front();
@@ -2756,7 +2756,7 @@ SheetModel SheetModel::fromSolid(
                 model.connect(current, childIndex, a2, b2, n, angle, up, radius, TopoDS_Shape());
                 TopoDS_Face childProfile = toFlat(bendFace, model.panels[childIndex].folded);
                 if (childProfile.IsNull()) {
-                    throw Base::ValueError("Sheet design: cannot read a sharp fold of the solid");
+                    throw Base::ValueError("Sheet design: cannot read a sharp bend of the solid");
                 }
                 if (setback > looseTol) {
                     const double allowance = model.bends.back().allowance;
@@ -2773,7 +2773,7 @@ SheetModel SheetModel::fromSolid(
                 model.panels[childIndex].profile = childProfile;
                 model.panels[childIndex].tag = tag + "_P" + std::to_string(childIndex + 1);
                 model.addOrigins(childProfile, gp_Trsf(), model.panels[childIndex].tag + "_E", childIndex);
-                ++model.sharpFolds;
+                ++model.sharpBends;
                 visited.Add(bendFace);
                 panelFaces.emplace_back(bendFace, childIndex);
                 queue.emplace_back(childIndex, bendFace);

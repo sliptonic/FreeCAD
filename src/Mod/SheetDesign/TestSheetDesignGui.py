@@ -202,23 +202,23 @@ class TestSheetDesignGui(unittest.TestCase):
         self.assertFalse(self.flange.isValid())
         self.assertIn("gaps", form.statusLabel.text())
 
-    def test_refold_panel_sets_the_angles(self):
+    def test_fold_blank_panel_sets_the_angles(self):
         outline = self.doc.addObject("Part::Feature", "Outline")
         outline.Shape = Part.makePolygon([V(0, 0, 0), V(140, 0, 0), V(140, 50, 0), V(0, 50, 0), V(0, 0, 0)])
         lines = self.doc.addObject("Part::Feature", "Lines")
         lines.Shape = Part.makeCompound(
             [Part.makeLine(V(40, 0, 0), V(40, 50, 0)), Part.makeLine(V(100, 0, 0), V(100, 50, 0))]
         )
-        refold = self.add("SheetDesign::Refold", "Refold")
-        refold.Profile = outline
-        refold.BendLines = lines
-        refold.Rule = self.rule
+        blank = self.add("SheetDesign::FoldBlank", "FoldBlank")
+        blank.Profile = outline
+        blank.BendLines = lines
+        blank.Rule = self.rule
         self.doc.recompute()
-        panel = self.open_panel(refold)
+        panel = self.open_panel(blank)
         self.assertEqual(panel.form.anglesTable.rowCount(), 2)
         panel.spins[1].setValue(-45.0)
-        self.assertEqual(list(refold.Angles), [90.0, -45.0])
-        self.assertTrue(refold.isValid(), refold.getStatusString())
+        self.assertEqual(list(blank.Angles), [90.0, -45.0])
+        self.assertTrue(blank.isValid(), blank.getStatusString())
 
     # ------------------------------------------------------------------ selection gate
 
@@ -254,7 +254,7 @@ class TestSheetDesignGui(unittest.TestCase):
         top = [self.edge(V(0, 0, self.T), V(0, 50, self.T))]
         extend = self.add("SheetDesign::Extend", "Extend")
         extend.Edge = (self.base, top)
-        fold = self.add("SheetDesign::Fold", "Fold")
+        fold = self.add("SheetDesign::SketchedBend", "SketchedBend")
         fold.Source = self.base
         fold.BendLines = line
         hem = self.add("SheetDesign::Hem", "Hem")

@@ -237,10 +237,10 @@ class CommandBase(_Command):
         _finish(doc, hide=[profile], edit=obj if is_open else None)
 
 
-class CommandRefold(_Command):
-    name = "SheetDesign_Refold"
-    menu = "Refold"
-    tip = "Folds a selected flat outline along the lines of a selected sketch of bend lines"
+class CommandFoldBlank(_Command):
+    name = "SheetDesign_FoldBlank"
+    menu = "Fold Blank"
+    tip = "Makes a new part from a flat blank: folds the selected outline on the lines of the selected sketch"
 
     def _pick(self):
         sel = [obj for obj in FreeCADGui.Selection.getSelection() if hasattr(obj, "Shape")]
@@ -258,11 +258,11 @@ class CommandRefold(_Command):
     def Activated(self):
         profile, lines = self._pick()
         doc = profile.Document
-        doc.openTransaction("Refold")
+        doc.openTransaction("Fold Blank")
         body = _body_for(doc, profile, lines)
         _adopt(body, profile)
         _adopt(body, lines)
-        obj = _attach(body.newObject("SheetDesign::Refold", "Refold"))
+        obj = _attach(body.newObject("SheetDesign::FoldBlank", "FoldBlank"))
         obj.Rule = _find_rule(doc)
         obj.Profile = profile
         obj.BendLines = lines
@@ -464,16 +464,16 @@ class CommandExtend(_Command):
         _finish(doc, hide=[source] + ([profile] if profile is not None else []), edit=obj)
 
 
-class CommandFold(CommandCut):
-    name = "SheetDesign_Fold"
-    menu = "Fold"
-    tip = "Bends the selected sheet design feature on the lines of the selected sketch"
+class CommandSketchedBend(CommandCut):
+    name = "SheetDesign_SketchedBend"
+    menu = "Sketched Bend"
+    tip = "Adds a bend on each line of the selected sketch. The lines are on panels of the selected feature"
 
     def Activated(self):
         source, lines = self._pick()
         doc = source.Document
-        doc.openTransaction("Fold")
-        obj = _attach(_new_after(source, "SheetDesign::Fold", "Fold"))
+        doc.openTransaction("Sketched Bend")
+        obj = _attach(_new_after(source, "SheetDesign::SketchedBend", "SketchedBend"))
         obj.Source = source
         obj.BendLines = lines
         _advance_flat_patterns(source, obj)
@@ -644,13 +644,13 @@ def register():
         CommandRule,
         CommandBase,
         CommandBaseShape,
-        CommandRefold,
+        CommandFoldBlank,
         CommandUnfold,
         CommandConvert,
         CommandFlange,
         CommandHem,
         CommandExtend,
-        CommandFold,
+        CommandSketchedBend,
         CommandCut,
         CommandCutFlat,
         CommandCornerRelief,

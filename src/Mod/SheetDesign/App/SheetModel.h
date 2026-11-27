@@ -218,7 +218,7 @@ public:
         const std::vector<BendLine>& lines,
         const gp_Trsf& placement,
         const SheetParams& params,
-        const std::string& tag = "Refold"
+        const std::string& tag = "FoldBlank"
     );
 
     /**
@@ -326,8 +326,8 @@ public:
         const std::string& tag
     );
 
-    /// The number of sharp folds that fromSolid replaced with a bend.
-    int sharpFolds {0};
+    /// The number of sharp bends that fromSolid replaced with a bend.
+    int sharpBends {0};
 
     /// The folded solid. With fuse = false, the result is a compound of solids.
     /**
