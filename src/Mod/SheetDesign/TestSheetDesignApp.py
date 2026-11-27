@@ -1641,6 +1641,78 @@ class TestSheetDesign(unittest.TestCase):
         self.doc.recompute()
         self.assertAlmostEqual(flat.Shape.BoundBox.XLength, self.flat_length(0.5, 8.0), places=6)
 
+    # ------------------------------------------------------------------------- bend table
+
+    def add_bend_table(self, rows, kind="Bend allowance"):
+        """Put a bend table on the rule. A row is (angle in degrees, radius, value)."""
+        for name in ("AllowanceAngles", "AllowanceRadii", "AllowanceValues"):
+            self.rule.addProperty("App::PropertyFloatList", name, "Bend Allowance Table")
+        self.rule.addProperty("App::PropertyEnumeration", "AllowanceKind", "Bend Allowance Table")
+        self.rule.AllowanceKind = ["Bend allowance", "Bend deduction"]
+        self.rule.AllowanceKind = kind
+        self.rule.AllowanceAngles = [float(row[0]) for row in rows]
+        self.rule.AllowanceRadii = [float(row[1]) for row in rows]
+        self.rule.AllowanceValues = [float(row[2]) for row in rows]
+
+    def test_bend_table_gives_the_bend_allowance(self):
+        self.add_bend_table([(90, self.R, 3.0)])
+        flange = self.add_end_flange(self.add_base())
+        flat = self.add_flat(flange)
+        self.assertAlmostEqual(flat.Shape.BoundBox.XLength, self.LENGTH + 3.0 + 20.0, places=6)
+        self.assertEqual(list(flat.BendSources), ["Table"])
+        self.assertAlmostEqual(flat.BendAllowances[0], 3.0, places=6)
+        self.assertTrue(flange.isValid(), flange.getStatusString())
+
+    def test_bend_table_with_bend_deductions(self):
+        """Flat length = outer size 1 + outer size 2 - deduction, from the virtual sharp."""
+        deduction = 3.3
+        self.add_bend_table([(90, self.R, deduction)], kind="Bend deduction")
+        flange = self.add_end_flange(self.add_base())
+        flat = self.add_flat(flange)
+        # At 90 degrees the outside setback is the radius plus the thickness.
+        setback = self.R + self.T
+        outer = (self.LENGTH + setback) + (20.0 + setback)
+        self.assertAlmostEqual(flat.Shape.BoundBox.XLength, outer - deduction, places=6)
+        self.assertEqual(list(flat.BendSources), ["Table"])
+
+    def test_bend_table_interpolates_between_two_angles(self):
+        self.add_bend_table([(30, self.R, 1.0), (90, self.R, 3.4)])
+        flange = self.add_end_flange(self.add_base())
+        flange.Angle = 60.0
+        flat = self.add_flat(flange)
+        self.assertAlmostEqual(flat.BendAllowances[0], 2.2, places=6)
+        self.assertEqual(list(flat.BendSources), ["Table"])
+
+    def test_bend_with_no_row_uses_the_k_factor(self):
+        # A row for a different radius, and an angle out of the range of the rows.
+        self.add_bend_table([(90, self.R + 2.0, 9.0), (30, self.R, 1.0), (45, self.R, 1.5)])
+        flange = self.add_end_flange(self.add_base())
+        flat = self.add_flat(flange)
+        self.assertAlmostEqual(flat.Shape.BoundBox.XLength, self.flat_length(0.5), places=6)
+        self.assertEqual(list(flat.BendSources), ["K-factor"])
+
+    def test_bend_table_from_the_k_factor_gives_the_same_flat_pattern(self):
+        flange = self.add_end_flange(self.add_base())
+        flat = self.add_flat(flange)
+        length = flat.Shape.BoundBox.XLength
+        allowance = (self.R + 0.5 * self.T) * math.pi / 2
+        self.add_bend_table([(90, self.R, allowance)])
+        self.doc.recompute()
+        self.assertAlmostEqual(flat.Shape.BoundBox.XLength, length, places=6)
+        self.assertEqual(list(flat.BendSources), ["Table"])
+
+    def test_bend_deduction_for_a_hem_angle_is_rejected(self):
+        self.add_bend_table([(180, self.R, 3.0)], kind="Bend deduction")
+        base = self.add_base()
+        self.assertFalse(base.isValid())
+        self.assertIn("170", base.getStatusString())
+
+    def test_bend_table_with_lists_of_different_length_is_rejected(self):
+        self.add_bend_table([(90, self.R, 3.0)])
+        self.rule.AllowanceValues = [3.0, 4.0]
+        self.doc.recompute()
+        self.assertFalse(self.add_base().isValid())
+
     def test_k_factor_table_change_updates_the_part(self):
         self.add_k_table()
         flange = self.add_end_flange(self.add_base())
@@ -2311,7 +2383,7 @@ class TestSheetDesign(unittest.TestCase):
         self.assertEqual(notes.Symbol.count("<circle"), 2)
         self.assertAlmostEqual(notes.X.Value, view.X.Value, places=6)
         rows, layout = SheetDesignDrawing.table_rows(flat)
-        self.assertEqual(rows, [(1, "Up", "90°", "1"), (2, "Down", "45°", "1")])
+        self.assertEqual(rows, [(1, "Up", "90°", "1", "K-factor"), (2, "Down", "45°", "1", "K-factor")])
         self.assertIn(f"Flat size: {layout.box.XLength:.2f} x {layout.box.YLength:.2f} mm", table.Symbol)
         self.assertIn("Thickness: 2 mm", table.Symbol)
         self.assertIn("Scale of the view: 1:1", table.Symbol)

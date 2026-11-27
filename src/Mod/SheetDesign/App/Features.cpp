@@ -265,6 +265,60 @@ void readKFactorTable(const App::DocumentObject* rule, SheetParams& params, bool
     }
 }
 
+/**
+ * Read the optional bend table of the rule: the list properties AllowanceAngles (degrees),
+ * AllowanceRadii, and AllowanceValues. AllowanceKind says what a value is: a bend allowance, or
+ * a bend deduction. A bend deduction is measured from the virtual sharp:
+ * deduction = 2 * outside setback - allowance.
+ */
+void readBendTable(const App::DocumentObject* rule, SheetParams& params)
+{
+    auto list = [rule](const char* name) {
+        auto* prop = freecad_cast<App::PropertyFloatList*>(rule->getPropertyByName(name));
+        return prop ? prop->getValues() : std::vector<double>();
+    };
+    const std::vector<double> angles = list("AllowanceAngles");
+    const std::vector<double> radii = list("AllowanceRadii");
+    const std::vector<double> values = list("AllowanceValues");
+    if (angles.size() != radii.size() || angles.size() != values.size()) {
+        throw Base::ValueError(
+            "Sheet design: the bend table of the rule must have the same number of angles, radii, "
+            "and values"
+        );
+    }
+    const bool deduction = ruleText(rule, "AllowanceKind") == "Bend deduction";
+    for (std::size_t index = 0; index < angles.size(); ++index) {
+        BendRow row;
+        row.angle = Base::toRadians(angles[index]);
+        row.radius = radii[index];
+        row.allowance = values[index];
+        if (row.angle <= 0.0 || row.radius < 0.0) {
+            throw Base::ValueError("Sheet design: an angle or a radius of the bend table is not valid");
+        }
+        if (deduction) {
+            // The virtual sharp is too far away for a use above this angle, and it does not
+            // exist at 180 degrees.
+            if (angles[index] > 170.0) {
+                throw Base::ValueError(
+                    "Sheet design: a bend deduction is not possible for an angle larger than 170 "
+                    "degrees. Use a table of bend allowances"
+                );
+            }
+            row.allowance = 2.0 * SheetModel::outsideSetback(row.angle, row.radius, params.thickness)
+                - values[index];
+        }
+        if (row.allowance < 0.0) {
+            throw Base::ValueError(
+                "Sheet design: a row of the bend table gives a bend allowance smaller than zero"
+            );
+        }
+        params.bendTable.push_back(row);
+    }
+    std::sort(params.bendTable.begin(), params.bendTable.end(), [](const BendRow& a, const BendRow& b) {
+        return a.angle < b.angle;
+    });
+}
+
 /// The points of an open wire of straight segments, in their sequence.
 std::vector<gp_Pnt> sectionPoints(const TopoDS_Wire& wire)
 {
@@ -307,6 +361,7 @@ SheetParams readRule(const App::DocumentObject* rule)
         params.kFactor /= 2.0;
     }
     readKFactorTable(rule, params, din);
+    readBendTable(rule, params);
 
     // The relief is optional in the rule. It applies to each flange that does not give its own.
     const std::string type = ruleText(rule, "ReliefType");
@@ -1616,6 +1671,20 @@ FlatPattern::FlatPattern()
     );
     ADD_PROPERTY_TYPE(BendRadii, (0.0), "Sheet Design", output, "Inner radius of each bend");
     ADD_PROPERTY_TYPE(
+        BendAllowances,
+        (0.0),
+        "Sheet Design",
+        output,
+        "Bend allowance of each bend: the width of its bend zone in the flat pattern"
+    );
+    ADD_PROPERTY_TYPE(
+        BendSources,
+        (""),
+        "Sheet Design",
+        output,
+        "Source of each bend allowance: the bend table of the rule, or the K-factor"
+    );
+    ADD_PROPERTY_TYPE(
         BendOrder,
         (0L),
         "Sheet Design",
@@ -1626,6 +1695,8 @@ FlatPattern::FlatPattern()
     BendOrder.setValues(std::vector<long>());
     BendAngles.setValues(std::vector<double>());
     BendRadii.setValues(std::vector<double>());
+    BendAllowances.setValues(std::vector<double>());
+    BendSources.setValues(std::vector<std::string>());
     Source.setScope(App::LinkScope::Global);
 }
 
@@ -1675,12 +1746,21 @@ App::DocumentObjectExecReturn* FlatPattern::execute()
         Shape.setValue(namedShape(compound, names, getID()));
         std::vector<double> angles;
         std::vector<double> radii;
+        std::vector<double> allowances;
+        std::vector<std::string> sources;
         for (const Bend& bend : sheet->bends) {
             angles.push_back((bend.up ? 1.0 : -1.0) * Base::toDegrees(bend.angle));
             radii.push_back(bend.radius);
+            allowances.push_back(bend.allowance);
+            double value = 0.0;
+            const bool table = sheet->tableAllowance(bend.angle, bend.radius, value)
+                && std::fabs(value - bend.allowance) < 1.0e-6;
+            sources.emplace_back(table ? "Table" : "K-factor");
         }
         BendAngles.setValues(angles);
         BendRadii.setValues(radii);
+        BendAllowances.setValues(allowances);
+        BendSources.setValues(sources);
     }
     catch (const Standard_Failure& e) {
         return failure(e.GetMessageString());

@@ -41,7 +41,8 @@ class SheetDesignWorkbench(Workbench):
         import SheetDesignCommands
 
         commands = SheetDesignCommands.register()
-        self.appendToolbar("Sheet Design", commands)
+        menu_only = SheetDesignCommands.MENU_ONLY
+        self.appendToolbar("Sheet Design", [name for name in commands if name not in menu_only])
         self.appendMenu("Sheet Design", commands)
 
     def GetClassName(self):

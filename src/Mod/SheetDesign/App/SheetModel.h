@@ -55,6 +55,14 @@ struct Relief
     double depth {0.0};  ///< From the bend line into the parent panel.
 };
 
+/// One row of a bend table.
+struct BendRow
+{
+    double angle {0.0};      ///< Bend angle in radians.
+    double radius {0.0};     ///< Inner bend radius.
+    double allowance {0.0};  ///< Length of the neutral line in the bend zone.
+};
+
 /// The values that apply to the full sheet.
 struct SheetParams
 {
@@ -66,6 +74,10 @@ struct SheetParams
     /// sequence of the ratio. A bend uses the first row with a ratio that is not smaller than
     /// its own ratio. With no table, all bends use kFactor.
     std::vector<std::pair<double, double>> kTable;
+    /// Optional bend table: the bend allowance that a shop measured for a bend angle and an
+    /// inner radius. A bend with a row for its radius uses the table: the allowance of its
+    /// angle, with a linear interpolation between two rows. All other bends use the K-factor.
+    std::vector<BendRow> bendTable;
 };
 
 /**
@@ -393,6 +405,14 @@ public:
 
     double bendAllowance(double angle) const;
     double bendAllowance(double angle, double radius) const;
+
+    /// The bend allowance from the bend table. Returns false if the table has no rows for the
+    /// radius, or if the angle is not in the range of those rows.
+    bool tableAllowance(double angle, double radius, double& allowance) const;
+
+    /// The outside setback of a bend: the distance from the tangent line to the virtual sharp,
+    /// (radius + thickness) * tan(angle / 2). A bend deduction is measured from the virtual sharp.
+    static double outsideSetback(double angle, double radius, double thickness);
 
     /// The K-factor for a bend with this inner radius, from the table or the single value.
     double kFactorFor(double radius) const;

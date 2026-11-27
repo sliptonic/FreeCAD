@@ -398,6 +398,8 @@ public:
     /// to the top side of the root panel (up), a negative angle is a bend down.
     App::PropertyFloatList BendAngles;
     App::PropertyFloatList BendRadii;
+    App::PropertyFloatList BendAllowances;
+    App::PropertyStringList BendSources;
     /// The number of each bend in the sequence of the press brake. Empty: the model sequence.
     App::PropertyIntegerList BendOrder;
 

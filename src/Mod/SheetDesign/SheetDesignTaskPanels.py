@@ -391,8 +391,6 @@ class TaskFlatPattern(TaskPanel):
     icon = "SheetDesign_FlatPattern"
 
     def setup(self):
-        self.form.exportButton.clicked.connect(self.export)
-        self.form.drawingButton.clicked.connect(self.drawing)
         self.form.bendsTable.itemChanged.connect(self.sequence_changed)
         # A flat pattern from an older file has no bend data before its first recompute.
         if self.obj.Source is not None and not list(self.obj.BendAngles):
@@ -517,8 +515,14 @@ class TaskFlatPattern(TaskPanel):
                 translate("SheetDesign", "Direction"),
                 translate("SheetDesign", "Angle"),
                 translate("SheetDesign", "Radius"),
+                translate("SheetDesign", "Allowance"),
+                translate("SheetDesign", "Data"),
             ]
         )
+        allowances = list(getattr(self.obj, "BendAllowances", []))
+        sources = list(getattr(self.obj, "BendSources", []))
+        # The source of a bend allowance: the bend table of the rule, or the K-factor.
+        names = {"Table": translate("SheetDesign", "Table"), "K-factor": translate("SheetDesign", "K-factor")}
         table.horizontalHeader().setStretchLastSection(True)
         up, down = translate("SheetDesign", "Up"), translate("SheetDesign", "Down")
 
@@ -535,6 +539,8 @@ class TaskFlatPattern(TaskPanel):
                 unique(up if angles[i] >= 0 else down for i in group),
                 unique(f"{abs(angles[i]):g} °" for i in group),
                 unique(f"{radii[i]:g} mm" for i in group),
+                unique(f"{allowances[i]:.3f} mm" for i in group if i < len(allowances)),
+                unique(names.get(sources[i], sources[i]) for i in group if i < len(sources)),
             )
             for column, text in enumerate(texts):
                 item = QtGui.QTableWidgetItem(text)
@@ -567,18 +573,6 @@ class TaskFlatPattern(TaskPanel):
             self.changed()
         else:
             self.update()
-
-    def drawing(self):
-        import SheetDesignDrawing
-
-        page = SheetDesignDrawing.make_drawing(self.obj)[0]
-        if page.ViewObject is not None:
-            page.ViewObject.show()
-
-    def export(self):
-        FreeCADGui.Selection.clearSelection()
-        FreeCADGui.Selection.addSelection(self.obj)
-        FreeCADGui.runCommand("SheetDesign_ExportDxf")
 
 
 def edge_text(link):

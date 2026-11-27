@@ -781,7 +781,45 @@ double SheetModel::bendAllowance(double angle) const
 
 double SheetModel::bendAllowance(double angle, double radius) const
 {
+    double allowance = 0.0;
+    if (tableAllowance(angle, radius, allowance)) {
+        return allowance;
+    }
     return (radius + kFactorFor(radius) * params.thickness) * angle;
+}
+
+bool SheetModel::tableAllowance(double angle, double radius, double& allowance) const
+{
+    // The rows for this radius, in the sequence of the angle. The table is in that sequence.
+    const double near = 1.0e-3 * std::max(1.0, radius);
+    const BendRow* below = nullptr;
+    const BendRow* above = nullptr;
+    for (const BendRow& row : params.bendTable) {
+        if (std::fabs(row.radius - radius) > near) {
+            continue;
+        }
+        if (row.angle <= angle + 1.0e-9) {
+            below = &row;
+        }
+        if (row.angle >= angle - 1.0e-9 && !above) {
+            above = &row;
+        }
+    }
+    if (!below || !above) {
+        return false;
+    }
+    if (above->angle - below->angle < 1.0e-9) {
+        allowance = below->allowance;
+        return true;
+    }
+    const double part = (angle - below->angle) / (above->angle - below->angle);
+    allowance = below->allowance + part * (above->allowance - below->allowance);
+    return true;
+}
+
+double SheetModel::outsideSetback(double angle, double radius, double thickness)
+{
+    return (radius + thickness) * std::tan(angle / 2.0);
 }
 
 double SheetModel::kFactorFor(double radius) const

@@ -94,8 +94,9 @@ def notes_svg(flat, scale):
 def table_rows(flat):
     """The rows of the bend table: one row for each score, in the bend sequence.
 
-    A row is (number, direction, angle, radius). A score with bends of different angles shows
-    each value."""
+    A row is (number, direction, angle, radius, data). A score with bends of different angles
+    shows each value. The data is the source of the bend allowance: the bend table of the rule,
+    or the K-factor."""
     layout = SheetDesignExport.Layout(flat)
     rows = []
     for score in layout.scores:
@@ -110,6 +111,7 @@ def table_rows(flat):
                 "/".join(directions),
                 "/".join(f"{angle:g}°" for _direction, angle in values),
                 "/".join(f"{radius:g}" for radius in score.radii()),
+                "/".join(score.sources()),
             )
         )
     return sorted(rows), layout
@@ -122,7 +124,10 @@ def scale_text(scale):
 def table_svg(flat, scale=None):
     """The bend table with the flat size. The unit is mm on paper."""
     rows, layout = table_rows(flat)
-    columns = (("Bend", 14.0), ("Direction", 22.0), ("Angle", 18.0), ("Radius", 18.0))
+    columns = [("Bend", 14.0), ("Direction", 22.0), ("Angle", 18.0), ("Radius", 18.0)]
+    # The column of the data source shows only if a bend uses the bend table of the shop.
+    if any("Table" in row[4] for row in rows):
+        columns.append(("Data", 24.0))
     width = sum(size for _title, size in columns)
     row = 6.0
     lines = [f"Flat size: {layout.box.XLength:.2f} x {layout.box.YLength:.2f} mm"]

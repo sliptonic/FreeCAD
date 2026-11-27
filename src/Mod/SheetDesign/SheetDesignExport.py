@@ -188,7 +188,8 @@ def bend_numbers(flat, count=None):
 class Bend:
     """One bend of the model: the part of a score between two panels."""
 
-    def __init__(self, edge, angle, radius, number=0):
+    def __init__(self, edge, angle, radius, number=0, source=""):
+        self.source = source
         self.start = edge.Vertexes[0].Point
         self.end = edge.Vertexes[-1].Point
         self.angle = angle
@@ -232,6 +233,14 @@ class Score:
                 values.append(round(bend.radius, 6))
         return values
 
+    def sources(self):
+        """The sources of the bend allowances of the score: "Table", "K-factor", or the two."""
+        values = []
+        for bend in self.bends:
+            if bend.source and bend.source not in values:
+                values.append(bend.source)
+        return values
+
     def text(self, degree="°"):
         angles = "/".join(f"{direction} {angle:g}{degree}" for direction, angle in self.angles())
         radii = "/".join(f"{radius:g}" for radius in self.radii())
@@ -268,11 +277,13 @@ class Layout:
         radii = list(getattr(flat, "BendRadii", []))
         lines, self.forms = _bend_lines(flat)
         numbers = bend_numbers(flat, len(angles))
+        sources = list(getattr(flat, "BendSources", []))
         self.bends = []
         for index, edge in enumerate(lines):
             angle = angles[index] if index < len(angles) else 0.0
             radius = radii[index] if index < len(radii) else 0.0
-            self.bends.append(Bend(edge, angle, radius, numbers[index] if index < len(numbers) else 0))
+            source = sources[index] if index < len(sources) else ""
+            self.bends.append(Bend(edge, angle, radius, numbers[index] if index < len(numbers) else 0, source))
         self.scores = []
         if len(lines) == len(angles):
             groups, score_numbers = scores_of(flat, len(angles))

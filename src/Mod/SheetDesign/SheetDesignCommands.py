@@ -102,6 +102,39 @@ def make_rule(doc):
         "Sheet",
         translate("SheetDesign", "Optional K-factor table: the K-factor for each ratio"),
     )
+    rule.addProperty(
+        "App::PropertyEnumeration",
+        "AllowanceKind",
+        "Bend Allowance Table",
+        translate(
+            "SheetDesign",
+            "What a value of the bend table is. A bend deduction is measured from the virtual sharp",
+        ),
+    )
+    rule.addProperty(
+        "App::PropertyFloatList",
+        "AllowanceAngles",
+        "Bend Allowance Table",
+        translate("SheetDesign", "Optional bend table of the shop: the bend angle of each row in degrees"),
+    )
+    rule.addProperty(
+        "App::PropertyFloatList",
+        "AllowanceRadii",
+        "Bend Allowance Table",
+        translate("SheetDesign", "Optional bend table of the shop: the inner bend radius of each row"),
+    )
+    rule.addProperty(
+        "App::PropertyFloatList",
+        "AllowanceValues",
+        "Bend Allowance Table",
+        translate(
+            "SheetDesign",
+            "Optional bend table of the shop: the bend allowance or the bend deduction of each "
+            "row. A bend with no row for its radius and its angle uses the K-factor",
+        ),
+    )
+    rule.AllowanceKind = ["Bend allowance", "Bend deduction"]
+    rule.AllowanceKind = "Bend allowance"
     rule.Thickness = 1.0
     rule.BendRadius = 1.0
     rule.KFactor = 0.5
@@ -343,7 +376,7 @@ def _element_name(shape, element):
 class CommandCut(_Command):
     name = "SheetDesign_Cut"
     menu = "Cut"
-    tip = "Cuts the selected sketch through the selected sheet design feature"
+    tip = "Cuts the selected sketch through the selected feature: on a folded panel, in the flat pattern, or wrapped"
     space = "Folded"
 
     def _pick(self):
@@ -369,13 +402,6 @@ class CommandCut(_Command):
         obj.Space = self.space
         _advance_flat_patterns(source, obj)
         _finish(doc, hide=[source, profile], edit=obj)
-
-
-class CommandCutFlat(CommandCut):
-    name = "SheetDesign_CutFlat"
-    menu = "Cut in Flat Pattern"
-    tip = "Cuts the selected sketch through the flat pattern of the selected feature"
-    space = "Flat"
 
 
 class CommandBaseShape(_Command):
@@ -652,7 +678,6 @@ def register():
         CommandExtend,
         CommandSketchedBend,
         CommandCut,
-        CommandCutFlat,
         CommandCornerRelief,
         CommandForm,
         CommandPerforation,
@@ -663,3 +688,8 @@ def register():
     for command in commands:
         FreeCADGui.addCommand(command.name, command())
     return [command.name for command in commands]
+
+
+#: Commands with no toolbar button. A user runs them one time for each part, thus they are
+#: in the menu only.
+MENU_ONLY = ("SheetDesign_Drawing", "SheetDesign_ExportDxf")
