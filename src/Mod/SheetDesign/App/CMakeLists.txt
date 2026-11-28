@@ -6,6 +6,7 @@ set(SheetDesign_LIBS
   Part
   PartDesign
   Sketcher
+  Materials
 )
 
 SET(SheetDesign_SRCS

@@ -54,6 +54,8 @@ public:
     App::PropertyVolume Overlap;
     /// For an Entry: the sheet rule that the last recompute used. An output.
     App::PropertyLink RuleUsed;
+    /// For an Entry: the name of the material that gave bend data to the last recompute.
+    App::PropertyString MaterialUsed;
 
     App::DocumentObjectExecReturn* execute() override;
     short mustExecute() const override;
@@ -103,6 +105,14 @@ protected:
 
     /// The rule of an Entry: the rule of the link, or with an empty link, the rule from findRule.
     App::DocumentObject* ruleFor(const App::PropertyLink& link) const;
+
+    /**
+     * The sheet values of an Entry: the values of its rule, and with the switch PreferMaterial
+     * of the rule, the K-factor and the bend data of the material of its Body.
+     *
+     * @param material  Receives the name of the material that gave values. Empty if none did.
+     */
+    SheetParams entryParams(const App::PropertyLink& link, std::string* material = nullptr) const;
 
 private:
     /// The values of the rule of an Entry as text, to find a change. Empty for other features.

@@ -588,7 +588,12 @@ class TestSheetDesignGui(unittest.TestCase):
     def test_commands_keep_a_piece_in_its_container(self):
         import SheetDesignCommands
 
+        import Materials
+
         part, body, sketch = self.piece_container()
+        material = Materials.Material()
+        material.Name = "Test board"
+        body.ShapeMaterial = material
         FreeCADGui.activateWorkbench("SheetDesignWorkbench")
         # A rule for this piece only, in its part container.
         FreeCADGui.Selection.clearSelection()
@@ -618,6 +623,9 @@ class TestSheetDesignGui(unittest.TestCase):
         flats = [obj for obj in part.Group if obj.isDerivedFrom("SheetDesign::FlatPattern")]
         self.assertEqual(len(flats), 1)
         self.assertEqual(flats[0].Label, "Cover flat pattern")
+        # The flat pattern has the material of the Body.
+        self.assertEqual(flats[0].ShapeMaterial.UUID, body.ShapeMaterial.UUID)
+        self.assertEqual(flats[0].ShapeMaterial.Name, "Test board")
         self.assertTrue(flats[0].isValid(), flats[0].getStatusString())
         # The outline copy of a drawing is a child of its flat pattern.
         import SheetDesignDrawing

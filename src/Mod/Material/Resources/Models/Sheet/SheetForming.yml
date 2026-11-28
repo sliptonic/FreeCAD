@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2026 sliptonic <shopinthewoods@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
+
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
+
+---
+
+Model:
+  Name: 'SheetForming'
+  UUID: '55919102-64f9-48b3-8872-e8f9a2d57db1'
+  URL: 'https://en.wikipedia.org/wiki/Bending_(metalworking)'
+  Description: >-
+    Model for the forming of sheet material: the position of the neutral
+    axis in a bend, and the limits of a bend.
+  DOI: ""
+  KFactor:
+    DisplayName: "K-Factor"
+    Type: 'Float'
+    Units: None
+    URL: 'https://en.wikipedia.org/wiki/Bending_(metalworking)#K-factor'
+    Description: >-
+      Position of the neutral axis in a bend as a fraction of the thickness,
+      from the inner surface (ANSI convention, 0 to 1). The value for a bend
+      with no row in KFactorTable.
+  KFactorTable:
+    DisplayName: "K-Factor Table"
+    Type: '2DArray'
+    Columns:
+      RadiusRatio:
+        DisplayName: "Radius / Thickness"
+        Type: 'Float'
+        Units: None
+        URL: ''
+        Description: "Ratio of the inner bend radius to the thickness"
+      KFactor:
+        DisplayName: "K-Factor"
+        Type: 'Float'
+        Units: None
+        URL: ''
+        Description: "K-factor (ANSI) for a bend with this ratio or a smaller ratio"
+    URL: ''
+    Description: >-
+      K-factor by the ratio of bend radius to thickness. A bend uses the
+      first row with a ratio that is not smaller than its own ratio.
+  MinimumBendRadiusRatio:
+    DisplayName: "Minimum Bend Radius / Thickness"
+    Type: 'Float'
+    Units: None
+    URL: ''
+    Description: >-
+      Smallest inner bend radius as a multiple of the thickness, for a bend
+      line across the grain direction.
+  MinimumBendRadiusRatioWithGrain:
+    DisplayName: "Minimum Bend Radius / Thickness, with the Grain"
+    Type: 'Float'
+    Units: None
+    URL: ''
+    Description: >-
+      Smallest inner bend radius as a multiple of the thickness, for a bend
+      line parallel to the grain direction.

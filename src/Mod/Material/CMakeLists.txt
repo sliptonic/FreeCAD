@@ -306,6 +306,8 @@ SET(MaterialModel_Files
     Resources/Models/Rendering/TextureRendering.yml
     Resources/Models/Rendering/VectorRendering.yml
     "Resources/Models/Test/Test Model.yml"
+    Resources/Models/Sheet/SheetBendData.yml
+    Resources/Models/Sheet/SheetForming.yml
     Resources/Models/Thermal/Thermal.yml
 )
 

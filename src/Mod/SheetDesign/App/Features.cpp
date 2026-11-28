@@ -66,6 +66,8 @@
 #include <Base/Console.h>
 #include <Base/Exception.h>
 #include <Base/Tools.h>
+#include <Mod/Material/App/MaterialValue.h>
+#include <Mod/Material/App/Materials.h>
 #include <Mod/Part/App/FaceMaker.h>
 #include <Mod/Part/App/TopoShape.h>
 
@@ -272,6 +274,43 @@ void readKFactorTable(const App::DocumentObject* rule, SheetParams& params, bool
     }
 }
 
+/// Add one row to the bend table. A bend deduction becomes a bend allowance.
+void addBendRow(SheetParams& params, double degrees, double radius, double value, bool deduction)
+{
+    BendRow row;
+    row.angle = Base::toRadians(degrees);
+    row.radius = radius;
+    row.allowance = value;
+    if (row.angle <= 0.0 || row.radius < 0.0) {
+        throw Base::ValueError("Sheet design: an angle or a radius of the bend table is not valid");
+    }
+    if (deduction) {
+        // The virtual sharp is too far away for a use above this angle, and it does not
+        // exist at 180 degrees.
+        if (degrees > 170.0) {
+            throw Base::ValueError(
+                "Sheet design: a bend deduction is not possible for an angle larger than 170 "
+                "degrees. Use a table of bend allowances"
+            );
+        }
+        row.allowance = 2.0 * SheetModel::outsideSetback(row.angle, row.radius, params.thickness)
+            - value;
+    }
+    if (row.allowance < 0.0) {
+        throw Base::ValueError(
+            "Sheet design: a row of the bend table gives a bend allowance smaller than zero"
+        );
+    }
+    params.bendTable.push_back(row);
+}
+
+void sortBendTable(SheetParams& params)
+{
+    std::sort(params.bendTable.begin(), params.bendTable.end(), [](const BendRow& a, const BendRow& b) {
+        return a.angle < b.angle;
+    });
+}
+
 /**
  * Read the optional bend table of the rule: the list properties AllowanceAngles (degrees),
  * AllowanceRadii, and AllowanceValues. AllowanceKind says what a value is: a bend allowance, or
@@ -295,35 +334,104 @@ void readBendTable(const App::DocumentObject* rule, SheetParams& params)
     }
     const bool deduction = ruleText(rule, "AllowanceKind") == "Bend deduction";
     for (std::size_t index = 0; index < angles.size(); ++index) {
-        BendRow row;
-        row.angle = Base::toRadians(angles[index]);
-        row.radius = radii[index];
-        row.allowance = values[index];
-        if (row.angle <= 0.0 || row.radius < 0.0) {
-            throw Base::ValueError("Sheet design: an angle or a radius of the bend table is not valid");
-        }
-        if (deduction) {
-            // The virtual sharp is too far away for a use above this angle, and it does not
-            // exist at 180 degrees.
-            if (angles[index] > 170.0) {
-                throw Base::ValueError(
-                    "Sheet design: a bend deduction is not possible for an angle larger than 170 "
-                    "degrees. Use a table of bend allowances"
-                );
-            }
-            row.allowance = 2.0 * SheetModel::outsideSetback(row.angle, row.radius, params.thickness)
-                - values[index];
-        }
-        if (row.allowance < 0.0) {
-            throw Base::ValueError(
-                "Sheet design: a row of the bend table gives a bend allowance smaller than zero"
-            );
-        }
-        params.bendTable.push_back(row);
+        addBendRow(params, angles[index], radii[index], values[index], deduction);
     }
-    std::sort(params.bendTable.begin(), params.bendTable.end(), [](const BendRow& a, const BendRow& b) {
-        return a.angle < b.angle;
-    });
+    sortBendTable(params);
+}
+
+// The models of the Material module for sheet parts (Resources/Models/Sheet).
+const char* SheetFormingModel = "55919102-64f9-48b3-8872-e8f9a2d57db1";
+const char* SheetBendDataModel = "6b241ab5-59e0-4fb6-a361-d15edb44f202";
+
+/// The number in a value of a material array: a quantity in its internal unit, or a number.
+double materialNumber(const QVariant& value)
+{
+    if (value.canConvert<Base::Quantity>() && value.userType() == qMetaTypeId<Base::Quantity>()) {
+        return value.value<Base::Quantity>().getValue();
+    }
+    // The material interface holds a Float in single precision.
+    return std::round(value.toString().toDouble() * 1.0e6) / 1.0e6;
+}
+
+/// A property of a material with a value. Null if the material does not have it.
+std::shared_ptr<Materials::MaterialProperty> materialProperty(
+    const Materials::Material& material,
+    const char* name
+)
+{
+    try {
+        auto property = material.getPhysicalProperty(QString::fromLatin1(name));
+        if (property && !property->isNull() && !property->isEmpty()) {
+            return property;
+        }
+    }
+    catch (const Base::Exception&) {
+        // The material does not have the property.
+    }
+    return {};
+}
+
+/**
+ * Put the sheet values of a material into the values of a rule: the K-factor, the K-factor
+ * table, and the bend table for the thickness of the rule. A value that the material does not
+ * have stays as the rule gave it.
+ *
+ * @return true if the material gave one value or more.
+ */
+bool applyMaterial(const Materials::Material& material, SheetParams& params)
+{
+    bool used = false;
+    if (material.hasPhysicalModel(QString::fromLatin1(SheetFormingModel))) {
+        if (auto factor = materialProperty(material, "KFactor")) {
+            params.kFactor = materialNumber(factor->getValue());
+            used = true;
+        }
+        if (auto table = materialProperty(material, "KFactorTable")) {
+            auto array = std::dynamic_pointer_cast<Materials::Array2D>(table->getMaterialValue());
+            if (array && array->rows() > 0 && array->columns() >= 2) {
+                params.kTable.clear();
+                for (int row = 0; row < array->rows(); ++row) {
+                    params.kTable.emplace_back(
+                        materialNumber(array->getValue(row, 0)),
+                        materialNumber(array->getValue(row, 1))
+                    );
+                }
+                std::sort(params.kTable.begin(), params.kTable.end());
+                used = true;
+            }
+        }
+    }
+    if (material.hasPhysicalModel(QString::fromLatin1(SheetBendDataModel))) {
+        auto table = materialProperty(material, "BendTable");
+        auto array = table ? std::dynamic_pointer_cast<Materials::Array3D>(table->getMaterialValue())
+                           : nullptr;
+        if (array && array->columns() >= 3) {
+            bool deduction = false;
+            if (auto kind = materialProperty(material, "BendTableKind")) {
+                deduction = kind->getValue().toString() == QStringLiteral("Bend deduction");
+            }
+            // The table for the thickness of the rule. Lengths are in mm, angles in degrees.
+            for (int depth = 0; depth < array->depth(); ++depth) {
+                if (std::fabs(array->getDepthValue(depth).getValue() - params.thickness) > 1.0e-6) {
+                    continue;
+                }
+                params.bendTable.clear();
+                for (int row = 0; row < array->rows(depth); ++row) {
+                    addBendRow(
+                        params,
+                        array->getValue(depth, row, 0).getValue(),
+                        array->getValue(depth, row, 1).getValue(),
+                        array->getValue(depth, row, 2).getValue(),
+                        deduction
+                    );
+                }
+                sortBendTable(params);
+                used = true;
+                break;
+            }
+        }
+    }
+    return used;
 }
 
 /// The points of an open wire of straight segments, in their sequence.
@@ -510,6 +618,13 @@ Feature::Feature()
     );
     RuleUsed.setScope(App::LinkScope::Global);
     ADD_PROPERTY_TYPE(
+        MaterialUsed,
+        (""),
+        "Sheet Design",
+        static_cast<App::PropertyType>(App::Prop_ReadOnly | App::Prop_Output | App::Prop_Hidden),
+        "The material that gave bend data to the last recompute"
+    );
+    ADD_PROPERTY_TYPE(
         Overlap,
         (0.0),
         "Sheet Design",
@@ -657,6 +772,30 @@ App::DocumentObject* Feature::ruleFor(const App::PropertyLink& link) const
     return link.getValue() ? link.getValue() : findRule(this);
 }
 
+SheetParams Feature::entryParams(const App::PropertyLink& link, std::string* material) const
+{
+    const App::DocumentObject* rule = ruleFor(link);
+    SheetParams params = readRule(rule);
+    if (material) {
+        material->clear();
+    }
+    // The rule decides: only with its switch does the material of the Body give values.
+    auto* prefer = freecad_cast<App::PropertyBool*>(rule->getPropertyByName("PreferMaterial"));
+    if (!prefer || !prefer->getValue()) {
+        return params;
+    }
+    // The material is on the Body. A feature with no Body uses its own material.
+    const Part::Feature* holder = this;
+    if (auto* body = freecad_cast<Part::Feature*>(App::GeoFeatureGroupExtension::getGroupOfObject(this))) {
+        holder = body;
+    }
+    const Materials::Material& value = holder->ShapeMaterial.getValue();
+    if (applyMaterial(value, params) && material) {
+        *material = value.getName().toStdString();
+    }
+    return params;
+}
+
 std::string Feature::ruleState() const
 {
     auto* link = freecad_cast<App::PropertyLink*>(getPropertyByName("Rule"));
@@ -669,7 +808,9 @@ std::string Feature::ruleState() const
     }
     std::string state = rule->getNameInDocument();
     try {
-        const SheetParams params = readRule(rule);
+        std::string material;
+        const SheetParams params = entryParams(*link, &material);
+        state += "|" + material;
         auto add = [&state](double value) {
             state += std::format("|{:.9g}", value);
         };
@@ -713,6 +854,30 @@ App::DocumentObjectExecReturn* Feature::execute()
         App::DocumentObject* rule = ruleFor(*link);
         if (RuleUsed.getValue() != rule) {
             RuleUsed.setValue(rule);
+        }
+        // A document holds only the identifier of a material. If the library with the material
+        // is not available, the bend data is gone. Tell the user.
+        std::string material;
+        try {
+            entryParams(*link, &material);
+        }
+        catch (const Base::Exception&) {
+            // The recompute below reports the error.
+        }
+        const std::string before = MaterialUsed.getValue();
+        if (!before.empty() && material != before) {
+            Base::Console().warning(
+                "Sheet design: {}: the bend data came from the material '{}'. {}\n",
+                getNameInDocument(),
+                before,
+                material.empty()
+                    ? std::string("That material, or its bend data, is not available now. The "
+                                  "values of the sheet rule are used.")
+                    : "Now it comes from the material '" + material + "'."
+            );
+        }
+        if (material != before) {
+            MaterialUsed.setValue(material);
         }
     }
     try {
@@ -778,7 +943,7 @@ BasePanel::BasePanel()
 
 std::shared_ptr<SheetModel> BasePanel::buildModel()
 {
-    const SheetParams params = readRule(ruleFor(Rule));
+    const SheetParams params = entryParams(Rule);
     const TopoDS_Shape raw = profileShape(Profile.getValue(), toLocal(Profile.getValue()));
     TopExp_Explorer wires(raw, TopAbs_WIRE);
     if (!TopExp_Explorer(raw, TopAbs_FACE).More() && wires.More()
@@ -886,7 +1051,7 @@ FoldBlank::FoldBlank()
 
 std::shared_ptr<SheetModel> FoldBlank::buildModel()
 {
-    const SheetParams params = readRule(ruleFor(Rule));
+    const SheetParams params = entryParams(Rule);
     gp_Trsf placement;
     const TopoDS_Face face = flatProfile(Profile.getValue(), placement, toLocal(Profile.getValue()));
 
@@ -960,7 +1125,7 @@ Unfold::Unfold()
 
 std::shared_ptr<SheetModel> Unfold::buildModel()
 {
-    const SheetParams params = readRule(ruleFor(Rule));
+    const SheetParams params = entryParams(Rule);
     const std::vector<std::string>& subs = Face.getSubValues();
     if (!Face.getValue() || subs.size() != 1) {
         throw Base::ValueError("Sheet design: select one flat face of a solid");
@@ -1600,7 +1765,7 @@ BaseShape::BaseShape()
 
 std::shared_ptr<SheetModel> BaseShape::buildModel()
 {
-    const SheetParams params = readRule(ruleFor(Rule));
+    const SheetParams params = entryParams(Rule);
     const double length = Length.getValue();
     const double width = Width.getValue();
     if (length <= 1.0e-6 || width <= 1.0e-6) {
@@ -1707,7 +1872,7 @@ Convert::Convert()
 
 std::shared_ptr<SheetModel> Convert::buildModel()
 {
-    const SheetParams params = readRule(ruleFor(Rule));
+    const SheetParams params = entryParams(Rule);
     const std::vector<std::string>& subs = Faces.getSubValues();
     if (!Faces.getValue() || subs.empty()) {
         throw Base::ValueError("Sheet design: select the faces of the solid that become panels");

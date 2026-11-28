@@ -172,6 +172,17 @@ def make_rule(doc, container=None):
     )
     rule.AllowanceKind = ["Bend allowance", "Bend deduction"]
     rule.AllowanceKind = "Bend allowance"
+    rule.addProperty(
+        "App::PropertyBool",
+        "PreferMaterial",
+        "Sheet",
+        translate(
+            "SheetDesign",
+            "Uses the K-factor and the bend data of the material of the Body, if the material "
+            "has them. If not set, the values of this rule are used",
+        ),
+    )
+    rule.PreferMaterial = True
     rule.Thickness = 1.0
     rule.BendRadius = 1.0
     rule.KFactor = 0.5
@@ -383,12 +394,14 @@ def new_flat_pattern(source):
     """Add the flat pattern of a feature, beside the Body of the feature.
 
     The flat pattern goes into the container of the Body: a part container or a group. A Body
-    does not accept it as a child. With no container, it is at the top of the document."""
+    does not accept it as a child. With no container, it is at the top of the document.
+    The flat pattern gets the material of the Body, thus it has the same appearance."""
     doc = source.Document
     obj = _attach(doc.addObject("SheetDesign::FlatPattern", "FlatPattern"))
     body = _body_of(source)
     if body is not None:
         obj.Label = translate("SheetDesign", "{} flat pattern").format(body.Label)
+        obj.ShapeMaterial = body.ShapeMaterial
         container = container_of(body)
         if container is not None:
             container.addObject(obj)

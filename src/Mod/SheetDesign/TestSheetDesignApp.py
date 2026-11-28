@@ -1641,6 +1641,120 @@ class TestSheetDesign(unittest.TestCase):
         self.doc.recompute()
         self.assertAlmostEqual(flat.Shape.BoundBox.XLength, self.flat_length(0.5, 8.0), places=6)
 
+    # --------------------------------------------------------- the material of the Body
+
+    FORMING = "55919102-64f9-48b3-8872-e8f9a2d57db1"
+    BEND_DATA = "6b241ab5-59e0-4fb6-a361-d15edb44f202"
+
+    def sheet_material(self, k_factor=0.3, table=None, kind="Bend allowance"):
+        """A material with sheet values. table: {thickness: [(angle, radius, value)]}."""
+        import Materials
+
+        material = Materials.Material()
+        material.Name = "Test sheet"
+        material.addPhysicalModel(self.FORMING)
+        material.setPhysicalValue("KFactor", str(k_factor))
+        if table:
+            material.addPhysicalModel(self.BEND_DATA)
+            material.setPhysicalValue("BendTableKind", kind)
+            array = material.getPhysicalValue("BendTable")
+            array.Depth = len(table)
+            for depth, (thickness, rows) in enumerate(table.items()):
+                array.setDepthValue(depth, f"{thickness} mm")
+                array.setRows(depth, len(rows))
+                for row, (angle, radius, value) in enumerate(rows):
+                    array.setValue(depth, row, 0, f"{angle} deg")
+                    array.setValue(depth, row, 1, f"{radius} mm")
+                    array.setValue(depth, row, 2, f"{value} mm")
+            material.setValue("BendTable", array)
+        return material
+
+    def angle_in_body(self, prefer=True):
+        """A Body with an angle part (one bend) and its flat pattern. The rule is self.rule."""
+        if prefer is not None:
+            self.rule.addProperty("App::PropertyBool", "PreferMaterial", "Sheet")
+            self.rule.PreferMaterial = prefer
+        body = self.doc.addObject("PartDesign::Body", "Body")
+        shape = body.newObject("SheetDesign::BaseShape", "Shape")
+        shape.Type = "Angle"
+        flat = self.doc.addObject("SheetDesign::FlatPattern", "Flat")
+        flat.Source = shape
+        self.doc.recompute()
+        return body, shape, flat
+
+    def k_allowance(self, factor):
+        return (self.R + factor * self.T) * math.pi / 2
+
+    def test_material_of_the_body_gives_the_k_factor(self):
+        body, shape, flat = self.angle_in_body()
+        self.assertAlmostEqual(flat.BendAllowances[0], self.k_allowance(self.K), places=6)
+        self.assertEqual(shape.MaterialUsed, "")
+        body.ShapeMaterial = self.sheet_material(0.3)
+        self.doc.recompute()
+        self.assertTrue(shape.isValid(), shape.getStatusString())
+        self.assertAlmostEqual(flat.BendAllowances[0], self.k_allowance(0.3), places=6)
+        self.assertEqual(shape.MaterialUsed, "Test sheet")
+
+    def test_rule_wins_with_no_switch_or_with_the_switch_off(self):
+        for prefer in (None, False):
+            body, shape, flat = self.angle_in_body(prefer)
+            body.ShapeMaterial = self.sheet_material(0.3)
+            self.doc.recompute()
+            self.assertAlmostEqual(flat.BendAllowances[0], self.k_allowance(self.K), places=6)
+            self.assertEqual(shape.MaterialUsed, "")
+            for obj in (flat, shape, body):
+                self.doc.removeObject(obj.Name)
+            if prefer is not None:
+                self.rule.removeProperty("PreferMaterial")
+
+    def test_material_gives_the_bend_table_of_its_thickness(self):
+        body, shape, flat = self.angle_in_body()
+        table = {self.T: [(45, self.R, 1.5), (90, self.R, 3.3)], self.T + 1: [(90, self.R, 9.9)]}
+        body.ShapeMaterial = self.sheet_material(0.3, table)
+        self.doc.recompute()
+        self.assertAlmostEqual(flat.BendAllowances[0], 3.3, places=6)
+        self.assertEqual(list(flat.BendSources), ["Table"])
+
+    def test_material_with_bend_deductions(self):
+        body, shape, flat = self.angle_in_body()
+        body.ShapeMaterial = self.sheet_material(0.3, {self.T: [(90, self.R, 3.0)]}, "Bend deduction")
+        self.doc.recompute()
+        self.assertAlmostEqual(flat.BendAllowances[0], 2 * (self.R + self.T) - 3.0, places=6)
+
+    def test_material_with_no_table_for_the_thickness_gives_its_k_factor(self):
+        body, shape, flat = self.angle_in_body()
+        body.ShapeMaterial = self.sheet_material(0.3, {self.T + 1: [(90, self.R, 9.9)]})
+        self.doc.recompute()
+        self.assertAlmostEqual(flat.BendAllowances[0], self.k_allowance(0.3), places=6)
+        self.assertEqual(list(flat.BendSources), ["K-factor"])
+
+    def test_two_bodies_with_one_rule_and_different_materials(self):
+        body, shape, flat = self.angle_in_body()
+        body.ShapeMaterial = self.sheet_material(0.3)
+        second = self.doc.addObject("PartDesign::Body", "Second")
+        other = second.newObject("SheetDesign::BaseShape", "Other")
+        other.Type = "Angle"
+        other_flat = self.doc.addObject("SheetDesign::FlatPattern", "OtherFlat")
+        other_flat.Source = other
+        second.ShapeMaterial = self.sheet_material(0.45)
+        self.doc.recompute()
+        self.assertAlmostEqual(flat.BendAllowances[0], self.k_allowance(0.3), places=6)
+        self.assertAlmostEqual(other_flat.BendAllowances[0], self.k_allowance(0.45), places=6)
+
+    def test_material_that_is_gone_gives_the_rule_values_and_a_record(self):
+        import Materials
+
+        body, shape, flat = self.angle_in_body()
+        body.ShapeMaterial = self.sheet_material(0.3)
+        self.doc.recompute()
+        self.assertEqual(shape.MaterialUsed, "Test sheet")
+        # The state after a load with no library: the Body has a material with no sheet values.
+        body.ShapeMaterial = Materials.Material()
+        self.doc.recompute()
+        self.assertTrue(shape.isValid(), shape.getStatusString())
+        self.assertAlmostEqual(flat.BendAllowances[0], self.k_allowance(self.K), places=6)
+        self.assertEqual(shape.MaterialUsed, "")
+
     # ------------------------------------------------------- one sketch for a blank
 
     def blank_sketch(self, construction=True):

@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2026 sliptonic <shopinthewoods@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
+
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
+
+---
+
+Model:
+  Name: 'SheetBendData'
+  UUID: '6b241ab5-59e0-4fb6-a361-d15edb44f202'
+  URL: ''
+  Description: >-
+    Model for the bend data of a shop: the stock thicknesses, the bend
+    radius that the tools give, and measured bend allowances or bend
+    deductions.
+  DOI: ""
+  StockThicknesses:
+    DisplayName: "Stock Thicknesses"
+    Type: '2DArray'
+    Columns:
+      Thickness:
+        Type: 'Quantity'
+        Units: 'mm'
+        URL: ''
+        Description: "Thickness of a sheet that the shop holds"
+      BendRadius:
+        DisplayName: "Bend Radius"
+        Type: 'Quantity'
+        Units: 'mm'
+        URL: ''
+        Description: "Inner bend radius that the usual tool gives for this thickness"
+    URL: ''
+    Description: "The sheets that the shop holds, with the usual bend radius of each"
+  BendTableKind:
+    DisplayName: "Bend Table Kind"
+    Type: 'String'
+    Units: None
+    URL: ''
+    Description: >-
+      What a value of BendTable is: 'Bend allowance' (the length of the
+      neutral line of the bend) or 'Bend deduction' (measured from the
+      virtual sharp: 2 x outside setback - bend allowance).
+  BendTable:
+    DisplayName: "Bend Table"
+    Type: '3DArray'
+    Columns:
+      Thickness:
+        Type: 'Quantity'
+        Units: 'mm'
+        URL: ''
+        Description: "Thickness of the sheet. One table for each thickness"
+      Angle:
+        Type: 'Quantity'
+        Units: 'deg'
+        URL: ''
+        Description: "Bend angle. 0 is a flat sheet"
+      Radius:
+        Type: 'Quantity'
+        Units: 'mm'
+        URL: ''
+        Description: "Inner bend radius"
+      Value:
+        Type: 'Quantity'
+        Units: 'mm'
+        URL: ''
+        Description: "Bend allowance or bend deduction, as BendTableKind says"
+    URL: ''
+    Description: >-
+      Measured bend data. A bend with no row for its thickness, radius, and
+      angle uses the K-factor of the SheetForming model.

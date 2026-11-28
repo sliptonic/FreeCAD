@@ -51,18 +51,25 @@ def label_of(obj):
     return obj.Label if obj is not None else ""
 
 
+def material_text(feature):
+    """The material that gave bend data to the last recompute of an Entry. Empty if none did."""
+    name = getattr(feature, "MaterialUsed", "")
+    return translate("SheetDesign", ". Bend data from the material {}").format(name) if name else ""
+
+
 def rule_text(feature):
     """The sheet rule of an Entry, with the place where the feature found it."""
     import SheetDesignCommands
 
     if feature.Rule is not None:
-        return translate("SheetDesign", "{} (set on the feature)").format(feature.Rule.Label)
+        text = translate("SheetDesign", "{} (set on the feature)").format(feature.Rule.Label)
+        return text + material_text(feature)
     rule = SheetDesignCommands.find_rule(feature)
     if rule is None:
         return translate("SheetDesign", "No sheet rule was found")
     container = SheetDesignCommands.container_of(rule)
     place = container.Label if container is not None else translate("SheetDesign", "the document")
-    return translate("SheetDesign", "{} (from {})").format(rule.Label, place)
+    return translate("SheetDesign", "{} (from {})").format(rule.Label, place) + material_text(feature)
 
 
 class TaskPanel:
