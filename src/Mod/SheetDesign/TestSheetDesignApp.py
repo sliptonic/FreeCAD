@@ -1641,6 +1641,101 @@ class TestSheetDesign(unittest.TestCase):
         self.doc.recompute()
         self.assertAlmostEqual(flat.Shape.BoundBox.XLength, self.flat_length(0.5, 8.0), places=6)
 
+    # ------------------------------------------------------------- the rule of a part
+
+    def new_rule(self, name, thickness, container=None):
+        rule = self.doc.addObject("App::VarSet", name)
+        rule.addProperty("App::PropertyLength", "Thickness", "Sheet")
+        rule.addProperty("App::PropertyLength", "BendRadius", "Sheet")
+        rule.addProperty("App::PropertyFloat", "KFactor", "Sheet")
+        rule.Thickness, rule.BendRadius, rule.KFactor = thickness, 1.0, 0.5
+        if container is not None:
+            container.addObject(rule)
+        return rule
+
+    def base_in(self, container, name="BaseIn"):
+        """A base panel with no link to a rule, in a container."""
+        wire = Part.makePolygon([V(0, 0, 0), V(50, 0, 0), V(50, 30, 0), V(0, 30, 0), V(0, 0, 0)])
+        base = self.doc.addObject("SheetDesign::BasePanel", name)
+        base.Profile = self.add_shape(wire)
+        if container is not None:
+            container.addObject(base)
+        self.doc.recompute()
+        return base
+
+    def thickness_of(self, feature):
+        return feature.Shape.BoundBox.ZLength
+
+    def test_entry_with_no_link_uses_the_rule_of_the_document(self):
+        base = self.base_in(None)
+        self.assertTrue(base.isValid(), base.getStatusString())
+        self.assertAlmostEqual(self.thickness_of(base), self.T, places=6)
+        self.assertEqual(base.RuleUsed, self.rule)
+
+    def test_rule_in_the_body_wins_over_the_rule_of_the_document(self):
+        body = self.doc.addObject("PartDesign::Body", "Body")
+        rule = self.new_rule("BodyRule", 3.0, body)
+        base = self.base_in(body)
+        self.assertAlmostEqual(self.thickness_of(base), 3.0, places=6)
+        self.assertEqual(base.RuleUsed, rule)
+
+    def test_rule_of_a_group_serves_its_bodies(self):
+        group = self.doc.addObject("App::DocumentObjectGroup", "Group")
+        rule = self.new_rule("GroupRule", 4.0, group)
+        bodies = []
+        for name in ("BodyA", "BodyB"):
+            body = self.doc.addObject("PartDesign::Body", name)
+            group.addObject(body)
+            bodies.append(self.base_in(body, "Base" + name))
+        # A rule in a body overrides the rule of the group.
+        self.new_rule("OwnRule", 1.5, bodies[1].getParentGeoFeatureGroup())
+        self.doc.recompute()
+        self.assertAlmostEqual(self.thickness_of(bodies[0]), 4.0, places=6)
+        self.assertAlmostEqual(self.thickness_of(bodies[1]), 1.5, places=6)
+        self.assertEqual(bodies[0].RuleUsed, rule)
+
+    def test_rule_in_a_part_container_above_the_body(self):
+        part = self.doc.addObject("App::Part", "Part")
+        self.new_rule("PartRule", 2.5, part)
+        body = self.doc.addObject("PartDesign::Body", "Body")
+        part.addObject(body)
+        base = self.base_in(body)
+        self.assertAlmostEqual(self.thickness_of(base), 2.5, places=6)
+
+    def test_change_of_a_found_rule_recomputes_the_part(self):
+        body = self.doc.addObject("PartDesign::Body", "Body")
+        rule = self.new_rule("BodyRule", 3.0, body)
+        base = self.base_in(body)
+        flange = self.add_flange(base, V(50, 0, 3), V(50, 30, 3), Length=10.0)
+        self.assertTrue(flange.isValid(), flange.getStatusString())
+        rule.Thickness = 2.0
+        self.doc.recompute()
+        self.assertAlmostEqual(self.thickness_of(base), 2.0, places=6)
+
+    def test_move_of_a_body_changes_its_rule(self):
+        group = self.doc.addObject("App::DocumentObjectGroup", "Group")
+        self.new_rule("GroupRule", 4.0, group)
+        body = self.doc.addObject("PartDesign::Body", "Body")
+        base = self.base_in(body)
+        self.assertAlmostEqual(self.thickness_of(base), self.T, places=6)
+        group.addObject(body)
+        self.doc.recompute()
+        self.assertAlmostEqual(self.thickness_of(base), 4.0, places=6)
+
+    def test_link_to_a_rule_wins_over_the_search(self):
+        body = self.doc.addObject("PartDesign::Body", "Body")
+        self.new_rule("BodyRule", 3.0, body)
+        base = self.base_in(body)
+        base.Rule = self.rule
+        self.doc.recompute()
+        self.assertAlmostEqual(self.thickness_of(base), self.T, places=6)
+
+    def test_entry_with_no_rule_on_its_path_gives_an_error(self):
+        self.doc.removeObject(self.rule.Name)
+        base = self.base_in(None)
+        self.assertFalse(base.isValid())
+        self.assertIn("no sheet rule", base.getStatusString())
+
     # ------------------------------------------------------------------------- bend table
 
     def add_bend_table(self, rows, kind="Bend allowance"):

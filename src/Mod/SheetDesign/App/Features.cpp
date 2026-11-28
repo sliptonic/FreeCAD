@@ -20,6 +20,7 @@
  ******************************************************************************/
 
 #include <cmath>
+#include <format>
 #include <string>
 
 #include <algorithm>
@@ -53,7 +54,11 @@
 #include <gp_Pln.hxx>
 
 #include <App/ElementMap.h>
+#include <App/Document.h>
 #include <App/GeoFeature.h>
+#include <App/GeoFeatureGroupExtension.h>
+#include <App/GroupExtension.h>
+#include <App/VarSet.h>
 #include <App/IndexedName.h>
 #include <App/MappedName.h>
 #include <Base/Console.h>
@@ -349,7 +354,10 @@ std::vector<gp_Pnt> sectionPoints(const TopoDS_Wire& wire)
 SheetParams readRule(const App::DocumentObject* rule)
 {
     if (!rule) {
-        throw Base::ValueError("Sheet design: no rule is set");
+        throw Base::ValueError(
+            "Sheet design: no sheet rule was found. Add a sheet rule to the Body of the part, or to "
+            "a container of the Body"
+        );
     }
     SheetParams params;
     params.thickness = readRuleValue(rule, "Thickness");
@@ -455,6 +463,14 @@ Feature::Feature()
         "Merge the faces of the folded solid that are on the same surface"
     );
     ADD_PROPERTY_TYPE(
+        RuleUsed,
+        (nullptr),
+        "Sheet Design",
+        static_cast<App::PropertyType>(App::Prop_ReadOnly | App::Prop_Output | App::Prop_Hidden),
+        "The sheet rule that the last recompute used"
+    );
+    RuleUsed.setScope(App::LinkScope::Global);
+    ADD_PROPERTY_TYPE(
         Overlap,
         (0.0),
         "Sheet Design",
@@ -534,9 +550,132 @@ std::shared_ptr<const SheetModel> Feature::sourceModel(App::DocumentObject* obje
     return feature->getModel();
 }
 
+bool Feature::isRule(const App::DocumentObject* object)
+{
+    return object && object->isDerivedFrom<App::VarSet>() && object->getPropertyByName("Thickness")
+        && object->getPropertyByName("BendRadius") && object->getPropertyByName("KFactor");
+}
+
+namespace
+{
+/// The container of an object: a Body, a Part, or a group. Null at the top of the document.
+App::DocumentObject* containerOf(const App::DocumentObject* object)
+{
+    if (App::DocumentObject* parent = App::GeoFeatureGroupExtension::getGroupOfObject(object)) {
+        return parent;
+    }
+    return App::GroupExtension::getGroupOfObject(object);
+}
+
+/// The first rule in a list of objects. Gives a warning if the list has more than one.
+App::DocumentObject* firstRule(const std::vector<App::DocumentObject*>& objects, const char* where)
+{
+    App::DocumentObject* found = nullptr;
+    for (App::DocumentObject* object : objects) {
+        if (!Feature::isRule(object)) {
+            continue;
+        }
+        if (found) {
+            Base::Console().warning(
+                "Sheet design: {} has more than one sheet rule. {} is used.\n",
+                where,
+                found->Label.getValue()
+            );
+            break;
+        }
+        found = object;
+    }
+    return found;
+}
+}  // namespace
+
+App::DocumentObject* Feature::findRule(const App::DocumentObject* object)
+{
+    if (!object || !object->getDocument()) {
+        return nullptr;
+    }
+    for (App::DocumentObject* group = containerOf(object); group; group = containerOf(group)) {
+        auto* extension = group->getExtensionByType<App::GroupExtension>(true);
+        if (!extension) {
+            continue;
+        }
+        if (App::DocumentObject* rule = firstRule(extension->Group.getValues(), group->Label.getValue())) {
+            return rule;
+        }
+    }
+    // The top of the document: the objects with no container.
+    std::vector<App::DocumentObject*> top;
+    for (App::DocumentObject* candidate : object->getDocument()->getObjects()) {
+        if (isRule(candidate) && !containerOf(candidate)) {
+            top.push_back(candidate);
+        }
+    }
+    return firstRule(top, "The document");
+}
+
+App::DocumentObject* Feature::ruleFor(const App::PropertyLink& link) const
+{
+    return link.getValue() ? link.getValue() : findRule(this);
+}
+
+std::string Feature::ruleState() const
+{
+    auto* link = freecad_cast<App::PropertyLink*>(getPropertyByName("Rule"));
+    if (!link) {
+        return {};  // Not an Entry.
+    }
+    const App::DocumentObject* rule = ruleFor(*link);
+    if (!rule) {
+        return "none";
+    }
+    std::string state = rule->getNameInDocument();
+    try {
+        const SheetParams params = readRule(rule);
+        auto add = [&state](double value) {
+            state += std::format("|{:.9g}", value);
+        };
+        add(params.thickness);
+        add(params.radius);
+        add(params.kFactor);
+        add(static_cast<double>(params.relief.type));
+        add(params.relief.width);
+        add(params.relief.depth);
+        for (const auto& row : params.kTable) {
+            add(row.first);
+            add(row.second);
+        }
+        for (const BendRow& row : params.bendTable) {
+            add(row.angle);
+            add(row.radius);
+            add(row.allowance);
+        }
+    }
+    catch (const Base::Exception& e) {
+        state += std::string("|error|") + e.what();
+    }
+    return state;
+}
+
+short Feature::mustExecute() const
+{
+    // An Entry finds its rule at each recompute. A link does not always show the rule, thus the
+    // feature compares the values of the rule with the values of its last recompute.
+    if (ruleState() != usedRuleState) {
+        return 1;
+    }
+    return PartDesign::Feature::mustExecute();
+}
+
 App::DocumentObjectExecReturn* Feature::execute()
 {
     model.reset();
+    usedRuleState = ruleState();
+    if (auto* link = freecad_cast<App::PropertyLink*>(getPropertyByName("Rule"))) {
+        App::DocumentObject* rule = ruleFor(*link);
+        if (RuleUsed.getValue() != rule) {
+            RuleUsed.setValue(rule);
+        }
+    }
     try {
         std::shared_ptr<SheetModel> result = buildModel();
         model = result;
@@ -578,7 +717,7 @@ BasePanel::BasePanel()
         (nullptr),
         "Sheet Design",
         App::Prop_None,
-        "Object with the properties Thickness, BendRadius, and KFactor"
+        "Sheet rule of the part. Empty: the rule in the Body, or in the nearest container of the Body"
     );
     ADD_PROPERTY_TYPE(
         Width,
@@ -600,7 +739,7 @@ BasePanel::BasePanel()
 
 std::shared_ptr<SheetModel> BasePanel::buildModel()
 {
-    const SheetParams params = readRule(Rule.getValue());
+    const SheetParams params = readRule(ruleFor(Rule));
     const TopoDS_Shape raw = profileShape(Profile.getValue(), toLocal(Profile.getValue()));
     TopExp_Explorer wires(raw, TopAbs_WIRE);
     if (!TopExp_Explorer(raw, TopAbs_FACE).More() && wires.More()
@@ -698,7 +837,7 @@ FoldBlank::FoldBlank()
         (nullptr),
         "Sheet Design",
         App::Prop_None,
-        "Object with the properties Thickness, BendRadius, and KFactor"
+        "Sheet rule of the part. Empty: the rule in the Body, or in the nearest container of the Body"
     );
     Profile.setScope(App::LinkScope::Global);
     BendLines.setScope(App::LinkScope::Global);
@@ -707,7 +846,7 @@ FoldBlank::FoldBlank()
 
 std::shared_ptr<SheetModel> FoldBlank::buildModel()
 {
-    const SheetParams params = readRule(Rule.getValue());
+    const SheetParams params = readRule(ruleFor(Rule));
     gp_Trsf placement;
     const TopoDS_Face face = flatProfile(Profile.getValue(), placement, toLocal(Profile.getValue()));
 
@@ -781,7 +920,7 @@ Unfold::Unfold()
 
 std::shared_ptr<SheetModel> Unfold::buildModel()
 {
-    const SheetParams params = readRule(Rule.getValue());
+    const SheetParams params = readRule(ruleFor(Rule));
     const std::vector<std::string>& subs = Face.getSubValues();
     if (!Face.getValue() || subs.size() != 1) {
         throw Base::ValueError("Sheet design: select one flat face of a solid");
@@ -1413,7 +1552,7 @@ BaseShape::BaseShape()
         (nullptr),
         "Sheet Design",
         App::Prop_None,
-        "Object with the properties Thickness, BendRadius, and KFactor"
+        "Sheet rule of the part. Empty: the rule in the Body, or in the nearest container of the Body"
     );
     Type.setEnums(BaseShapeEnums);
     Rule.setScope(App::LinkScope::Global);
@@ -1421,7 +1560,7 @@ BaseShape::BaseShape()
 
 std::shared_ptr<SheetModel> BaseShape::buildModel()
 {
-    const SheetParams params = readRule(Rule.getValue());
+    const SheetParams params = readRule(ruleFor(Rule));
     const double length = Length.getValue();
     const double width = Width.getValue();
     if (length <= 1.0e-6 || width <= 1.0e-6) {
@@ -1506,7 +1645,7 @@ Convert::Convert()
         (nullptr),
         "Sheet Design",
         App::Prop_None,
-        "Object with the properties Thickness, BendRadius, and KFactor"
+        "Sheet rule of the part. Empty: the rule in the Body, or in the nearest container of the Body"
     );
     ADD_PROPERTY_TYPE(
         Inside,
@@ -1528,7 +1667,7 @@ Convert::Convert()
 
 std::shared_ptr<SheetModel> Convert::buildModel()
 {
-    const SheetParams params = readRule(Rule.getValue());
+    const SheetParams params = readRule(ruleFor(Rule));
     const std::vector<std::string>& subs = Faces.getSubValues();
     if (!Faces.getValue() || subs.empty()) {
         throw Base::ValueError("Sheet design: select the faces of the solid that become panels");

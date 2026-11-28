@@ -44,9 +44,46 @@ def _is_feature(obj):
 RULE_PROPERTIES = ("Thickness", "BendRadius", "KFactor")
 
 
-def make_rule(doc):
-    """Add a variable set with the values that apply to a full sheet part."""
+def container_of(obj):
+    """Return the container of an object: a Body, a Part, or a group. None at the top."""
+    parent = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+    if parent is None and hasattr(obj, "getParentGroup"):
+        parent = obj.getParentGroup()
+    return parent
+
+
+def rules_in(doc, container):
+    """Return the sheet rules of a container. With no container: those at the top of the document."""
+    if container is None:
+        candidates = [obj for obj in doc.Objects if container_of(obj) is None]
+    else:
+        candidates = list(container.Group)
+    return [obj for obj in candidates if obj.isDerivedFrom("App::VarSet") and _is_rule(obj)]
+
+
+def find_rule(obj):
+    """Find the sheet rule for an object, as the features do at a recompute.
+
+    The search starts in the container of the object, for example its Body. It goes to the
+    container of that container, and so on to the document. The nearest rule wins.
+    """
+    container = container_of(obj)
+    while container is not None:
+        rules = rules_in(obj.Document, container)
+        if rules:
+            return rules[0]
+        container = container_of(container)
+    rules = rules_in(obj.Document, None)
+    return rules[0] if rules else None
+
+
+def make_rule(doc, container=None):
+    """Add a variable set with the values that apply to a full sheet part.
+
+    container: the Body, Part, or group that gets the rule. None: the top of the document."""
     rule = doc.addObject("App::VarSet", "SheetRule")
+    if container is not None:
+        container.addObject(rule)
     rule.addProperty(
         "App::PropertyLength", "Thickness", "Sheet", translate("SheetDesign", "Thickness of the sheet")
     )
@@ -187,12 +224,14 @@ def _new_after(source, type_name, name):
     return body.newObject(type_name, name)
 
 
-def _find_rule(doc):
-    """Return the first rule of the document. Make one if the document has none."""
-    for obj in doc.Objects:
-        if obj.isDerivedFrom("App::VarSet") and _is_rule(obj):
-            return obj
-    return make_rule(doc)
+def _ensure_rule(obj):
+    """Make sure that a new Entry finds a sheet rule.
+
+    The Entry has no link to a rule: it finds the nearest rule at each recompute. If no container
+    on its path has a rule, its Body gets a new one.
+    """
+    if find_rule(obj) is None:
+        make_rule(obj.Document, _body_of(obj))
 
 
 def _advance_flat_patterns(old, new):
@@ -239,12 +278,33 @@ class _Command:
 class CommandRule(_Command):
     name = "SheetDesign_Rule"
     menu = "Sheet Rule"
-    tip = "Adds a variable set with the thickness, the bend radius, and the K-factor"
+    tip = (
+        "Adds a sheet rule to the selected Body, part container, or group: the thickness, the "
+        "bend radius, and the bend data. A part uses the nearest rule"
+    )
+
+    @staticmethod
+    def _container():
+        """The selected container, or None for the top of the document."""
+        sel = FreeCADGui.Selection.getSelection()
+        if len(sel) == 1 and hasattr(sel[0], "Group") and hasattr(sel[0], "addObject"):
+            return sel[0]
+        return None
 
     def Activated(self):
         doc = FreeCAD.ActiveDocument
+        container = self._container()
+        if rules_in(doc, container):
+            where = container.Label if container is not None else doc.Label
+            FreeCAD.Console.PrintWarning(
+                translate("SheetDesign", "{} already has a sheet rule: {}").format(
+                    where, rules_in(doc, container)[0].Label
+                )
+                + "\n"
+            )
+            return
         doc.openTransaction("Sheet Rule")
-        make_rule(doc)
+        make_rule(doc, container)
         _finish(doc)
 
 
@@ -264,7 +324,7 @@ class CommandBase(_Command):
         body = _body_for(doc, profile)
         _adopt(body, profile)
         obj = _attach(body.newObject("SheetDesign::BasePanel", "BasePanel"))
-        obj.Rule = _find_rule(doc)
+        _ensure_rule(obj)
         obj.Profile = profile
         is_open = not _has_closed_wire(profile)
         _finish(doc, hide=[profile], edit=obj if is_open else None)
@@ -296,7 +356,7 @@ class CommandFoldBlank(_Command):
         _adopt(body, profile)
         _adopt(body, lines)
         obj = _attach(body.newObject("SheetDesign::FoldBlank", "FoldBlank"))
-        obj.Rule = _find_rule(doc)
+        _ensure_rule(obj)
         obj.Profile = profile
         obj.BendLines = lines
         _finish(doc, hide=[profile, lines], edit=obj)
@@ -329,7 +389,7 @@ class CommandUnfold(_Command):
         doc = source.Document
         doc.openTransaction("Unfold")
         obj = _attach(_body_for(doc, source).newObject("SheetDesign::Unfold", "Unfold"))
-        obj.Rule = _find_rule(doc)
+        _ensure_rule(obj)
         obj.Face = (source, [face])
         flat = _attach(doc.addObject("SheetDesign::FlatPattern", "FlatPattern"))
         flat.Source = obj
@@ -414,7 +474,7 @@ class CommandBaseShape(_Command):
         doc.openTransaction("Base Shape")
         body = _body_for(doc)
         obj = _attach(body.newObject("SheetDesign::BaseShape", "BaseShape"))
-        obj.Rule = _find_rule(doc)
+        _ensure_rule(obj)
         obj.Type = "Channel"
         _finish(doc, edit=obj)
 
@@ -528,7 +588,7 @@ class CommandConvert(_Command):
         doc = source.Document
         doc.openTransaction("Convert")
         obj = _attach(_body_for(doc, source).newObject("SheetDesign::Convert", "Convert"))
-        obj.Rule = _find_rule(doc)
+        _ensure_rule(obj)
         obj.Faces = (source, faces)
         _finish(doc, hide=[source], edit=obj)
 

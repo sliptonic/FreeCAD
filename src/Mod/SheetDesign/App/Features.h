@@ -52,8 +52,23 @@ public:
 
     App::PropertyBool Refine;
     App::PropertyVolume Overlap;
+    /// For an Entry: the sheet rule that the last recompute used. An output.
+    App::PropertyLink RuleUsed;
 
     App::DocumentObjectExecReturn* execute() override;
+    short mustExecute() const override;
+
+    /**
+     * Find the sheet rule for an object. The search starts in the container of the object, for
+     * example its Body. It goes to the container of that container, and so on to the document.
+     * The first container with a rule gives the rule.
+     *
+     * @return null if no container on the path has a rule.
+     */
+    static App::DocumentObject* findRule(const App::DocumentObject* object);
+
+    /// True if the object is a variable set with the properties Thickness, BendRadius, and KFactor.
+    static bool isRule(const App::DocumentObject* object);
 
     /// The model after this feature. The function makes the model again if it is not available.
     std::shared_ptr<const SheetModel> getModel();
@@ -86,8 +101,15 @@ protected:
     }
     static std::shared_ptr<const SheetModel> sourceModel(App::DocumentObject* object);
 
+    /// The rule of an Entry: the rule of the link, or with an empty link, the rule from findRule.
+    App::DocumentObject* ruleFor(const App::PropertyLink& link) const;
+
 private:
+    /// The values of the rule of an Entry as text, to find a change. Empty for other features.
+    std::string ruleState() const;
+
     std::shared_ptr<const SheetModel> model;
+    std::string usedRuleState;
 };
 
 /// The first panel of a sheet part, made from a closed planar profile. An open profile of

@@ -51,6 +51,20 @@ def label_of(obj):
     return obj.Label if obj is not None else ""
 
 
+def rule_text(feature):
+    """The sheet rule of an Entry, with the place where the feature found it."""
+    import SheetDesignCommands
+
+    if feature.Rule is not None:
+        return translate("SheetDesign", "{} (set on the feature)").format(feature.Rule.Label)
+    rule = SheetDesignCommands.find_rule(feature)
+    if rule is None:
+        return translate("SheetDesign", "No sheet rule was found")
+    container = SheetDesignCommands.container_of(rule)
+    place = container.Label if container is not None else translate("SheetDesign", "the document")
+    return translate("SheetDesign", "{} (from {})").format(rule.Label, place)
+
+
 class TaskPanel:
     """Base class: loads the .ui file and connects the widgets to the properties."""
 
@@ -275,7 +289,7 @@ class TaskBasePanel(TaskPanel):
     def update(self):
         super().update()
         self.form.profileLabel.setText(label_of(self.obj.Profile))
-        self.form.ruleLabel.setText(label_of(self.obj.Rule))
+        self.form.ruleLabel.setText(rule_text(self.obj))
         # The width is for an open profile: the section of the part.
         profile = self.obj.Profile
         is_open = bool(profile and not profile.Shape.Faces and not any(w.isClosed() for w in profile.Shape.Wires))
@@ -337,7 +351,7 @@ class TaskUnfold(TaskPanel):
         super().update()
         source, subs = self.obj.Face if self.obj.Face else (None, [])
         self.form.faceLabel.setText(f"{label_of(source)}.{subs[0]}" if source and subs else "")
-        self.form.ruleLabel.setText(label_of(self.obj.Rule))
+        self.form.ruleLabel.setText(rule_text(self.obj))
         # The values that Unfold found in the solid.
         thickness = ""
         bends = ""
@@ -630,7 +644,7 @@ class TaskBaseShape(TaskPanel):
 
     def update(self):
         super().update()
-        self.form.ruleLabel.setText(label_of(self.obj.Rule))
+        self.form.ruleLabel.setText(rule_text(self.obj))
         self.form.Height.setEnabled(self.obj.Type != "Plate")
         self.form.FlangeWidth.setEnabled(self.obj.Type == "Hat")
 
@@ -645,7 +659,7 @@ class TaskConvert(TaskPanel):
         source, subs = self.obj.Faces if self.obj.Faces else (None, [])
         text = translate("SheetDesign", "{} ({} faces)").format(label_of(source), len(subs))
         self.form.facesLabel.setText(text if source else "")
-        self.form.ruleLabel.setText(label_of(self.obj.Rule))
+        self.form.ruleLabel.setText(rule_text(self.obj))
 
 
 class TaskForm(TaskPanel):
