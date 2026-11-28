@@ -1641,6 +1641,51 @@ class TestSheetDesign(unittest.TestCase):
         self.doc.recompute()
         self.assertAlmostEqual(flat.Shape.BoundBox.XLength, self.flat_length(0.5, 8.0), places=6)
 
+    # ------------------------------------------------------- one sketch for a blank
+
+    def blank_sketch(self, construction=True):
+        """A sketch of a blank 100 x 50 with a bend line at x = 60."""
+        import Sketcher  # noqa: F401
+
+        sketch = self.doc.addObject("Sketcher::SketchObject", "Blank")
+        points = [V(0, 0, 0), V(100, 0, 0), V(100, 50, 0), V(0, 50, 0)]
+        for index in range(4):
+            sketch.addGeometry(Part.LineSegment(points[index], points[(index + 1) % 4]), False)
+        sketch.addGeometry(Part.LineSegment(V(60, 0, 0), V(60, 50, 0)), construction)
+        self.doc.recompute()
+        return sketch
+
+    def test_fold_blank_from_one_sketch_with_construction_lines(self):
+        obj = self.doc.addObject("SheetDesign::FoldBlank", "FoldBlank")
+        obj.Profile = self.blank_sketch()
+        obj.Rule = self.rule
+        self.doc.recompute()
+        self.assertTrue(obj.isValid(), obj.getStatusString())
+        self.assertEqual(obj.Overlap.Value, 0.0)
+        # The part has one bend: its height is more than the thickness.
+        self.assertGreater(obj.Shape.BoundBox.ZLength, 10.0)
+
+    def test_fold_blank_from_one_sketch_agrees_with_two_inputs(self):
+        one = self.doc.addObject("SheetDesign::FoldBlank", "One")
+        one.Profile = self.blank_sketch()
+        one.Rule = self.rule
+        face = Part.Face(Part.makePolygon([V(0, 0, 0), V(100, 0, 0), V(100, 50, 0), V(0, 50, 0), V(0, 0, 0)]))
+        two = self.add_fold_blank(face, [Part.makeLine(V(60, 0, 0), V(60, 50, 0))], [90.0])
+        self.doc.recompute()
+        self.assertAlmostEqual(one.Shape.Volume, two.Shape.Volume, places=6)
+
+    def test_fold_blank_from_a_sketch_with_no_construction_line_gives_an_error(self):
+        sketch = self.doc.addObject("Sketcher::SketchObject", "Plain")
+        points = [V(0, 0, 0), V(100, 0, 0), V(100, 50, 0), V(0, 50, 0)]
+        for index in range(4):
+            sketch.addGeometry(Part.LineSegment(points[index], points[(index + 1) % 4]), False)
+        obj = self.doc.addObject("SheetDesign::FoldBlank", "FoldBlank")
+        obj.Profile = sketch
+        obj.Rule = self.rule
+        self.doc.recompute()
+        self.assertFalse(obj.isValid())
+        self.assertIn("construction lines", obj.getStatusString())
+
     # ------------------------------------------------------------- the rule of a part
 
     def new_rule(self, name, thickness, container=None):

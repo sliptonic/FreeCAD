@@ -315,7 +315,12 @@ class TaskFoldBlank(TaskPanel):
     def setup(self):
         """One row with an angle for each bend line."""
         table = self.form.anglesTable
-        lines = len(self.obj.BendLines.Shape.Edges) if self.obj.BendLines else 0
+        import SheetDesignCommands
+
+        if self.obj.BendLines:
+            lines = len(self.obj.BendLines.Shape.Edges)
+        else:
+            lines = SheetDesignCommands.construction_lines(self.obj.Profile) if self.obj.Profile else 0
         angles = list(self.obj.Angles) or [90.0]
         table.setRowCount(lines)
         table.horizontalHeader().setStretchLastSection(True)
@@ -339,7 +344,10 @@ class TaskFoldBlank(TaskPanel):
     def update(self):
         super().update()
         self.form.profileLabel.setText(label_of(self.obj.Profile))
-        self.form.linesLabel.setText(label_of(self.obj.BendLines))
+        if self.obj.BendLines is not None:
+            self.form.linesLabel.setText(label_of(self.obj.BendLines))
+        else:
+            self.form.linesLabel.setText(translate("SheetDesign", "Construction lines of the outline"))
 
 
 class TaskUnfold(TaskPanel):

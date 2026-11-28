@@ -59,6 +59,8 @@
 #include <App/GeoFeatureGroupExtension.h>
 #include <App/GroupExtension.h>
 #include <App/VarSet.h>
+#include <Mod/Sketcher/App/GeometryFacade.h>
+#include <Mod/Sketcher/App/SketchObject.h>
 #include <App/IndexedName.h>
 #include <App/MappedName.h>
 #include <Base/Console.h>
@@ -379,6 +381,43 @@ SheetParams readRule(const App::DocumentObject* rule)
         params.relief.depth = readRuleValue(rule, "ReliefDepth");
     }
     return params;
+}
+
+/**
+ * The construction lines of a sketch, as edges in the coordinates of the feature. With one sketch
+ * for a blank, the normal geometry is the outline, and the construction lines are the bend lines.
+ */
+TopoDS_Shape constructionLines(App::DocumentObject* object, const gp_Trsf& toLocal)
+{
+    auto* sketch = freecad_cast<Sketcher::SketchObject*>(object);
+    if (!sketch) {
+        throw Base::ValueError(
+            "Sheet design: no bend lines are set. Add a sketch of bend lines, or use a sketch with "
+            "construction lines as the outline"
+        );
+    }
+    BRep_Builder builder;
+    TopoDS_Compound lines;
+    builder.MakeCompound(lines);
+    int count = 0;
+    for (const Part::Geometry* geometry : sketch->getInternalGeometry()) {
+        if (!geometry || !Sketcher::GeometryFacade::getConstruction(geometry)
+            || !geometry->is<Part::GeomLineSegment>()) {
+            continue;
+        }
+        builder.Add(lines, geometry->toShape());
+        ++count;
+    }
+    if (count == 0) {
+        throw Base::ValueError(
+            "Sheet design: the sketch has no construction lines. Draw each bend line as a "
+            "construction line, or add a second sketch of bend lines"
+        );
+    }
+    TopoDS_Shape shape = lines;
+    shape.Move(TopLoc_Location(Part::TopoShape::convert(sketch->Placement.getValue().toMatrix())));
+    shape.Move(TopLoc_Location(toLocal));
+    return shape;
 }
 
 /**
@@ -822,7 +861,8 @@ FoldBlank::FoldBlank()
         (nullptr),
         "Sheet Design",
         App::Prop_None,
-        "Straight lines in the plane of the profile: the center lines of the bends"
+        "Straight lines in the plane of the profile: the center lines of the bends. Empty: the "
+        "construction lines of the sketch of the profile"
     );
     ADD_PROPERTY_TYPE(
         Angles,
@@ -850,11 +890,11 @@ std::shared_ptr<SheetModel> FoldBlank::buildModel()
     gp_Trsf placement;
     const TopoDS_Face face = flatProfile(Profile.getValue(), placement, toLocal(Profile.getValue()));
 
-    BRepBuilderAPI_Transform toFlat(
-        profileShape(BendLines.getValue(), toLocal(BendLines.getValue())),
-        placement.Inverted(),
-        Standard_True
-    );
+    // The bend lines: a second object, or the construction lines of the sketch of the outline.
+    const TopoDS_Shape lineShape = BendLines.getValue()
+        ? profileShape(BendLines.getValue(), toLocal(BendLines.getValue()))
+        : constructionLines(Profile.getValue(), toLocal(Profile.getValue()));
+    BRepBuilderAPI_Transform toFlat(lineShape, placement.Inverted(), Standard_True);
     const std::vector<double>& angles = Angles.getValues();
     std::vector<BendLine> lines;
     std::size_t lineNumber = 0;

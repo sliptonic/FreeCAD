@@ -83,6 +83,14 @@ class ViewProvider:
         FreeCADGui.Control.closeDialog()
         return True
 
+    def claimChildren(self):
+        """A flat pattern shows the outline copies of its drawings as its children."""
+        vobj = getattr(self, "vobj", None)
+        obj = vobj.Object if vobj is not None else None
+        if obj is None or not obj.isDerivedFrom("SheetDesign::FlatPattern"):
+            return []
+        return [other for other in obj.InList if getattr(other, "DrawingOf", None) == obj]
+
     def onDelete(self, vobj, _subelements):
         """A flat pattern of the deleted feature goes back to the feature before it."""
         obj = vobj.Object

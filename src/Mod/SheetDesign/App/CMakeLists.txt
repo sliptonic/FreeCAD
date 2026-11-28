@@ -5,6 +5,7 @@ set(SheetDesign_LIBS
   FreeCADApp
   Part
   PartDesign
+  Sketcher
 )
 
 SET(SheetDesign_SRCS

@@ -567,3 +567,62 @@ class TestSheetDesignGui(unittest.TestCase):
         self.assertTrue(preview.Shape.isValid())
         self.assertGreater(preview.Shape.Volume, 0.9 * box.Shape.Volume)
         self.assertTrue(SheetDesignFold.motion(flat).complete)
+
+    # ------------------------------------------------------- the container of a piece
+
+    def piece_container(self):
+        """The part container of one piece: a Body with a sketch of a blank with one construction line."""
+        import Sketcher  # noqa: F401
+
+        part = self.doc.addObject("App::Part", "CoverPart")
+        body = self.doc.addObject("PartDesign::Body", "Cover")
+        part.addObject(body)
+        sketch = body.newObject("Sketcher::SketchObject", "Blank")
+        points = [V(0, 0, 0), V(100, 0, 0), V(100, 50, 0), V(0, 50, 0)]
+        for index in range(4):
+            sketch.addGeometry(Part.LineSegment(points[index], points[(index + 1) % 4]), False)
+        sketch.addGeometry(Part.LineSegment(V(60, 0, 0), V(60, 50, 0)), True)
+        self.doc.recompute()
+        return part, body, sketch
+
+    def test_commands_keep_a_piece_in_its_container(self):
+        import SheetDesignCommands
+
+        part, body, sketch = self.piece_container()
+        FreeCADGui.activateWorkbench("SheetDesignWorkbench")
+        # A rule for this piece only, in its part container.
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(part)
+        FreeCADGui.runCommand("SheetDesign_Rule")
+        rules = SheetDesignCommands.rules_in(self.doc, part)
+        self.assertEqual(len(rules), 1)
+        # The command refuses a second rule in the same container.
+        FreeCADGui.runCommand("SheetDesign_Rule")
+        self.assertEqual(len(SheetDesignCommands.rules_in(self.doc, part)), 1)
+        # Fold Blank from one sketch: the construction line is the bend line.
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(sketch)
+        FreeCADGui.runCommand("SheetDesign_FoldBlank")
+        SheetDesignViewProviders.ACTIVE_PANEL.accept()  # The OK button.
+        FreeCADGui.Control.closeDialog()
+        folded = [obj for obj in body.Group if obj.isDerivedFrom("SheetDesign::FoldBlank")]
+        self.assertEqual(len(folded), 1)
+        self.assertTrue(folded[0].isValid(), folded[0].getStatusString())
+        self.assertEqual(folded[0].RuleUsed, rules[0])
+        # No new rule: the Body uses the rule of its part container.
+        self.assertEqual(SheetDesignCommands.rules_in(self.doc, body), [])
+        # The flat pattern is beside the Body, in the part container.
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(folded[0])
+        FreeCADGui.runCommand("SheetDesign_FlatPattern")
+        flats = [obj for obj in part.Group if obj.isDerivedFrom("SheetDesign::FlatPattern")]
+        self.assertEqual(len(flats), 1)
+        self.assertEqual(flats[0].Label, "Cover flat pattern")
+        self.assertTrue(flats[0].isValid(), flats[0].getStatusString())
+        # The outline copy of a drawing is a child of its flat pattern.
+        import SheetDesignDrawing
+
+        SheetDesignDrawing.make_drawing(flats[0])
+        children = flats[0].ViewObject.Proxy.claimChildren()
+        self.assertEqual(len(children), 1)
+        self.assertIn(children[0], part.Group)

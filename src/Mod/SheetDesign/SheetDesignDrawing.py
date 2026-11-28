@@ -234,9 +234,19 @@ def make_drawing(flat, template=None):
 
     # The view shows the outline only. The notes draw the bend lines, with a line type.
     outline = doc.addObject("SheetDesign::FlatPattern", flat.Name + "Outline")
+    outline.Label = flat.Label + " outline"
     outline.Source = flat.Source
     outline.BendLines = False
     outline.Placement = flat.Placement
+    # The outline is a child of its flat pattern in the tree, thus it does not fill the tree.
+    outline.addProperty(
+        "App::PropertyLink", "DrawingOf", "Sheet Design", "The flat pattern that this outline is for", 4
+    )
+    outline.DrawingOf = flat
+    for parent in flat.InList:
+        if hasattr(parent, "Group") and flat in parent.Group and hasattr(parent, "addObject"):
+            parent.addObject(outline)
+            break
     if outline.ViewObject is not None:
         outline.ViewObject.hide()
 

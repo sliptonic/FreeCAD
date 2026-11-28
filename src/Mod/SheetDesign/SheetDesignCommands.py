@@ -333,10 +333,15 @@ class CommandBase(_Command):
 class CommandFoldBlank(_Command):
     name = "SheetDesign_FoldBlank"
     menu = "Fold Blank"
-    tip = "Makes a new part from a flat blank: folds the selected outline on the lines of the selected sketch"
+    tip = (
+        "Makes a new part from a flat blank. Select one sketch: its construction lines are the "
+        "bend lines. Or select an outline and a sketch of bend lines"
+    )
 
     def _pick(self):
         sel = [obj for obj in FreeCADGui.Selection.getSelection() if hasattr(obj, "Shape")]
+        if len(sel) == 1 and _has_closed_wire(sel[0]) and construction_lines(sel[0]) > 0:
+            return sel[0], None
         if len(sel) != 2 or any(_is_feature(obj) for obj in sel):
             return None
         closed = [obj for obj in sel if _has_closed_wire(obj)]
@@ -354,12 +359,41 @@ class CommandFoldBlank(_Command):
         doc.openTransaction("Fold Blank")
         body = _body_for(doc, profile, lines)
         _adopt(body, profile)
-        _adopt(body, lines)
+        if lines is not None:
+            _adopt(body, lines)
         obj = _attach(body.newObject("SheetDesign::FoldBlank", "FoldBlank"))
         _ensure_rule(obj)
         obj.Profile = profile
         obj.BendLines = lines
-        _finish(doc, hide=[profile, lines], edit=obj)
+        _finish(doc, hide=[profile] + ([lines] if lines is not None else []), edit=obj)
+
+
+def construction_lines(obj):
+    """Return the number of construction lines of a sketch. They are the bend lines of a blank."""
+    if not obj.isDerivedFrom("Sketcher::SketchObject"):
+        return 0
+    return sum(
+        1
+        for index, geometry in enumerate(obj.Geometry)
+        if obj.getConstruction(index) and geometry.TypeId == "Part::GeomLineSegment"
+    )
+
+
+def new_flat_pattern(source):
+    """Add the flat pattern of a feature, beside the Body of the feature.
+
+    The flat pattern goes into the container of the Body: a part container or a group. A Body
+    does not accept it as a child. With no container, it is at the top of the document."""
+    doc = source.Document
+    obj = _attach(doc.addObject("SheetDesign::FlatPattern", "FlatPattern"))
+    body = _body_of(source)
+    if body is not None:
+        obj.Label = translate("SheetDesign", "{} flat pattern").format(body.Label)
+        container = container_of(body)
+        if container is not None:
+            container.addObject(obj)
+    obj.Source = source
+    return obj
 
 
 def _has_closed_wire(obj):
@@ -391,8 +425,7 @@ class CommandUnfold(_Command):
         obj = _attach(_body_for(doc, source).newObject("SheetDesign::Unfold", "Unfold"))
         _ensure_rule(obj)
         obj.Face = (source, [face])
-        flat = _attach(doc.addObject("SheetDesign::FlatPattern", "FlatPattern"))
-        flat.Source = obj
+        new_flat_pattern(obj)
         _finish(doc, hide=[source])
 
 
@@ -659,8 +692,7 @@ class CommandFlatPattern(_Command):
         source = FreeCADGui.Selection.getSelection()[0]
         doc = source.Document
         doc.openTransaction("Flat Pattern")
-        obj = _attach(doc.addObject("SheetDesign::FlatPattern", "FlatPattern"))
-        obj.Source = source
+        new_flat_pattern(source)
         _finish(doc)
 
 
